@@ -4,6 +4,7 @@
 
 import { GoogleGenAI, type ContentEmbedding, type EmbedContentResponse } from "@google/genai";
 import type { MediaPlanPost, AffiliateLink } from '../types';
+import { getEnv } from '../utils/env';
 
 /**
  * Calculates the cosine similarity between two vectors.
@@ -42,7 +43,7 @@ export const suggestProductsForPost = async (
     availableAffiliateLinks: AffiliateLink[],
     count: number
 ): Promise<AffiliateLink[]> => {
-    if (!(window as any).import.meta.env.VITE_GEMINI_API_KEY) {
+    if (!import.meta.env.VITE_GEMINI_API_KEY) {
       console.warn("API_KEY not set, skipping KhongMinh suggestion.");
       return [];
     }
@@ -51,7 +52,7 @@ export const suggestProductsForPost = async (
     }
 
     try {
-        const ai = new GoogleGenAI({ apiKey: (window as any).import.meta.env.VITE_GEMINI_API_KEY });
+        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
         
         // Workflow B, Step 2: Construct Post Text
         const postText = `${post.title} | ${post.content} | ${(post.hashtags || []).join(' ')}`;
