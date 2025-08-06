@@ -623,7 +623,16 @@ export const generateContentPackage = async (
 ): Promise<MediaPlanGroup> => {
     const ai = new GoogleGenAI(import.meta.env.VITE_GEMINI_API_KEY);
 
-    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Tone:** The content's tone must perfectly match this persona's style.\n` : '';
+    const personaInstruction = persona ? `
+**KOL/KOC Persona (Crucial):**
+All content MUST be generated from the perspective of the following KOL/KOC.
+- **Nickname:** ${persona.nickName}
+- **Main Style:** ${persona.mainStyle}
+- **Field of Activity:** ${persona.activityField}
+- **Detailed Description (for image generation):** ${persona.outfitDescription}
+- **Tone:** The content's tone must perfectly match this persona's style.
+- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
+` : '';
 
     const customizationInstruction = `\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length.\n`;
 

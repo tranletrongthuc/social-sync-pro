@@ -1,6 +1,20 @@
 import '@testing-library/jest-dom';
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
+// Mock for import.meta.env
+Object.defineProperty(global, 'import.meta', {
+  value: {
+    env: {
+      VITE_GEMINI_API_KEY: 'test-api-key',
+      VITE_AIRTABLE_PAT: 'test-pat',
+      VITE_AIRTABLE_BASE_ID: 'test-base-id',
+      VITE_CLOUDINARY_CLOUD_NAME: 'test-cloud-name',
+      VITE_CLOUDINARY_UPLOAD_PRESET: 'test-upload-preset',
+    },
+  },
+  writable: true,
+});
+
 // This file contains unit tests for the SocialSync Pro application.
 // To run these tests, use a test runner like Jest with JSDOM and React Testing Library.
 

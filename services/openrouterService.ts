@@ -1,8 +1,3 @@
-
-
-
-
-
 import { GoogleGenAI } from "@google/genai";
 import { sanitizeAndParseJson, normalizeMediaPlanGroupResponse, normalizePillarContent, normalizeArrayResponse } from './geminiService';
 import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Idea, PostStatus } from '../types';
@@ -136,10 +131,7 @@ const parseOpenRouterResponse = (response: any): string => {
 };
 
 export const refinePostContentWithOpenRouter = async (postText: string, model: string): Promise<string> => {
-    const prompt = `You are a world-class social media copywriter. Refine the following post content to maximize engagement and impact, while preserving its core message. The output should ONLY be the refined text, without any introductory phrases, explanations, or quotes.
-
-Original content:
-"""${postText}"""`;
+    const prompt = `You are a world-class social media copywriter. Refine the following post content to maximize engagement and impact, while preserving its core message. The output should ONLY be the refined text, without any introductory phrases, explanations, or quotes.\n\nOriginal content:\n"""${postText}"""`;
 
     // This function now only handles non-Gemini (i.e., OpenRouter) models
     const response = await openrouterFetch({
@@ -152,9 +144,9 @@ Original content:
     if (response.choices && response.choices.length > 0 && response.choices[0].message?.content) {
         let content = response.choices[0].message.content;
 
-        const thinkTagEnd = content.indexOf('</think>');
+        const thinkTagEnd = content.indexOf('<\/think>');
         if (thinkTagEnd !== -1) {
-            content = content.substring(thinkTagEnd + '</think>'.length);
+            content = content.substring(thinkTagEnd + '<\/think>'.length);
         }
         
         return content.trim();
@@ -164,20 +156,7 @@ Original content:
 };
 
 export const generateBrandProfileWithOpenRouter = async (idea: string, language: string, model: string): Promise<BrandInfo> => {
-    const prompt = `
-You are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.
-The output must be a single, valid JSON object. Do not add any commentary or text outside of the JSON structure.
-
-Business Idea:
-"${idea}"
-
-Generate the following brand profile fields in ${language}:
-- **name**: A creative and fitting brand name.
-- **mission**: A powerful, one-sentence mission statement.
-- **values**: A comma-separated string of 4-5 core brand values.
-- **audience**: A brief description of the target audience.
-- **personality**: 3-4 keywords describing the brand's personality.
-`;
+    const prompt = `\nYou are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.\nThe output must be a single, valid JSON object. Do not add any commentary or text outside of the JSON structure.\n\nBusiness Idea:\n"${idea}"\n\nGenerate the following brand profile fields in ${language}:\n- **name**: A creative and fitting brand name.\n- **mission**: A powerful, one-sentence mission statement.\n- **values**: A comma-separated string of 4-5 core brand values.\n- **audience**: A brief description of the target audience.\n- **personality**: 3-4 keywords describing the brand's personality.\n`;
     const openRouterPrompt = `${prompt}\n\nYou MUST respond with a single, valid JSON object. Do not add any text or explanation before or after the JSON object.`;
     const response = await openrouterFetch({
         model: model,
@@ -199,23 +178,7 @@ Generate the following brand profile fields in ${language}:
 };
 
 export const generateBrandKitWithOpenRouter = async (brandInfo: BrandInfo, language: string, model: string): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
-    const prompt = `
-You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.
-The output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.
-
-Brand Input (in ${language}):
-- Brand Name: ${brandInfo.name}
-- Brand Mission: ${brandInfo.mission}
-- Brand Values: ${brandInfo.values}
-- Target Audience: ${brandInfo.audience}
-- Brand Personality: ${brandInfo.personality}
-
-Generate the following assets IN ${language}:
-1.  **Brand Foundation**: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.
-2.  **Core Media Assets**: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.
-3.  **Unified Profile Assets**: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.
-4.  **Initial 1-Month Media Plan**: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. Ensure every post includes a detailed, English image prompt.
-`;
+    const prompt = `\nYou are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.\nThe output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.\n\nBrand Input (in ${language}):\n- Brand Name: ${brandInfo.name}\n- Brand Mission: ${brandInfo.mission}\n- Brand Values: ${brandInfo.values}\n- Target Audience: ${brandInfo.audience}\n- Brand Personality: ${brandInfo.personality}\n\nGenerate the following assets IN ${language}:\n1.  **Brand Foundation**: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.\n2.  **Core Media Assets**: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.\n3.  **Unified Profile Assets**: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.\n4.  **Initial 1-Month Media Plan**: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. Ensure every post includes a detailed, English image prompt.\n`;
     const openRouterPrompt = `${prompt}\n\nYou MUST respond with a single, valid JSON object. Do not add any text or explanation before or after the JSON object.`;
     const response = await openrouterFetch({
         model: model,
@@ -305,98 +268,9 @@ export const generateMediaPlanGroupWithOpenRouter = async (
     persona: Persona | null
 ): Promise<MediaPlanGroup> => {
     
-    const personaInstruction = persona ? `
-**KOL/KOC Persona (Crucial):**
-All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
-- **Nickname:** ${persona.nickName}
-- **Main Style:** ${persona.mainStyle}
-- **Field of Activity:** ${persona.activityField}
-- **Detailed Description (for image generation):** ${persona.outfitDescription}
-- **Tone:** The content's tone must perfectly match this persona's style.
-- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
-` : '';
+    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description (for image generation):** ${persona.outfitDescription}\n- **Tone:** The content's tone must perfectly match this persona's style.\n- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".\n` : '';
 
-    const openRouterPrompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.
-You MUST strictly follow the rules provided in the system instruction.
-The output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.
-
-**Brand Foundation (Use this as your guide):**
-- Brand Name: ${brandFoundation.brandName}
-- Mission: ${brandFoundation.mission}
-- USP: ${brandFoundation.usp}
-- Values: ${(brandFoundation.values || []).join(', ')}
-- Target Audience: ${brandFoundation.targetAudience}
-- Personality: ${brandFoundation.personality}
-
-${personaInstruction}
-
-**User's Goal for the Plan:**
-"${userPrompt}"
-
-**Content Customization Instructions:**
-- **Tone of Voice**: Generate all content with a '${options.tone}' tone.
-- **Writing Style**: The primary style should be '${options.style}'.
-- **Post Length**: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.
-- **Emojis**: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}
-
-Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
-- **Name**: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").
-- **Plan Structure**: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
-- **Content**: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.
-- **Post Details**: Each post object must be complete and ready-to-use, containing:
-    -   platform: The target platform. It MUST be one of the selected platforms: ${selectedPlatforms.map(p => `'${p}'`).join(', ')}.
-    -   contentType: e.g., "Image Post", "Video Idea", "Story", "Carousel Post".
-    -   title: An SEO-friendly title or headline.
-    -   content: The full caption, description, or script. This must be engaging and reflect the brand personality and customization instructions.
-    -   hashtags: An array of relevant and trending hashtags.
-    -   cta: A clear call-to-action (e.g., "Shop Now", "Learn More", "Comment below").
-    -   imagePrompt: A detailed, English-language prompt for an image generation model.
-- **Important Content Formatting Rules**:
-    - The 'content' field for any post must be the final, user-facing text (e.g., a caption, script, or description).
-    - For Instagram 'Carousel Post' types, the 'content' field should be a single, cohesive caption for the entire carousel. It must NOT include markers like "Slide 1:", "Slide 2:", etc. The caption should introduce the carousel and encourage users to swipe.
-    - The 'content' field must be clean and ready for publishing. It must NOT contain any extraneous data, especially numerical arrays or references like "[3, 6, 8]".
-- **Consistency**: The entire media plan must be thematically consistent with the Brand Foundation.
-
-**JSON Schema for Media Plan Group (Strictly Adhere to This):**
-\`\`\`json
-{
-  "type": "object",
-  "properties": {
-    "name": { "type": "string", "description": "A short, descriptive title for the media plan." },
-    "plan": {
-      "type": "array",
-      "description": "An array of weekly media plan objects.",
-      "items": {
-        "type": "object",
-        "properties": {
-          "week": { "type": "integer", "description": "The week number (1-4)." },
-          "theme": { "type": "string", "description": "The thematic focus for the week." },
-          "posts": {
-            "type": "array",
-            "description": "An array of social media posts for the week.",
-            "items": {
-              "type": "object",
-              "properties": {
-                "platform": { "type": "string", "enum": ["YouTube", "Facebook", "Instagram", "TikTok", "Pinterest"] },
-                "contentType": { "type": "string" },
-                "title": { "type": "string" },
-                "content": { "type": "string" },
-                "hashtags": { "type": "array", "items": { "type": "string" } },
-                "cta": { "type": "string" },
-                "imagePrompt": { "type": "string", "description": "Detailed English prompt for image generation." }
-              },
-              "required": ["platform", "contentType", "title", "content", "hashtags", "cta", "imagePrompt"]
-            }
-          }
-        },
-        "required": ["week", "theme", "posts"]
-      }
-    }
-  },
-  "required": ["name", "plan"]
-}
-\`\`\`
-`;
+    const openRouterPrompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.\nYou MUST strictly follow the rules provided in the system instruction.\nThe output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.\n\n**Brand Foundation (Use this as your guide):**\n- Brand Name: ${brandFoundation.brandName}\n- Mission: ${brandFoundation.mission}\n- USP: ${brandFoundation.usp}\n- Values: ${(brandFoundation.values || []).join(', ')}\n- Target Audience: ${brandFoundation.targetAudience}\n- Personality: ${brandFoundation.personality}\n\n${personaInstruction}\n\n**User's Goal for the Plan:**\n"${userPrompt}"\n\n**Content Customization Instructions:**\n- **Tone of Voice**: Generate all content with a '${options.tone}' tone.\n- **Writing Style**: The primary style should be '${options.style}'.\n- **Post Length**: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.\n- **Emojis**: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}\n\nBased on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.\n- **Name**: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").\n- **Plan Structure**: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").\n- **Content**: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.\n- **Post Details**: Each post object must be complete and ready-to-use, containing:\n    -   platform: The target platform. It MUST be one of the selected platforms: ${selectedPlatforms.map(p => `'${p}'`).join(', ')}.\n    -   contentType: e.g., "Image Post", "Video Idea", "Story", "Carousel Post".\n    -   title: An SEO-friendly title or headline.\n    -   content: The full caption, description, or script. This must be engaging and reflect the brand personality and customization instructions.\n    -   hashtags: An array of relevant and trending hashtags.\n    -   cta: A clear call-to-action (e.g., "Shop Now", "Learn More", "Comment below").\n    -   imagePrompt: A detailed, English-language prompt for an image generation model.\n- **Important Content Formatting Rules**:\n    - The 'content' field for any post must be the final, user-facing text (e.g., a caption, script, or description).\n    - For Instagram 'Carousel Post' types, the 'content' field should be a single, cohesive caption for the entire carousel. It must NOT include markers like "Slide 1:", "Slide 2:", etc. The caption should introduce the carousel and encourage users to swipe.\n    - The 'content' field must be clean and ready for publishing. It must NOT contain any extraneous data, especially numerical arrays or references like "[3, 6, 8]".\n- **Consistency**: The entire media plan must be thematically consistent with the Brand Foundation.\n\n**JSON Schema for Media Plan Group (Strictly Adhere to This):**\n\`\`\`json\n{\n  "type": "object",\n  "properties": {\n    "name": { "type": "string", "description": "A short, descriptive title for the media plan." },\n    "plan": {\n      "type": "array",\n      "description": "An array of weekly media plan objects.",\n      "items": {\n        "type": "object",\n        "properties": {\n          "week": { "type": "integer", "description": "The week number (1-4)." },\n          "theme": { "type": "string", "description": "The thematic focus for the week." },\n          "posts": {\n            "type": "array",\n            "description": "An array of social media posts for the week.",\n            "items": {\n              "type": "object",\n              "properties": {\n                "platform": { "type": "string", "enum": ["YouTube", "Facebook", "Instagram", "TikTok", "Pinterest"] },\n                "contentType": { "type": "string" },\n                "title": { "type": "string" },\n                "content": { "type": "string" },\n                "hashtags": { "type": "array", "items": { "type": "string" } },\n                "cta": { "type": "string" },\n                "imagePrompt": { "type": "string", "description": "Detailed English prompt for image generation." }\n              },\n              "required": ["platform", "contentType", "title", "content", "hashtags", "cta", "imagePrompt"]\n            }\n          }\n        },\n        "required": ["week", "theme", "posts"]\n      }\n    }\n  },\n  "required": ["name", "plan"]\n}\n\`\`\`\n`;
     
     const response = await openrouterFetch({
         model: model,
@@ -444,30 +318,9 @@ export const generateImagePromptForPostWithOpenRouter = async (
     model: string,
     persona: Persona | null
 ): Promise<string> => {
-    const personaInstruction = persona ? `
-**KOL/KOC Persona (Crucial):**
-All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
-- **Nickname:** ${persona.nickName}
-- **Main Style:** ${persona.mainStyle}
-- **Field of Activity:** ${persona.activityField}
-- **Detailed Description:** ${persona.outfitDescription}
+    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description:** ${persona.outfitDescription}\n\nIMPORTANT: The prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]".\n\n` : '';
 
-IMPORTANT: The prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]".
-
-` : '';
-
-    const prompt = `
-You are a creative visual director for the brand "${brandFoundation.brandName}".
-The brand's personality is: ${brandFoundation.personality}.
-${personaInstruction}
-Based on the following social media post content (in ${language}), generate a single, detailed, and compelling image generation prompt.
-The prompt MUST BE IN ENGLISH.
-The prompt should be a single paragraph describing a visual scene that captures the essence of the post.
-Do not add any explanations, labels, or extra text. Output ONLY the prompt.
-
-Post Title: "${postContent.title}"
-Post Content: "${postContent.content}"
-`;
+    const prompt = `\nYou are a creative visual director for the brand "${brandFoundation.brandName}".\nThe brand's personality is: ${brandFoundation.personality}.\n${personaInstruction}\nBased on the following social media post content (in ${language}), generate a single, detailed, and compelling image generation prompt.\nThe prompt MUST BE IN ENGLISH.\nThe prompt should be a single paragraph describing a visual scene that captures the essence of the post.\nDo not add any explanations, labels, or extra text. Output ONLY the prompt.\n\nPost Title: "${postContent.title}"\nPost Content: "${postContent.content}"\n`;
     const response = await openrouterFetch({
         model: model,
         messages: [{ role: 'user', content: prompt }]
@@ -495,33 +348,7 @@ export const generateAffiliateCommentWithOpenRouter = async (
         `- Product Name: ${p.productName}\n  - Price: ${p.price}\n  - Promotion Link: ${p.promotionLink || p.productLink}`
     ).join('\n');
 
-    const prompt = `
-You are the social media manager for the brand "${brandFoundation.brandName}", which has a "${brandFoundation.personality}" personality. Your task is to write a comment for a social media post, from the perspective of the page admin.
-
-**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to the post. The comment must encourage clicks on the affiliate link.
-
-**Rules:**
-1.  **Natural Tone:** The comment must sound like a real person, not an ad. It should match the tone of the original post. Avoid overly salesy language.
-2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:
-    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect the original post's topic with the product(s) being promoted. It should add value, share a personal tip, or ask a question to spark conversation and make people curious about the link.
-    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.
-3.  **Language:** The entire comment MUST be in ${language}.
-
-**Original Post Content:**
-- Title: ${post.title}
-- Content: ${post.content}
-
-**Affiliate Product(s) to Promote:**
-${productDetails}
-
-**Example Output:**
-Mình thấy nhiều bạn hỏi về [related_topic], em này đúng là chân ái luôn, giải quyết được đúng vấn đề đó. Dùng cực thích!
-
-https://your-affiliate-link.com
-
----
-Now, generate the comment based on the provided post and product details. Output ONLY the comment text.
-`;
+    const prompt = `\nYou are the social media manager for the brand "${brandFoundation.brandName}", which has a "${brandFoundation.personality}" personality. Your task is to write a comment for a social media post, from the perspective of the page admin.\n\n**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to the post. The comment must encourage clicks on the affiliate link.\n\n**Rules:**\n1.  **Natural Tone:** The comment must sound like a real person, not an ad. It should match the tone of the original post. Avoid overly salesy language.\n2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:\n    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect the original post's topic with the product(s) being promoted. It should add value, share a personal tip, or ask a question to spark conversation and make people curious about the link.\n    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.\n3.  **Language:** The entire comment MUST be in ${language}.\n\n**Original Post Content:**\n- Title: ${post.title}\n- Content: ${post.content}\n\n**Affiliate Product(s) to Promote:**\n${productDetails}\n\n**Example Output:**\nMình thấy nhiều bạn hỏi về [related_topic], em này đúng là chân ái luôn, giải quyết được đúng vấn đề đó. Dùng cực thích!\n\nhttps://your-affiliate-link.com\n\n---\nNow, generate the comment based on the provided post and product details. Output ONLY the comment text.\n`;
 
     const response = await openrouterFetch({
         model: model,
@@ -562,9 +389,7 @@ export const generateImageWithOpenRouter = async (
     const userContent: any[] = [];
     
     const NEGATIVE_PROMPT = ', no text, text-free, no typography, no writing, no letters, no words, text overlay';
-    const instructionText = `Generate a single, high-quality image based on the following description. The response must be a valid JSON object containing one key: "b64_json", which holds the base64 encoded string of the generated JPEG image.
-
-Description (aspect ratio ${aspectRatio}): "${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}${NEGATIVE_PROMPT}"`;
+    const instructionText = `Generate a single, high-quality image based on the following description. The response must be a valid JSON object containing one key: "b64_json", which holds the base64 encoded string of the generated JPEG image.\n\nDescription (aspect ratio ${aspectRatio}): "${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}${NEGATIVE_PROMPT}"`;
     
     userContent.push({ type: 'text', text: instructionText });
     
@@ -606,17 +431,7 @@ export const generateViralIdeasWithOpenRouter = async (
     language: string,
     model: string
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    const prompt = `You are a viral marketing expert and a world-class creative strategist.
-Your task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.
-The ideas must be in ${language}.
-Your response MUST be a valid JSON array of objects. Each object must have the following keys:
-- "title": A catchy, curiosity-driven 'title'.
-- "description": A short but comprehensive 'description' of the idea.
-- "targetAudience": A specific 'targetAudience' that this idea would appeal to.
-
-Topic: "${trend.topic}"
-Keywords: ${trend.keywords.join(', ')}
-`;
+    const prompt = `You are a viral marketing expert and a world-class creative strategist.\nYour task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.\nThe ideas must be in ${language}.\nYour response MUST be a valid JSON array of objects. Each object must have the following keys:\n- "title": A catchy, curiosity-driven 'title'.\n- "description": A short but comprehensive 'description' of the idea.\n- "targetAudience": A specific 'targetAudience' that this idea would appeal to.\n\nTopic: "${trend.topic}"\nKeywords: ${trend.keywords.join(', ')}\n`;
     
     const openRouterPrompt = `${prompt}\n\nYou MUST respond with a single, valid JSON array, containing 5 idea objects. Do not add any text or explanation before or after the JSON object. The root of your response must be an array, like this: [ { "title": ... }, ... ]`;
     const response = await openrouterFetch({
@@ -658,37 +473,12 @@ export const generateContentPackageWithOpenRouter = async (
     options: { tone: string; style: string; length: string; }
 ): Promise<MediaPlanGroup> => {
 
-    const personaInstruction = persona ? `
-**KOL/KOC Persona (Crucial):**
-All content MUST be generated from the perspective of the following KOL/KOC.
-- **Nickname:** ${persona.nickName}
-- **Main Style:** ${persona.mainStyle}
-- **Field of Activity:** ${persona.activityField}
-- **Tone:** The content's tone must perfectly match this persona's style.
-` : '';
+    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description (for image generation):** ${persona.outfitDescription}\n- **Tone:** The content's tone must perfectly match this persona's style.\n- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".\n` : '';
 
-    const customizationInstruction = `
-**Content Customization Instructions:**
-- **Tone of Voice**: Generate all content with a '${options.tone}' tone.
-- **Writing Style**: The primary style should be '${options.style}'.
-- **Post Length**: Adhere to a '${options.length}' post length.
-`;
+    const customizationInstruction = `\n**Content Customization Instructions:**\n- **Tone of Voice**: Generate all content with a '${options.tone}' tone.\n- **Writing Style**: The primary style should be '${options.style}'.\n- **Post Length**: Adhere to a '${options.length}' post length.\n`;
 
     // 1. Generate Pillar Content
-    const pillarPrompt = `
-    ${personaInstruction}
-    ${customizationInstruction}
-    Based on the idea "${idea.title}", create a comprehensive, long-form 'pillar' content piece for ${pillarPlatform}.
-    This should be a detailed, authoritative piece that provides significant value to the target audience: ${idea.targetAudience}.
-    - If ${pillarPlatform} is YouTube, provide a detailed video script and a separate, SEO-optimized 'description' for the YouTube description box.
-    - If ${pillarPlatform} is Facebook, provide a long-form, engaging post like a mini-article.
-    - If ${pillarPlatform} is Instagram, provide a detailed multi-slide carousel post concept, including content for each slide and a main caption.
-    - If ${pillarPlatform} is Pinterest, provide a concept for a detailed infographic or a guide pin, including all text content needed.
-    - If ${pillarPlatform} is TikTok, provide a script for a multi-part (2-3 videos) series.
-    The output must be a single JSON object with: title, content, ${pillarPlatform === 'YouTube' ? 'description, ' : ''}hashtags, and cta. Do NOT include an imagePrompt.
-    Language: ${language}.
-    You MUST respond with a single, valid JSON object.
-    `;
+    const pillarPrompt = `\n    ${personaInstruction}\n    ${customizationInstruction}\n    Based on the idea "${idea.title}", create a comprehensive, long-form 'pillar' content piece for ${pillarPlatform}.\n    This should be a detailed, authoritative piece that provides significant value to the target audience: ${idea.targetAudience}.\n    - If ${pillarPlatform} is YouTube, provide a detailed video script and a separate, SEO-optimized 'description' for the YouTube description box.\n    - If ${pillarPlatform} is Facebook, provide a long-form, engaging post like a mini-article.\n    - If ${pillarPlatform} is Instagram, provide a detailed multi-slide carousel post concept, including content for each slide and a main caption.\n    - If ${pillarPlatform} is Pinterest, provide a concept for a detailed infographic or a guide pin, including all text content needed.\n    - If ${pillarPlatform} is TikTok, provide a script for a multi-part (2-3 videos) series.\n    The output must be a single JSON object with: title, content, ${pillarPlatform === 'YouTube' ? 'description, ' : ''}hashtags, and cta. Do NOT include an imagePrompt.\n    Language: ${language}.\n    You MUST respond with a single, valid JSON object.\n    `;
     const pillarResponse = await openrouterFetch({
         model, 
         messages: [{ role: 'system', content: affiliateContentKit }, { role: 'user', content: pillarPrompt }],
@@ -701,46 +491,7 @@ All content MUST be generated from the perspective of the following KOL/KOC.
     const allPlatforms: ('YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest')[] = ['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest'];
     const repurposedPlatforms = allPlatforms.filter(p => p !== pillarPlatform);
 
-    const repurposedPrompt = `
-    ${personaInstruction}
-    ${customizationInstruction}
-    **Context:** The following is a large "pillar" content piece about "${idea.title}" created for ${pillarPlatform}.
-    Pillar Content: "${pillarPost.content}"
-    **Your Task:** Repurpose the core message of the pillar content into one smaller, standalone post for EACH of the following platforms: ${repurposedPlatforms.join(', ')}.
-    Each new piece must be completely rewritten and tailored for its specific platform's format and audience. They must be relevant to the original pillar content.
-    - For short-form video platforms (TikTok, Instagram), create a concise video script or reel idea.
-    - For image-based platforms (Instagram, Pinterest), create a compelling caption for an image or carousel.
-    - For text-based platforms (Facebook), create an engaging post that summarizes or expands on a key point from the pillar content.
-    - If the pillar content is a long text post and you need to generate a YouTube idea, create a script outline for a short video based on the text.
-    Language: ${language}.
-
-    **Output Format (Strictly Enforced):**
-    Your response MUST be a single, valid JSON object. The root of this object must be a key named "posts", which contains an array of ${repurposedPlatforms.length} JSON objects.
-    Each object in the "posts" array must have these keys: "platform" (must be one of ${repurposedPlatforms.join(', ')}), "contentType", "title", "content", "hashtags", and "cta". Do NOT include an "imagePrompt" key.
-    
-    Example structure:
-    {
-      "posts": [
-        {
-          "platform": "YouTube",
-          "contentType": "Shorts Idea",
-          "title": "...",
-          "content": "...",
-          "hashtags": ["...", "..."],
-          "cta": "..."
-        },
-        {
-          "platform": "Instagram",
-          ...
-        }
-      ]
-    }
-
-    **Crucial Instructions:**
-    - Do NOT respond with just a JSON array.
-    - Do NOT respond with just a single post object.
-    - The root of your response MUST be an object with a "posts" key.
-    `;
+    const repurposedPrompt = `\n    ${personaInstruction}\n    ${customizationInstruction}\n    **Context:** The following is a large "pillar" content piece about "${idea.title}" created for ${pillarPlatform}.\n    Pillar Content: "${pillarPost.content}"\n    **Your Task:** Repurpose the core message of the pillar content into one smaller, standalone post for EACH of the following platforms: ${repurposedPlatforms.join(', ')}.\n    Each new piece must be completely rewritten and tailored for its specific platform's format and audience. They must be relevant to the original pillar content.\n    - For short-form video platforms (TikTok, Instagram), create a concise video script or reel idea.\n    - For image-based platforms (Instagram, Pinterest), create a compelling caption for an image or carousel.\n    - For text-based platforms (Facebook), create an engaging post that summarizes or expands on a key point from the pillar content.\n    - If the pillar content is a long text post and you need to generate a YouTube idea, create a script outline for a short video based on the text.\n    Language: ${language}.\n\n    **Output Format (Strictly Enforced):**\n    Your response MUST be a single, valid JSON object. The root of this object must be a key named "posts", which contains an array of ${repurposedPlatforms.length} JSON objects.\n    Each object in the "posts" array must have these keys: "platform" (must be one of ${repurposedPlatforms.join(', ')}), "contentType", "title", "content", "hashtags", and "cta". Do NOT include an "imagePrompt" key.\n    \n    Example structure:\n    {\n      "posts": [\n        {\n          "platform": "YouTube",\n          "contentType": "Shorts Idea",\n          "title": "...",\n          "content": "...",\n          "hashtags": ["...", "..."],\n          "cta": "..."\n        },\n        {\n          "platform": "Instagram",\n          ...\n        }\n      ]\n    }\n\n    **Crucial Instructions:**\n    - Do NOT respond with just a JSON array.\n    - Do NOT respond with just a single post object.\n    - The root of your response MUST be an object with a "posts" key.\n    `;
     const repurposedResponse = await openrouterFetch({
         model, 
         messages: [{ role: 'system', content: affiliateContentKit }, { role: 'user', content: repurposedPrompt }],
@@ -765,34 +516,56 @@ All content MUST be generated from the perspective of the following KOL/KOC.
     });
 
     // 3. Assemble the package
-    const packageId = crypto.randomUUID();
-    const allPosts: MediaPlanPost[] = [
+    const allPosts: Omit<MediaPlanPost, 'id' | 'status'>[] = [
         {
             ...(pillarPost as any),
-            id: crypto.randomUUID(),
             platform: pillarPlatform,
-            status: 'draft',
             isPillar: true,
         },
         ...repurposedPosts.map(p => ({
             ...p,
-            id: crypto.randomUUID(),
-            status: 'draft',
             isPillar: false,
-        } as MediaPlanPost))
+        }))
     ];
+
+    // 4. Generate image prompts for all posts
+    const postsWithPrompts = await Promise.all(
+        allPosts.map(async (post) => {
+            try {
+                const newPrompt = await generateImagePromptForPostWithOpenRouter(
+                    { title: post.title, content: post.content },
+                    brandFoundation,
+                    language,
+                    model,
+                    persona
+                );
+                return { ...post, imagePrompt: newPrompt };
+            } catch (e) {
+                console.error(`Failed to generate image prompt for post: ${post.title}`, e);
+                return post; // Return original post on error
+            }
+        })
+    );
+
+    const finalPosts = postsWithPrompts.map(p => ({
+        ...p,
+        id: crypto.randomUUID(),
+        status: 'draft',
+    } as MediaPlanPost));
+
 
     const plan: MediaPlan = [{
         week: 1,
         theme: `Content Package: ${idea.title}`,
-        posts: allPosts
+        posts: finalPosts
     }];
 
     return {
-        id: packageId,
+        id: crypto.randomUUID(),
         name: idea.title,
         prompt: idea.description,
         plan: plan,
         source: 'content-package',
+        personaId: persona?.id,
     };
 };

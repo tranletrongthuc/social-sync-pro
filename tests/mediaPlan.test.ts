@@ -1,4 +1,4 @@
-import { renderHook, act } from '@testing-library/react-hooks';
+import { renderHook, act } from '@testing-library/react';
 import { useCallback, useState, useRef, useReducer } from 'react';
 import { assetsReducer } from '../App'; // Import assetsReducer from App.tsx
 import { generateMediaPlanGroup as mockGenerateMediaPlanGroup } from '../services/geminiService';

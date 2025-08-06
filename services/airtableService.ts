@@ -527,6 +527,17 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, publicImageUrls:
     if (!brandRecord) throw new Error(`Brand not found with ID ${brandId}`);
     const brandRecordId = brandRecord.id;
 
+    // 0. Find Persona Record ID if a personaId is provided
+    let personaRecordId: string | undefined = undefined;
+    if (group.personaId) {
+        const personaRecord = await findRecordByField(PERSONAS_TABLE_NAME, 'persona_id', group.personaId);
+        if (personaRecord) {
+            personaRecordId = personaRecord.id;
+        } else {
+            console.warn(`Could not find persona with ID ${group.personaId} in Airtable. Plan will be saved without persona link.`);
+        }
+    }
+
     // 1. Upsert Plan Group
     let planRecord = await findRecordByField(MEDIA_PLANS_TABLE_NAME, 'plan_id', group.id);
     const planPayload = {
@@ -537,6 +548,7 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, publicImageUrls:
             source: group.source,
             product_images_json: group.productImages ? JSON.stringify(group.productImages) : undefined,
             brand: [brandRecordId],
+            persona: personaRecordId ? [personaRecordId] : undefined, // Link to persona
         }
     };
     if (planRecord) {
