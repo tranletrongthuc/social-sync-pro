@@ -226,8 +226,29 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
                 </>
             ) : (
                 <>
-                    <div className="flex justify-between items-start">
-                        <h3 className="text-lg font-bold text-gray-900 leading-tight">{persona.nickName}</h3>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            {persona.avatarImageUrl || (persona.photos.length > 0 && generatedImages[persona.photos[0].imageKey]) ? (
+                                <img
+                                    src={persona.avatarImageUrl || generatedImages[persona.photos[0].imageKey]}
+                                    alt={persona.nickName}
+                                    className="h-16 w-16 rounded-full object-cover border border-gray-200"
+                                />
+                            ) : (
+                                <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-2xl font-semibold">
+                                    <UsersIcon className="h-8 w-8" />
+                                </div>
+                            )}
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900 leading-tight">{persona.nickName}</h3>
+                                <p className="text-sm text-gray-600">
+                                    <span className="font-semibold">{texts.mainStyle}:</span> {persona.mainStyle}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                    <span className="font-semibold">{texts.activityField}:</span> {persona.activityField}
+                                </p>
+                            </div>
+                        </div>
                         <div className="relative">
                              <MenuDropDown
                                 onEdit={() => setIsEditing(true)}
@@ -235,10 +256,6 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
                                 texts={texts}
                             />
                         </div>
-                    </div>
-                    <p className="text-sm text-gray-500">{persona.mainStyle} | {persona.activityField}</p>
-                    <div className="grid grid-cols-5 gap-2 mt-4">
-                        {persona.photos.map(renderReadOnlyPhoto)}
                     </div>
                 </>
             )}

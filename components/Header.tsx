@@ -170,8 +170,8 @@ export const Header: React.FC<HeaderProps> = (props) => {
                 <div className="px-4 sm:px-6 lg:px-8">
                     <nav className="flex items-center gap-8 overflow-x-auto whitespace-nowrap -mb-px">
                          <TabButton tabId="brandKit" text={currentTexts.brandKit.text} icon={currentTexts.brandKit.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                         <TabButton tabId="mediaPlan" text={currentTexts.mediaPlan.text} icon={currentTexts.mediaPlan.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                          <TabButton tabId="strategy" text={currentTexts.strategy.text} icon={currentTexts.strategy.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                         <TabButton tabId="mediaPlan" text={currentTexts.mediaPlan.text} icon={currentTexts.mediaPlan.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                          <TabButton tabId="affiliateVault" text={currentTexts.affiliateVault.text} icon={currentTexts.affiliateVault.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                          <TabButton tabId="personas" text={currentTexts.personas.text} icon={currentTexts.personas.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                     </nav>

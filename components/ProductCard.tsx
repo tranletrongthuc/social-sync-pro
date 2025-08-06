@@ -15,7 +15,6 @@ interface ProductCardProps {
 
 const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, formatCurrency }) => {
     const [isEditing, setIsEditing] = useState(isNew);
-    const [isExpanded, setIsExpanded] = useState(isNew);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [editedLink, setEditedLink] = useState<AffiliateLink>(link);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -58,18 +57,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
     };
     const texts = (T as any)[language] || T['English'];
 
-    const handleCardClick = (e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest('button, a, .no-expand, input, textarea')) {
-            return;
-        }
-        setIsExpanded(!isExpanded);
-    };
-
     const handleEditClick = (e: React.MouseEvent) => {
         e.stopPropagation();
         setIsMenuOpen(false);
         setIsEditing(true);
-        if (!isExpanded) setIsExpanded(true);
     };
 
     const handleDeleteClick = (e: React.MouseEvent) => {
@@ -146,8 +137,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
 
     return (
         <div
-            onClick={handleCardClick}
-            className={`bg-white rounded-xl border border-gray-200 p-5 flex flex-col transition-all duration-200 ${!isEditing && !isExpanded ? 'cursor-pointer hover:shadow-lg hover:-translate-y-1' : ''}`}
+            className={`bg-white rounded-xl border border-gray-200 p-5 flex flex-col transition-all duration-200 shadow-sm`}
         >
             <div className="flex justify-between items-start">
                 <div className="flex-1 min-w-0">
@@ -159,7 +149,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                     ) : (
                         <>
                             <p className="text-xs text-gray-400">{link.providerName}</p>
-                            <h3 className={`text-lg font-bold text-gray-900 leading-tight ${!isExpanded ? 'truncate' : ''}`}>{link.productName}</h3>
+                            <h3 className={`text-lg font-bold text-gray-900 leading-tight`}>{link.productName}</h3>
                         </>
                     )}
                 </div>
@@ -178,7 +168,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                 </div>
             </div>
             
-            {isExpanded || isEditing ? content : null}
+            {content}
 
             <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-end gap-3">
                  {isEditing ? (

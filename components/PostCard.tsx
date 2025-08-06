@@ -24,10 +24,11 @@ export interface PostCardProps {
     isDraft: boolean;
     isSelected: boolean;
     onToggleSelection: (postId: string) => void;
+    scheduledAt?: string; // New prop for scheduled date/time
 }
 
 const PostCard: React.FC<PostCardProps> = (props) => {
-    const { postInfo, language, onViewDetails, imageUrl, videoUrl, promotedProductsCount, isDraft, isSelected, onToggleSelection } = props;
+    const { postInfo, language, onViewDetails, imageUrl, videoUrl, promotedProductsCount, isDraft, isSelected, onToggleSelection, scheduledAt } = props;
     const { post } = postInfo;
     const Icon = platformIcons[post.platform] || SparklesIcon;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -43,6 +44,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             promoted: "SP KM",
             commented: "Bình luận",
             video: "Video",
+            scheduled: "Đã lên lịch vào", // New translation
         },
         'English': {
             edit: "View / Edit",
@@ -52,6 +54,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             promoted: "Promo",
             commented: "Comment",
             video: "Video",
+            scheduled: "Scheduled at", // New translation
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -151,7 +154,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
 
             <div className="flex-grow">
                  <div className="flex items-start gap-3 mb-3 ml-8">
-                    <Icon className="h-6 w-6 mt-1 flex-shrink-0" />
+                    <Icon className="h-10 w-10 mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                          <h4 className="font-bold font-sans text-gray-900 truncate pr-8" title={post.title}>{post.title}</h4>
                         <span className="text-sm text-gray-500 block truncate">{post.platform} - {post.contentType}</span>
@@ -161,7 +164,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                 {firstMedia && (
                     <div className="mb-2 rounded-lg overflow-hidden bg-gray-100 relative">
                         {firstMedia.type === 'image' ? (
-                            <img src={firstMedia.url} alt={post.title} className="w-full h-24 object-cover" />
+                            <img src={firstMedia.url} alt={post.title} className="w-full h-full object-cover" />
                         ) : (
                             <>
                                 <video src={firstMedia.url} className="w-full h-24 object-cover bg-black" />
@@ -182,6 +185,11 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                         {texts.draft}
                     </div>
                  )}
+                 {scheduledAt && (
+                    <div className="text-xs px-2 py-0.5 rounded-full font-medium text-green-800 bg-green-100">
+                        {texts.scheduled} {scheduledAt}
+                    </div>
+                 )}
                  {post.videoKey && (
                      <div className="text-xs px-2 py-0.5 rounded-full font-medium text-blue-800 bg-blue-100 flex items-center gap-1">
                         <VideoCameraIcon className="h-3 w-3" />
@@ -191,7 +199,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                 {promotedProductsCount && promotedProductsCount > 0 && (
                      <div className="text-xs px-2 py-0.5 rounded-full font-medium text-purple-800 bg-purple-100 flex items-center gap-1">
                         <KhongMinhIcon className="h-3 w-3" />
-                        <span>{promotedProductsCount} {texts.promoted}</span>
+                        <span>{texts.promoted}</span>
                     </div>
                 )}
                 {post.autoComment && (

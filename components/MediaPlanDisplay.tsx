@@ -425,14 +425,42 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <UsersIcon className="h-5 w-5 text-gray-400" />
-                                    <select
-                                        value={selectedPlan.personaId || ''}
-                                        onChange={(e) => onAssignPersonaToPlan(activePlanId!, e.target.value || null)}
-                                        className="text-sm bg-transparent border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-brand-green focus:border-brand-green"
-                                    >
-                                        <option value="">{currentTexts.noPersonaAssigned}</option>
-                                        {personas.map(p => <option key={p.id} value={p.id}>{p.nickName}</option>)}
-                                    </select>
+                                    {assignedPersona ? (
+                                        <div className="flex items-center gap-2 bg-white rounded-md p-2 shadow-sm border border-gray-200">
+                                            {assignedPersona.avatarImageUrl || (assignedPersona.photos.length > 0 && props.generatedImages[assignedPersona.photos[0].imageKey]) ? (
+                                                <img
+                                                    src={assignedPersona.avatarImageUrl || props.generatedImages[assignedPersona.photos[0].imageKey]}
+                                                    alt={assignedPersona.nickName}
+                                                    className="h-8 w-8 rounded-full object-cover border border-gray-100"
+                                                />
+                                            ) : (
+                                                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-semibold">
+                                                    <UsersIcon className="h-4 w-4" />
+                                                </div>
+                                            )}
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-800 leading-tight">{assignedPersona.nickName}</p>
+                                                <p className="text-xs text-gray-500 leading-tight">{assignedPersona.mainStyle} | {assignedPersona.activityField}</p>
+                                            </div>
+                                            <select
+                                                value={selectedPlan.personaId || ''}
+                                                onChange={(e) => onAssignPersonaToPlan(activePlanId!, e.target.value || null)}
+                                                className="text-sm bg-transparent border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-brand-green focus:border-brand-green ml-2"
+                                            >
+                                                <option value="">{currentTexts.noPersonaAssigned}</option>
+                                                {personas.map(p => <option key={p.id} value={p.id}>{p.nickName}</option>)}
+                                            </select>
+                                        </div>
+                                    ) : (
+                                        <select
+                                            value={selectedPlan.personaId || ''}
+                                            onChange={(e) => onAssignPersonaToPlan(activePlanId!, e.target.value || null)}
+                                            className="text-sm bg-transparent border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-brand-green focus:border-brand-green"
+                                        >
+                                            <option value="">{currentTexts.noPersonaAssigned}</option>
+                                            {personas.map(p => <option key={p.id} value={p.id}>{p.nickName}</option>)}
+                                        </select>
+                                    )}
                                 </div>
                             </div>
                         </header>
@@ -547,6 +575,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                                                         isSelected={props.selectedPostIds.has(postInfo.post.id)}
                                                         onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}
                                                         onViewDetails={handleViewDetails}
+                                                        scheduledAt={postInfo.post.scheduledAt}
                                                     />
                                                 )
                                             })}

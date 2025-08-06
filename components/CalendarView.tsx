@@ -60,19 +60,13 @@ const CalendarView: React.FC<CalendarViewProps> = ({ plan, planId, language, onP
 
     const allPosts = useMemo(() => {
         const postsWithDate: (SchedulingPost & { date: Date })[] = [];
-        const now = new Date();
         
         (plan || []).forEach((week, weekIndex) => {
             (week.posts || []).forEach((post, postIndex) => {
-                let postDate: Date;
-                if (post.scheduledAt) {
-                    postDate = new Date(post.scheduledAt);
-                } else {
-                    // This fallback logic is approximate and should only be for unscheduled drafts
-                    const dayOffset = (week.week - 1) * 7 + (postIndex * Math.floor(7 / ((week.posts || []).length || 1)));
-                    postDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayOffset);
+                if (post.scheduledAt) { // Only include scheduled posts
+                    const postDate = new Date(post.scheduledAt);
+                    postsWithDate.push({ planId, weekIndex, postIndex, post, date: postDate });
                 }
-                postsWithDate.push({ planId, weekIndex, postIndex, post, date: postDate });
             });
         });
         return postsWithDate;

@@ -4,7 +4,7 @@
 
 import { GoogleGenAI, type ContentEmbedding, type EmbedContentResponse } from "@google/genai";
 import type { MediaPlanPost, AffiliateLink } from '../types';
-import { getEnv } from '../utils/env';
+
 
 /**
  * Calculates the cosine similarity between two vectors.
