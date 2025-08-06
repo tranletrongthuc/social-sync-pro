@@ -620,6 +620,31 @@ const fetchLinkedRecords = async (tableName: string, recordIds: string[]) => {
     return await fetchFullRecordsByFormula(tableName, formula);
 };
 
+export const fetchAffiliateLinksForBrand = async (brandId: string): Promise<AffiliateLink[]> => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    
+    //console.log(`Fetching affiliate links for brand ID: ${brandId}`);
+    
+    if (!brandRecord) return [];
+
+    //console.log(`Brand Record: ${JSON.stringify(brandRecord, null, 2)}`);
+
+    const affiliateLinkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `FIND('${brandId}', ARRAYJOIN(brand))`);
+
+    return affiliateLinkRecords.map((r: any) => ({
+        id: r.fields.link_id,
+        productId: r.fields.product_id,
+        productName: r.fields.product_name,
+        price: r.fields.price,
+        salesVolume: r.fields.sales_volume,
+        providerName: r.fields.provider_name,
+        commissionRate: (r.fields.commission_rate || 0) * 100, // Convert from 0.2 to 20
+        commissionValue: r.fields.commission_value,
+        productLink: r.fields.product_link,
+        promotionLink: r.fields.promotion_link,
+    }));
+};
+
 export const loadProjectFromAirtable = async (brandId: string): Promise<{
     assets: GeneratedAssets;
     settings: Partial<Settings>;
@@ -639,16 +664,15 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{
         valueRecords,
         messageRecords,
         personaRecords,
-        affiliateLinkRecords,
         trendRecords,
     ] = await Promise.all([
         fetchLinkedRecords(LOGO_CONCEPTS_TABLE_NAME, brandRecord.fields.logo_concepts || []),
         fetchLinkedRecords(BRAND_VALUES_TABLE_NAME, brandRecord.fields.brand_values || []),
         fetchLinkedRecords(KEY_MESSAGES_TABLE_NAME, brandRecord.fields.key_messages || []),
         fetchLinkedRecords(PERSONAS_TABLE_NAME, brandRecord.fields.personas || []),
-        fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `FIND('${brandRecord.id}', ARRAYJOIN(brand))`),
         fetchLinkedRecords(TRENDS_TABLE_NAME, brandRecord.fields.trends || []),
     ]);
+    const affiliateLinks = await fetchAffiliateLinksForBrand(brandId);
     
     // 2. Fetch ideas based on the trends we found
     const ideaRecordIds = [...new Set(trendRecords.flatMap((r: any) => r.fields.ideas || []))];
@@ -715,18 +739,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{
         };
     });
 
-    const affiliateLinks: AffiliateLink[] = affiliateLinkRecords.map((r: any) => ({
-        id: r.fields.link_id,
-        productId: r.fields.product_id,
-        productName: r.fields.product_name,
-        price: r.fields.price,
-        salesVolume: r.fields.sales_volume,
-        providerName: r.fields.provider_name,
-        commissionRate: (r.fields.commission_rate || 0) * 100, // Convert from 0.2 to 20
-        commissionValue: r.fields.commission_value,
-        productLink: r.fields.product_link,
-        promotionLink: r.fields.promotion_link,
-    }));
+    
 
     const trends: Trend[] = trendRecords.map((r: any) => ({
         id: r.fields.trend_id,

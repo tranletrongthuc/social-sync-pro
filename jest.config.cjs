@@ -1,19 +1,15 @@
 module.exports = {
-  preset: 'ts-jest',
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/tests.ts'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js', '<rootDir>/tests.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
-  testMatch: ["<rootDir>/tests/**/*.test.ts"],
-  globals: {
-    'ts-jest': {
-      useESM: true,
-    },
-  },
+  testMatch: ['<rootDir>/tests/**/*.test.ts', '<rootDir>/tests/**/*.test.tsx'],
   transform: {
-    '^.+\.(ts|tsx)$': 'ts-jest',
+    '^.+\.(ts|tsx|js|jsx)$': 'babel-jest',
   },
-  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
-  extensionsToTreatAsEsm: [".ts", ".tsx"],
+  transformIgnorePatterns: [
+    'node_modules/(?!@google/genai/)',
+  ],
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
 };

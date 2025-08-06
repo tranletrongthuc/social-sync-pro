@@ -1,30 +1,24 @@
 import React from 'react';
-import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 import App from '../App';
 import * as airtableService from '../services/airtableService';
 
 // Mock import.meta.env for testing purposes
-const mockViteEnv = (airtablePat: string | undefined, airtableBaseId: string | undefined, cloudinaryCloudName: string | undefined, cloudinaryUploadPreset: string | undefined) => {
-  Object.defineProperty(import.meta, 'env', {
-    value: {
-      VITE_AIRTABLE_PAT: airtablePat,
-      VITE_AIRTABLE_BASE_ID: airtableBaseId,
-      VITE_CLOUDINARY_CLOUD_NAME: cloudinaryCloudName,
-      VITE_CLOUDINARY_UPLOAD_PRESET: cloudinaryUploadPreset,
-      // Add other VITE_ prefixed environment variables as needed for tests
-    },
-    writable: true,
-  });
+const mockProcessEnv = (airtablePat: string | undefined, airtableBaseId: string | undefined, cloudinaryCloudName: string | undefined, cloudinaryUploadPreset: string | undefined) => {
+  global.import_meta_env_mock.VITE_AIRTABLE_PAT = airtablePat;
+  global.import_meta_env_mock.VITE_AIRTABLE_BASE_ID = airtableBaseId;
+  global.import_meta_env_mock.VITE_CLOUDINARY_CLOUD_NAME = cloudinaryCloudName;
+  global.import_meta_env_mock.VITE_CLOUDINARY_UPLOAD_PRESET = cloudinaryUploadPreset;
+  // Add other VITE_ prefixed environment variables as needed for tests
 };
 
 describe('Credential Loading and Project Opening', () => {
-  let originalMetaEnv: ImportMetaEnv;
+  let originalMetaEnv: any;
 
   beforeEach(() => {
     // Save the original import.meta.env
-    originalMetaEnv = { ...import.meta.env };
+    originalMetaEnv = { ...global.import_meta_env_mock };
     jest.clearAllMocks();
     // Mock listBrandsFromAirtable and loadProjectFromAirtable
     jest.spyOn(airtableService, 'listBrandsFromAirtable').mockResolvedValue([
@@ -67,15 +61,12 @@ describe('Credential Loading and Project Opening', () => {
   });
 
   afterEach(() => {
-    // Restore the original import.meta.env
-    Object.defineProperty(import.meta, 'env', {
-      value: originalMetaEnv,
-      writable: true,
-    });
+    // Restore the original process.env
+    global.import_meta_env_mock = { ...originalMetaEnv };
   });
 
   it('should open AirtableLoadModal and load project directly if credentials are set', async () => {
-    mockViteEnv('test_pat', 'test_base_id', 'test_cloud_name', 'test_upload_preset');
+    mockProcessEnv('test_pat', 'test_base_id', 'test_cloud_name', 'test_upload_preset');
 
     render(<App />);
 
@@ -96,7 +87,7 @@ describe('Credential Loading and Project Opening', () => {
   });
 
   it('should display "Connect Database" button if credentials are not set', async () => {
-    mockViteEnv(undefined, undefined, undefined, undefined);
+    mockProcessEnv(undefined, undefined, undefined, undefined);
 
     render(<App />);
 
@@ -108,7 +99,7 @@ describe('Credential Loading and Project Opening', () => {
   });
 
   it('should open IntegrationModal when "Connect Database" is clicked and credentials are not set', async () => {
-    mockViteEnv(undefined, undefined, undefined, undefined);
+    mockProcessEnv(undefined, undefined, undefined, undefined);
 
     render(<App />);
 
@@ -118,3 +109,4 @@ describe('Credential Loading and Project Opening', () => {
     expect(await screen.findByText(/Integrations/i)).toBeInTheDocument();
   });
 });
+

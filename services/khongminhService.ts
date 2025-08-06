@@ -42,7 +42,7 @@ export const suggestProductsForPost = async (
     availableAffiliateLinks: AffiliateLink[],
     count: number
 ): Promise<AffiliateLink[]> => {
-    if (!(window as any).process.env.API_KEY) {
+    if (!(window as any).import.meta.env.VITE_GEMINI_API_KEY) {
       console.warn("API_KEY not set, skipping KhongMinh suggestion.");
       return [];
     }
@@ -51,7 +51,7 @@ export const suggestProductsForPost = async (
     }
 
     try {
-        const ai = new GoogleGenAI({ apiKey: (window as any).process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: (window as any).import.meta.env.VITE_GEMINI_API_KEY });
         
         // Workflow B, Step 2: Construct Post Text
         const postText = `${post.title} | ${post.content} | ${(post.hashtags || []).join(' ')}`;
