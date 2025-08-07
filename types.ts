@@ -140,6 +140,13 @@ export interface AffiliateLink {
     commissionValue: number;
     productLink: string;
     promotionLink?: string;
+    product_avatar?: string; // URL to product avatar image
+    product_description?: string;
+    features?: string[];
+    use_cases?: string[];
+    product_image_links?: string[]; // URLs to additional product images
+    customer_reviews?: string; // Summary or snippet of reviews
+    product_rating?: number; // Numeric rating, e.g., 4.5
 }
 
 export interface Trend {

@@ -3,7 +3,7 @@ import React, { useState, useRef, useMemo } from 'react';
 import ExcelJS, { Cell } from 'exceljs';
 import type { AffiliateLink } from '../types';
 import { Button, Input, Select } from './ui';
-import { PlusIcon, UploadIcon, SearchIcon, CashIcon, ScaleIcon, CollectionIcon, SparklesIcon, LinkIcon } from './icons';
+import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, CashIcon, ScaleIcon, CollectionIcon, SparklesIcon, LinkIcon } from './icons';
 import ProductCard from './ProductCard';
 
 interface AffiliateVaultDisplayProps {
@@ -11,6 +11,7 @@ interface AffiliateVaultDisplayProps {
   onSaveLink: (link: AffiliateLink) => void;
   onDeleteLink: (linkId: string) => void;
   onImportLinks: (links: AffiliateLink[]) => void;
+  onReloadLinks: () => void; // New prop for reloading links
   language: string;
 }
 
@@ -26,7 +27,7 @@ const emptyLink: Omit<AffiliateLink, 'id'> = {
     promotionLink: '',
 };
 
-const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, language }) => {
+const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, language }) => {
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
@@ -278,6 +279,9 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                     <p className="text-lg text-gray-500 font-serif mt-1">{texts.subtitle}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
+                    <Button variant="secondary" onClick={onReloadLinks} className="flex items-center gap-2">
+                        <ArrowPathIcon className="h-5 w-5"/> {texts.reload}
+                    </Button>
                     <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
                         <UploadIcon className="h-5 w-5"/> {texts.importFromFile}
                     </Button>
@@ -338,10 +342,10 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 </div>
             </div>
 
-            <main className="flex-grow overflow-y-auto -mx-2">
+            <main className="flex-grow overflow-y-auto -mx-2 p-2 sm:p-4 lg:p-6 min-h-[calc(100vh-200px)]">
                 {(affiliateLinks.length > 0 || isAddingNewLink) ? (
                     (displayLinks.length > 0 || isAddingNewLink) ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 p-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                              {isAddingNewLink && (
                                 <ProductCard
                                     isNew

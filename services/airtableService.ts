@@ -126,6 +126,13 @@ const AFFILIATE_PRODUCTS_SCHEMA = [
     { name: 'commission_value', type: 'currency', options: { symbol: 'VND', precision: 0 } },
     { name: 'product_link', type: 'url' },
     { name: 'promotion_link', type: 'url' },
+    { name: 'product_avatar', type: 'url' },
+    { name: 'product_description', type: 'multilineText' },
+    { name: 'features', type: 'multilineText' },
+    { name: 'use_cases', type: 'multilineText' },
+    { name: 'product_image_links', type: 'multilineText' },
+    { name: 'customer_reviews', type: 'multilineText' },
+    { name: 'product_rating', type: 'number', options: { precision: 1 } },
     { name: 'brand', type: 'multipleRecordLinks', options: { linkedTableName: BRANDS_TABLE_NAME, prefersSingleRecordLink: true } },
 ];
 
@@ -344,20 +351,20 @@ const mapPostToAirtableFields = (post: MediaPlanPost, brandRecordId: string, pla
     post_id: post.id,
     title: post.title,
     platform: post.platform,
-    content_type: post.contentType,
+    contentType: post.contentType,
     content: post.content,
     description: post.description,
     hashtags: (post.hashtags || []).join(', '),
     cta: post.cta,
-    image_prompt: post.imagePrompt,
-    image_key: post.imageKey,
-    video_key: post.videoKey,
-    media_order: post.mediaOrder?.join(','),
-    source_urls: post.sources?.map(s => `${s.title}: ${s.uri}`).join('\n'),
-    scheduled_at: post.scheduledAt,
-    auto_comment: post.autoComment,
+    imagePrompt: post.imagePrompt,
+    imageKey: post.imageKey,
+    videoKey: post.videoKey,
+    mediaOrder: post.mediaOrder?.join(','),
+    sources: post.sources?.map(s => `${s.title}: ${s.uri}`).join('\n'),
+    scheduledAt: post.scheduledAt,
+    autoComment: post.autoComment,
     status: post.status ? post.status.charAt(0).toUpperCase() + post.status.slice(1) : 'Draft',
-    is_pillar: !!post.isPillar,
+    isPillar: !!post.isPillar,
     // Linked Records
     brand: [brandRecordId],
     media_plan: planRecordId ? [planRecordId] : undefined,
@@ -642,6 +649,13 @@ export const fetchAffiliateLinksForBrand = async (brandId: string): Promise<Affi
         commissionValue: r.fields.commission_value,
         productLink: r.fields.product_link,
         promotionLink: r.fields.promotion_link,
+        product_avatar: r.fields.product_avatar,
+        product_description: r.fields.product_description,
+        features: r.fields.features ? r.fields.features.split('\n') : undefined,
+        use_cases: r.fields.use_cases ? r.fields.use_cases.split('\n') : undefined,
+        product_image_links: r.fields.product_image_links ? r.fields.product_image_links.split('\n') : undefined,
+        customer_reviews: r.fields.customer_reviews,
+        product_rating: r.fields.product_rating,
     }));
 };
 
@@ -1003,7 +1017,7 @@ export const fetchSettingsFromAirtable = async (brandId: string): Promise<Partia
 
     return settings;
 };
-export const listMediaPlanGroupsForBrand = async (brandId: string): Promise<{id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[]; personaId?: string;}[]> => {
+export const listMediaPlanGroupsForBrand = async (brandId: string): Promise<{id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[]; personaId?: string;}> => {
     const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
     if (!brandRecord || !brandRecord.fields.media_plans) {
         return [];

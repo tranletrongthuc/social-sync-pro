@@ -41,7 +41,8 @@ import {
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
 import { schedulePost } from './services/socialApiService';
 import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, BrandFoundation, FacebookTrend, FacebookPostIdea } from './types';
-import { InformationCircleIcon } from './components/icons';
+import { AirtableIcon, KhongMinhIcon } from './components/icons';
+import { fetchAffiliateLinksForBrand } from './services/airtableService';
 import { Button } from './components/ui';
 
 // --- STATE MANAGEMENT REFACTOR (useReducer) ---
@@ -1591,6 +1592,26 @@ const App: React.FC = () => {
         }
     }, [airtableBrandId, updateAutoSaveStatus]);
 
+    const handleReloadAffiliateLinks = useCallback(async () => {
+        if (!airtableBrandId) {
+            setError("Cannot reload affiliate links: No brand selected or Airtable not connected.");
+            return;
+        }
+        setLoaderContent({ title: "Reloading Affiliate Links...", steps: ["Fetching latest data..."] });
+        setError(null);
+        try {
+            const latestAffiliateLinks = await fetchAffiliateLinksForBrand(airtableBrandId);
+            dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: { ...generatedAssets!, affiliateLinks: latestAffiliateLinks } });
+            setSuccessMessage("Affiliate links reloaded successfully!");
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err) {
+            console.error("Failed to reload affiliate links:", err);
+            setError(err instanceof Error ? err.message : "Could not reload affiliate links.");
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [airtableBrandId, generatedAssets, dispatchAssets]);
+
     const handleAcceptSuggestion = useCallback((postInfo: PostInfo, productId: string) => {
         const currentPromotedIds = postInfo.post.promotedProductIds || [];
         if (currentPromotedIds.includes(productId)) return;
@@ -1983,6 +2004,7 @@ const App: React.FC = () => {
                             onSaveAffiliateLink={handleSaveAffiliateLink}
                             onDeleteAffiliateLink={handleDeleteAffiliateLink}
                             onImportAffiliateLinks={handleImportAffiliateLinks}
+                            onReloadLinks={handleReloadAffiliateLinks}
                             // KhongMinh
                             analyzingPostIds={analyzingPostIds}
                             isAnyAnalysisRunning={analyzingPostIds.size > 0}

@@ -48,6 +48,7 @@ interface MainDisplayProps {
   onSaveAffiliateLink: (link: AffiliateLink) => void;
   onDeleteAffiliateLink: (linkId: string) => void;
   onImportAffiliateLinks: (links: AffiliateLink[]) => void;
+  onReloadLinks: () => void;
   // KhongMinh Props
   analyzingPostIds: Set<string>;
   isAnyAnalysisRunning: boolean;
@@ -279,6 +280,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onSaveLink={onSaveAffiliateLink}
                         onDeleteLink={onDeleteAffiliateLink}
                         onImportLinks={onImportAffiliateLinks}
+                        onReloadLinks={props.onReloadLinks}
                         language={settings.language}
                     />
                 )}

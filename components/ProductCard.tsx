@@ -149,7 +149,24 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                     ) : (
                         <>
                             <p className="text-xs text-gray-400">{link.providerName}</p>
-                            <h3 className={`text-lg font-bold text-gray-900 leading-tight`}>{link.productName}</h3>
+                            <div className="flex items-center gap-3 mb-2">
+                                {link.product_avatar ? (
+                                    <img src={link.product_avatar} alt={link.productName} className="h-15 w-15 rounded-md object-cover border border-gray-200" />
+                                ) : (
+                                    <div className="h-10 w-10 rounded-md bg-gray-100 flex items-center justify-center text-gray-400">
+                                        <TagIcon className="h-6 w-6" />
+                                    </div>
+                                )}
+                            </div>
+                            <div>
+                                
+                                <h3 className={`text-lg font-bold text-gray-900 leading-tight`}>{link.productName}</h3>
+                                {link.product_rating !== undefined && link.product_rating !== null && (
+                                    <p className="text-sm text-gray-600 flex items-center gap-1">
+                                        <span className="text-yellow-500">★</span> {link.product_rating.toFixed(1)}
+                                    </p>
+                                )}
+                            </div>
                         </>
                     )}
                 </div>

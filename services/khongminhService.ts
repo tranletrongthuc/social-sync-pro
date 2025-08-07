@@ -59,7 +59,7 @@ export const suggestProductsForPost = async (
 
         // This simulates part of Workflow A on the fly: Construct Product Text
         const productTexts = availableAffiliateLinks.map(link => 
-            `${link.productName} | ${link.providerName}`
+            `${link.productName} | ${link.providerName} | ${link.product_description || ''} | ${(link.features || []).join(' ')} | ${(link.use_cases || []).join(' ')} | ${link.customer_reviews || ''} | ${link.product_rating || ''}`
         );
         
         // Workflow B, Step 3: Generate Post and Product embeddings
@@ -107,7 +107,17 @@ export const suggestProductsForPost = async (
         const SIMILARITY_THRESHOLD = 0.75;
         const sortedAndFilteredLinks = scoredLinks
             .filter(item => item.similarity >= SIMILARITY_THRESHOLD)
-            .sort((a, b) => b.similarity - a.similarity);
+            .sort((a, b) => {
+                if (b.similarity !== a.similarity) {
+                    return b.similarity - a.similarity;
+                }
+                // Prioritize by salesVolume (highest first)
+                if (b.link.salesVolume !== a.link.salesVolume) {
+                    return b.link.salesVolume - a.link.salesVolume;
+                }
+                // Then by product_rating (highest first)
+                return (b.link.product_rating || 0) - (a.link.product_rating || 0);
+            });
         
         // Workflow B, Step 5 & 7: Return ranked list of top N products
         return sortedAndFilteredLinks.slice(0, count).map(item => item.link);
