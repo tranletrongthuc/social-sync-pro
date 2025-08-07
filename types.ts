@@ -4,6 +4,11 @@ export interface PersonaPhoto {
     imageKey: string;
 }
 
+export interface SocialAccount {
+    platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest';
+    credentials: Record<string, string>; // Stores platform-specific credentials (e.g., accessToken, pageId)
+}
+
 export interface Persona {
     id: string;
     nickName: string;
@@ -13,6 +18,7 @@ export interface Persona {
     avatarImageKey?: string;
     avatarImageUrl?: string;
     photos: PersonaPhoto[];
+    socialAccounts?: SocialAccount[]; // New field to store social accounts associated with the persona
 }
 
 export interface BrandInfo {
@@ -182,7 +188,7 @@ export interface GeneratedAssets {
   ideas?: Idea[];
 }
 
-export type ConnectedAccounts = Record<string, boolean>;
+
 
 export type SchedulingPost = {
   planId: string;
@@ -192,3 +198,17 @@ export type SchedulingPost = {
 };
 
 export type PostInfo = { planId: string; weekIndex: number; postIndex: number; post: MediaPlanPost };
+
+export interface FacebookPage {
+    id: string;
+    name: string;
+    access_token: string;
+    category: string;
+    category_list: { id: string; name: string }[];
+    tasks: string[];
+}
+
+export interface FacebookLoginResponse {
+    userAccessToken: string;
+    pages: FacebookPage[];
+}

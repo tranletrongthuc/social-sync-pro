@@ -37,12 +37,13 @@ import {
     saveIdeas,
     assignPersonaToPlanInAirtable,
     checkAirtableCredentials,
+    fetchAffiliateLinksForBrand,
 } from './services/airtableService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
-import { schedulePost } from './services/socialApiService';
+import { schedulePost as socialApiSchedulePost, publishPost as socialApiPublishPost } from './services/socialApiService';
+import { getPersonaSocialAccounts } from './services/socialAccountService';
 import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, BrandFoundation, FacebookTrend, FacebookPostIdea } from './types';
 import { AirtableIcon, KhongMinhIcon } from './components/icons';
-import { fetchAffiliateLinksForBrand } from './services/airtableService';
 import { Button } from './components/ui';
 
 // --- STATE MANAGEMENT REFACTOR (useReducer) ---
@@ -466,6 +467,7 @@ const App: React.FC = () => {
 
     const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
     const [areCredentialsSet, setAreCredentialsSet] = useState(false);
+    const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
 
     useEffect(() => {
         const checkCreds = async () => {
@@ -909,8 +911,6 @@ const App: React.FC = () => {
                     await updateMediaPlanPostInAirtable({ ...postInfo.post, ...updates }, airtableBrandId, undefined, publicUrl);
                     setGeneratedVideos(prev => ({ ...prev, ...publicUrls }));
                     updateAutoSaveStatus('saved');
-                } else {
-                    throw new Error("Video upload to Cloudinary failed, public URL not received.");
                 }
             } catch (e) {
                 const message = e instanceof Error ? e.message : 'Could not save new video.';
@@ -1312,6 +1312,14 @@ const App: React.FC = () => {
             setGeneratedVideos(projectData.generatedVideos || {});
             setAirtableBrandId(projectData.airtableBrandId || null);
             
+            // Load social accounts for each persona
+            if (projectData.assets.personas) {
+                projectData.assets.personas = projectData.assets.personas.map((p: Persona) => ({
+                    ...p,
+                    socialAccounts: getPersonaSocialAccounts(p.id),
+                }));
+            }
+
             const firstPlan = projectData.assets.mediaPlans?.[0];
             if (firstPlan) {
                  setMediaPlanGroupsList(projectData.assets.mediaPlans.map((p: MediaPlanGroup) => ({ id: p.id, name: p.name, prompt: p.prompt, productImages: p.productImages || [] })));
@@ -1407,6 +1415,14 @@ const App: React.FC = () => {
             setGeneratedVideos(loadedVideos);
             setAirtableBrandId(loadedBrandId);
             
+            // Load social accounts for each persona
+            if (assets.personas) {
+                assets.personas = assets.personas.map((p: Persona) => ({
+                    ...p,
+                    socialAccounts: getPersonaSocialAccounts(p.id),
+                }));
+            }
+
             const loadedPlansList = await listMediaPlanGroupsForBrand(loadedBrandId);
             setMediaPlanGroupsList(loadedPlansList);
             if (loadedPlansList.length > 0) {
@@ -1665,7 +1681,12 @@ const App: React.FC = () => {
         
         setIsScheduling(true);
         try {
-            await schedulePost(post, scheduledAt); // Simulates API call
+            const currentPlan = generatedAssets?.mediaPlans.find(p => p.id === planId);
+            const personaId = currentPlan?.personaId;
+            if (!personaId) {
+                throw new Error("No persona assigned to this media plan. Cannot schedule post.");
+            }
+            await socialApiSchedulePost(personaId, post, scheduledAt); // Use the renamed import and pass personaId
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
             if (airtableBrandId) {
@@ -1680,7 +1701,43 @@ const App: React.FC = () => {
         } finally {
             setIsScheduling(false);
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [airtableBrandId, updateAutoSaveStatus, generatedAssets]);
+
+    const handlePublishPost = useCallback(async (postInfo: PostInfo) => {
+        const { planId, weekIndex, postIndex, post } = postInfo;
+        const updates = { status: 'published' as PostStatus };
+
+        setIsScheduling(true); // Use scheduling state for publishing too
+        try {
+            const currentPlan = generatedAssets?.mediaPlans.find(p => p.id === planId);
+            const personaId = currentPlan?.personaId;
+            if (!personaId) {
+                throw new Error("No persona assigned to this media plan. Cannot publish post.");
+            }
+
+            const imageUrl = post.imageKey ? generatedImages[post.imageKey] : undefined;
+            const videoUrl = post.videoKey ? generatedVideos[post.videoKey] : undefined;
+
+            console.log("Calling socialApiPublishPost with:", { personaId, post, imageUrl, videoUrl });
+            const { publishedUrl } = await socialApiPublishPost(personaId, post, imageUrl, videoUrl);
+            
+            dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates: { ...updates, publishedUrl } } });
+            
+            if (airtableBrandId) {
+                updateAutoSaveStatus('saving');
+                await updateMediaPlanPostInAirtable({ ...post, ...updates, publishedUrl }, airtableBrandId);
+                updateAutoSaveStatus('saved');
+            }
+            setSuccessMessage(`Post published successfully! URL: ${publishedUrl}`);
+            setTimeout(() => setSuccessMessage(null), 5000);
+            setViewingPost(null);
+        } catch (err) {
+            console.error("Failed to publish post:", err);
+            setError(err instanceof Error ? err.message : "Failed to publish post.");
+        } finally {
+            setIsScheduling(false);
+        }
+    }, [airtableBrandId, updateAutoSaveStatus, generatedAssets, generatedImages, generatedVideos, setViewingPost]);
 
     const handlePostDrop = useCallback((postInfo: SchedulingPost, newDate: Date) => {
         // Set the time from the original date, or default to a sensible time like 10:00 AM
@@ -1812,6 +1869,20 @@ const App: React.FC = () => {
             updateAutoSaveStatus('error');
         }
     }, [airtableBrandId, updateAutoSaveStatus, ensureCredentials]);
+
+    const handleUpdatePersona = useCallback(async (persona: Persona) => {
+        dispatchAssets({ type: 'SAVE_PERSONA', payload: persona });
+        if (airtableBrandId) {
+            updateAutoSaveStatus('saving');
+            try {
+                await savePersona(persona, airtableBrandId);
+                updateAutoSaveStatus('saved');
+            } catch (e) {
+                setError(e instanceof Error ? e.message : 'Could not update persona.');
+                updateAutoSaveStatus('error');
+            }
+        }
+    }, [airtableBrandId, updateAutoSaveStatus]);
 
     const handleDeletePersona = useCallback((personaId: string) => {
         dispatchAssets({ type: 'DELETE_PERSONA', payload: personaId });
@@ -2022,7 +2093,8 @@ const App: React.FC = () => {
                             onTogglePostSelection={handleTogglePostSelection}
                             onSelectAllPosts={handleSelectAllPosts}
                             onClearSelection={() => setSelectedPostIds(new Set())}
-                            onOpenScheduleModal={(post) => setSchedulingPost(post)}
+                            onOpenScheduleModal={setSchedulingPost}
+                                onPublishPost={handlePublishPost}
                             isScheduling={isScheduling}
                             onSchedulePost={handleSchedulePost}
                             onPostDrop={handlePostDrop}
@@ -2040,6 +2112,7 @@ const App: React.FC = () => {
                             onSavePersona={handleSavePersona}
                             onDeletePersona={handleDeletePersona}
                             onSetPersonaImage={handleSetPersonaImage}
+                            onUpdatePersona={handleUpdatePersona}
                             // Strategy Hub
                             onSaveTrend={handleSaveTrend}
                             onDeleteTrend={handleDeleteTrend}

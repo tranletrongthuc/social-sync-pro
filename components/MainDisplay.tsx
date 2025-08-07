@@ -84,6 +84,7 @@ interface MainDisplayProps {
   onSavePersona: (persona: Persona) => void;
   onDeletePersona: (personaId: string) => void;
   onSetPersonaImage: (personaId: string, photoId: string, dataUrl: string) => Promise<string | undefined>;
+  onUpdatePersona: (persona: Persona) => void;
   // Strategy Hub
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
@@ -91,6 +92,7 @@ interface MainDisplayProps {
   onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
   onGenerateTrendsFromSearch: (industry: string) => void;
   isGeneratingTrendsFromSearch: boolean;
+  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
 }
 
 const MainDisplay: React.FC<MainDisplayProps> = (props) => {
@@ -165,6 +167,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
         onGenerateContentPackage,
         onGenerateTrendsFromSearch,
         isGeneratingTrendsFromSearch,
+        onPublishPost,
     } = props;
     
     const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -249,6 +252,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onOpenScheduleModal={onOpenScheduleModal}
                         onOpenBulkScheduleModal={onOpenBulkScheduleModal}
                         onPostDrop={onPostDrop}
+                        onPublishPost={onPublishPost} // Pass the new prop
                         // Bulk Actions
                         isPerformingBulkAction={isPerformingBulkAction}
                         onBulkGenerateImages={onBulkGenerateImages}
@@ -293,6 +297,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onSetPersonaImage={onSetPersonaImage}
                         isUploadingImage={isUploadingImage}
                         language={settings.language}
+                        onUpdatePersona={props.onUpdatePersona}
                     />
                 )}
             </main>

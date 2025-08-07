@@ -252,10 +252,11 @@ interface PostDetailModalProps {
   onGenerateComment: (postInfo: PostInfo) => void;
   isGeneratingComment: boolean;
   onOpenScheduleModal: (post: SchedulingPost) => void;
+  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
 }
 
 const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
-    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo } = props;
+    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo, onPublishPost } = props;
     const [isEditing, setIsEditing] = useState(false);
     const [isRefining, setIsRefining] = useState(false);
     const [editedPost, setEditedPost] = useState<MediaPlanPost | null>(postInfo.post);
@@ -305,6 +306,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             uploadMedia: 'Tải lên Ảnh hoặc Video',
             youtube_description: "Mô tả YouTube",
             youtube_script: "Kịch bản YouTube",
+            publishNow: "Đăng ngay",
         },
         'English': {
             edit: "Edit",
@@ -337,6 +339,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             uploadMedia: 'Upload Image or Video',
             youtube_description: "YouTube Description",
             youtube_script: "YouTube Script",
+            publishNow: "Publish Now",
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -536,6 +539,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             ) : (
                                 <div className="flex items-center justify-end gap-2">
                                     <Button variant="secondary" onClick={() => onOpenScheduleModal(postInfo as SchedulingPost)} className="flex items-center gap-2"><CalendarIcon className="h-4 w-4"/> {texts.schedule}</Button>
+                                    <Button variant="secondary" onClick={() => onPublishPost(postInfo)} className="flex items-center gap-2"><LinkIcon className="h-4 w-4"/> {texts.publishNow}</Button>
                                     <Button variant="primary" onClick={() => setIsEditing(true)}>{texts.edit}</Button>
                                 </div>
                             )}

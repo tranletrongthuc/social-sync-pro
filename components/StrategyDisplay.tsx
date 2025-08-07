@@ -65,12 +65,12 @@ interface StrategyDisplayProps {
     onCreatePlanFromIdea: (prompt: string) => void;
     onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
     isGeneratingIdeas: boolean;
-    onGenerateTrendsFromSearch: (industry: string) => void;
+    onGenerateFacebookTrends: (industry: string) => void;
     isGeneratingTrendsFromSearch: boolean;
 }
 
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
-    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateTrendsFromSearch, isGeneratingTrendsFromSearch } = props;
+    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch } = props;
     
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
@@ -188,7 +188,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                         <p className="text-gray-500 font-serif mt-1 text-sm">{texts.trendSearchSubtitle}</p>
                         <div className="mt-3 flex gap-2">
                             <Input value={industryForSearch} onChange={e => setIndustryForSearch(e.target.value)} placeholder={texts.industryPlaceholder} />
-                            <Button onClick={() => onGenerateTrendsFromSearch(industryForSearch)} disabled={!industryForSearch || isGeneratingTrendsFromSearch} className="w-48">
+                            <Button onClick={() => onGenerateFacebookTrends(industryForSearch)} disabled={!industryForSearch || isGeneratingTrendsFromSearch} className="w-48">
                                {isGeneratingTrendsFromSearch ? texts.analyzing : <><SearchIcon className="h-4 w-4 mr-2" />{texts.analyzeTrends}</>}
                             </Button>
                         </div>

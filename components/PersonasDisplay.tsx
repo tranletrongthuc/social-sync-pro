@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect, memo } from 'react';
-import type { Persona, PersonaPhoto } from '../types';
+import type { Persona, PersonaPhoto, SocialAccount } from '../types';
 import { Button, Input, TextArea } from './ui';
-import { PlusIcon, UsersIcon, SearchIcon, TrashIcon, UploadIcon, DotsVerticalIcon, PencilIcon } from './icons';
+import { PlusIcon, UsersIcon, SearchIcon, TrashIcon, UploadIcon, DotsVerticalIcon, PencilIcon, FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, PinterestIcon } from './icons';
+import { connectSocialAccountToPersona, disconnectSocialAccountFromPersona, handleConnectFacebookPage } from '../services/socialAccountService';
+import FacebookPageSelectionModal from './FacebookPageSelectionModal';
 
 interface PersonaCardProps {
     persona: Persona;
@@ -13,6 +15,7 @@ interface PersonaCardProps {
     generatedImages: Record<string, string>;
     isUploadingImage: (photoKey: string) => boolean;
     language: string;
+    onUpdatePersona: (persona: Persona) => void; // New prop for updating persona after social account changes
 }
 
 const MenuDropDown: React.FC<{onEdit: () => void, onDelete: () => void, texts: any}> = ({ onEdit, onDelete, texts }) => {
@@ -55,10 +58,16 @@ const TextAreaField: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> 
 
 
 // PersonaCard component is now defined inside PersonasDisplay
-const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, onSave, onDelete, onCancel, onSetImage, generatedImages, isUploadingImage, language }) => {
+const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, onSave, onDelete, onCancel, onSetImage, generatedImages, isUploadingImage, language, onUpdatePersona }) => {
     const [isEditing, setIsEditing] = useState(isNew);
     const [editedPersona, setEditedPersona] = useState(persona);
+    const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
     const fileInputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+    // State for Facebook Page Selection
+    const [isFacebookPageSelectionModalOpen, setIsFacebookPageSelectionModalOpen] = useState(false);
+    const [facebookPages, setFacebookPages] = useState<FacebookPage[]>([]);
+    const [facebookUserAccessToken, setFacebookUserAccessToken] = useState<string | null>(null);
 
     useEffect(() => {
         setEditedPersona(persona);
@@ -76,6 +85,15 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
             cancel: "Hủy",
             edit: "Chỉnh sửa",
             delete: "Xóa",
+            socialAccounts: "Tài khoản Mạng xã hội",
+            connect: "Kết nối",
+            disconnect: "Ngắt kết nối",
+            connecting: "Đang kết nối...",
+            facebook: "Facebook",
+            instagram: "Instagram",
+            tiktok: "TikTok",
+            youtube: "YouTube",
+            pinterest: "Pinterest",
         },
         'English': {
             nickName: "Nickname",
@@ -88,6 +106,15 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
             cancel: "Cancel",
             edit: "Edit",
             delete: "Delete",
+            socialAccounts: "Social Accounts",
+            connect: "Connect",
+            disconnect: "Disconnect",
+            connecting: "Connecting...",
+            facebook: "Facebook",
+            instagram: "Instagram",
+            tiktok: "TikTok",
+            youtube: "YouTube",
+            pinterest: "Pinterest",
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -205,6 +232,104 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
         return <div key={photo.id} className="aspect-square bg-gray-100 rounded-md" style={{ backgroundImage: `url(${imageUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />;
     };
 
+    const handleConnectAccount = async (platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest') => {
+        setConnectingPlatform(platform);
+        try {
+            const result = await connectSocialAccountToPersona(editedPersona, platform);
+            console.log("Result from connectSocialAccountToPersona:", result);
+            if ('pages' in result) {
+                console.log("Multiple Facebook pages found. Opening selection modal.", result.pages);
+                setFacebookPages(result.pages);
+                setFacebookUserAccessToken(result.userAccessToken);
+                setIsFacebookPageSelectionModalOpen(true);
+            } else {
+                console.log("Single Facebook page or other platform connected directly.", result);
+                setEditedPersona(result);
+                onUpdatePersona(result); // Propagate the change up
+            }
+        } catch (error) {
+            console.error(`Failed to connect ${platform} account:`, error);
+            console.log("Error object from connectSocialAccountToPersona:", error);
+            // If connection fails, and it's Facebook, and no pages were returned, open the modal with an empty page list
+            if (platform === 'Facebook' && error instanceof Error && error.message.includes("No Facebook Pages found")) {
+                setFacebookPages([]);
+                setFacebookUserAccessToken(null); // Clear any partial token
+                setIsFacebookPageSelectionModalOpen(true);
+            } else {
+                // For other errors or non-Facebook platforms, show a generic alert
+                alert(`Failed to connect ${platform} account. Please try again. Error: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        } finally {
+            setConnectingPlatform(null);
+        }
+    };
+
+    const handleDisconnectAccount = async (platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest') => {
+        if (!window.confirm(`Are you sure you want to disconnect the ${platform} account from ${editedPersona.nickName}?`)) {
+            return;
+        }
+        setConnectingPlatform(platform); // Use connectingPlatform for disconnection too for simplicity
+        try {
+            const updated = disconnectSocialAccountFromPersona(editedPersona.id, platform);
+            setEditedPersona(prev => ({
+                ...prev,
+                socialAccounts: prev.socialAccounts?.filter(acc => acc.platform !== platform)
+            }));
+            onUpdatePersona({
+                ...editedPersona,
+                socialAccounts: editedPersona.socialAccounts?.filter(acc => acc.platform !== platform)
+            });
+        } catch (error) {
+            console.error(`Failed to disconnect ${platform} account:`, error);
+            alert(`Failed to disconnect ${platform} account. Please try again. Error: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+            setConnectingPlatform(null);
+        }
+    };
+
+    const getPlatformIcon = (platform: string) => {
+        switch (platform) {
+            case 'Facebook': return <FacebookIcon className="h-5 w-5" />;
+            case 'Instagram': return <InstagramIcon className="h-5 w-5" />;
+            case 'TikTok': return <TikTokIcon className="h-5 w-5" />;
+            case 'YouTube': return <YouTubeIcon className="h-5 w-5" />;
+            case 'Pinterest': return <PinterestIcon className="h-5 w-5" />;
+            default: return null;
+        }
+    };
+
+    const getPlatformColor = (platform: string) => {
+        switch (platform) {
+            case 'Facebook': return 'bg-blue-600 hover:bg-blue-700';
+            case 'Instagram': return 'bg-pink-600 hover:bg-pink-700';
+            case 'TikTok': return 'bg-black hover:bg-gray-800';
+            case 'YouTube': return 'bg-red-600 hover:bg-red-700';
+            case 'Pinterest': return 'bg-red-700 hover:bg-red-800';
+            default: return 'bg-gray-500 hover:bg-gray-600';
+        }
+    };
+
+    const socialPlatforms: ('Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest')[] = ['Facebook', 'Instagram', 'TikTok', 'YouTube', 'Pinterest'];
+
+    const handleFacebookPageSelected = (page: FacebookPage) => {
+        const updatedPersona = handleConnectFacebookPage(
+            editedPersona.id,
+            page.id,
+            page.access_token
+        );
+        setEditedPersona(updatedPersona);
+        onUpdatePersona(updatedPersona);
+        setIsFacebookPageSelectionModalOpen(false);
+        setFacebookPages([]);
+        setFacebookUserAccessToken(null);
+    };
+
+    const handleRetryFacebookConnect = () => {
+        setIsFacebookPageSelectionModalOpen(false);
+        // Re-initiate the Facebook connection flow
+        handleConnectAccount('Facebook');
+    };
+
     return (
         <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col transition-all duration-200 shadow-sm">
             {isEditing ? (
@@ -257,8 +382,52 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
                             />
                         </div>
                     </div>
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                        <h4 className="text-md font-semibold text-gray-800 mb-2">{texts.socialAccounts}</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                            {socialPlatforms.map(platform => {
+                                const isConnected = editedPersona.socialAccounts?.some(acc => acc.platform === platform);
+                                const isLoading = connectingPlatform === platform;
+                                return (
+                                    <div key={platform} className="flex items-center justify-between p-2 border border-gray-200 rounded-md">
+                                        <div className="flex items-center gap-2">
+                                            {getPlatformIcon(platform)}
+                                            <span className="text-sm font-medium text-gray-700">{texts[platform.toLowerCase() as keyof typeof texts]}</span>
+                                        </div>
+                                        {isConnected ? (
+                                            <Button
+                                                onClick={() => handleDisconnectAccount(platform)}
+                                                variant="secondary"
+                                                size="sm"
+                                                disabled={isLoading}
+                                            >
+                                                {isLoading ? <div className="w-4 h-4 border-2 border-t-transparent border-gray-600 rounded-full animate-spin"></div> : texts.disconnect}
+                                            </Button>
+                                        ) : (
+                                            <Button
+                                                onClick={() => handleConnectAccount(platform)}
+                                                className={`${getPlatformColor(platform)} text-white`}
+                                                size="sm"
+                                                disabled={isLoading}
+                                            >
+                                                {isLoading ? <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></div> : texts.connect}
+                                            </Button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </>
             )}
+            <FacebookPageSelectionModal
+                isOpen={isFacebookPageSelectionModalOpen}
+                pages={facebookPages}
+                onSelectPage={handleFacebookPageSelected}
+                onClose={() => setIsFacebookPageSelectionModalOpen(false)}
+                language={language}
+                onRetryConnect={handleRetryFacebookConnect}
+            />
         </div>
     );
 });
@@ -272,6 +441,7 @@ interface PersonasDisplayProps {
   onSetPersonaImage: (personaId: string, photoId: string, dataUrl: string) => Promise<string | undefined>;
   isUploadingImage: (key: string) => boolean;
   language: string;
+  onUpdatePersona: (persona: Persona) => void; // New prop for updating persona after social account changes
 }
 
 const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language }) => {
@@ -308,7 +478,8 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
             photos: Array.from({ length: 5 }, (_, i) => ({
                 id: crypto.randomUUID(),
                 imageKey: `persona_${id}_photo_${i}`
-            }))
+            })),
+            socialAccounts: [],
         };
     };
     
@@ -365,6 +536,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                                 generatedImages={generatedImages}
                                 isUploadingImage={isUploadingImage}
                                 language={language}
+                                onUpdatePersona={onSavePersona} // Pass onSavePersona as onUpdatePersona for new personas
                             />
                         )}
                         {personas.map(p => (
@@ -378,6 +550,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                                 generatedImages={generatedImages}
                                 isUploadingImage={isUploadingImage}
                                 language={language}
+                                onUpdatePersona={onSavePersona}
                             />
                         ))}
                     </div>

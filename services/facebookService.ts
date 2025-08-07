@@ -1,53 +1,11 @@
-
-import type { MediaPlanPost } from '../types';
+import type { MediaPlanPost, FacebookLoginResponse, FacebookPage } from '../types';
 
 declare const FB: any; // Declare the FB object from the SDK
 
-// Helper to initialize the SDK
-export const initFacebookSdk = (): Promise<void> => {
-    return new Promise((resolve, reject) => {
-        // This function will be called by the SDK once it's loaded.
-        (window as any).fbAsyncInit = function() {
-            const appId = (window as any).process.env.FACEBOOK_APP_ID;
-            if (!appId) {
-                console.error("Facebook App ID is not configured. Cannot initialize SDK.");
-                // Ensure rejection if the App ID is missing at initialization time.
-                return reject(new Error("Facebook App ID is not configured."));
-            }
-            
-            try {
-                FB.init({
-                    appId,
-                    cookie: true,
-                    xfbml: true,
-                    version: 'v19.0'
-                });
-                console.log("Facebook SDK Initialized via fbAsyncInit.");
-                resolve(); // Resolve the promise once initialization is done.
-            } catch (e) {
-                console.error("Error during FB.init:", e);
-                reject(e);
-            }
-        };
-
-        // In case the script is already loaded and fbAsyncInit has been called
-        if (typeof FB !== 'undefined' && FB.getLoginStatus) {
-            console.log("Facebook SDK was already loaded.");
-             // We assume if it was loaded, fbAsyncInit has run with its internal checks.
-            return resolve();
-        }
-    });
-};
-
-
 // Logs the user in and gets their pages
-export const connectAndGetPageToken = async (): Promise<{ pageId: string, pageAccessToken: string }> => {
+export const connectAndGetPageToken = async (): Promise<FacebookLoginResponse> => {
     if (typeof FB === 'undefined' || !FB.login) {
         throw new Error("Facebook SDK is not available or initialized. Please wait a moment and try again.");
-    }
-    const appId = (window as any).process.env.FACEBOOK_APP_ID;
-    if (!appId) {
-        throw new Error("Facebook App ID is not configured. Please set the App ID in the Integrations panel.");
     }
     
     return new Promise((resolve, reject) => {
@@ -64,16 +22,23 @@ export const connectAndGetPageToken = async (): Promise<{ pageId: string, pageAc
 
                 // Get user's pages
                 FB.api('/me/accounts', { access_token: userAccessToken }, (pageResponse: any) => {
+                    console.log("Raw Facebook /me/accounts response:", pageResponse);
                     if (pageResponse && !pageResponse.error) {
                         if (pageResponse.data && pageResponse.data.length > 0) {
-                            const firstPage = pageResponse.data[0];
-                            console.log(`Auto-selecting first available page: ${firstPage.name} (ID: ${firstPage.id})`);
+                            const pages: FacebookPage[] = pageResponse.data.map((page: any) => ({
+                                id: page.id,
+                                name: page.name,
+                                access_token: page.access_token,
+                                category: page.category,
+                                category_list: page.category_list,
+                                tasks: page.tasks,
+                            }));
                             resolve({
-                                pageId: firstPage.id,
-                                pageAccessToken: firstPage.access_token
+                                userAccessToken,
+                                pages,
                             });
                         } else {
-                            reject(new Error("No Facebook Pages found for this account. Please ensure you have at least one Page and have granted permissions."));
+                            reject(new Error("No Facebook Pages found for this account with the granted permissions. Please try connecting again and ensure you grant access to the Facebook Pages you wish to manage."));
                         }
                     } else {
                         reject(new Error(pageResponse.error?.message || "Failed to fetch Facebook pages."));
@@ -91,21 +56,25 @@ export const publishToFacebookPage = async (
     post: MediaPlanPost,
     imageUrl: string | undefined,
     pageId: string,
-    accessToken: string
+    accessToken: string,
+    videoUrl?: string
 ): Promise<{ publishedUrl: string }> => {
-    const apiVersion = 'v19.0';
+    console.log("publishToFacebookPage received args:", { post, imageUrl, pageId, accessToken: accessToken ? '[REDACTED]' : '[MISSING]', videoUrl });
+    const apiVersion = 'v23.0';
     const fullMessage = `${post.title}\n\n${post.content}\n\n${(post.hashtags || []).join(' ')}\n\nCTA: ${post.cta}`;
 
     let endpoint = '';
     const params = new URLSearchParams();
     params.append('access_token', accessToken);
 
+    console.log("Page ID right before URL construction:", pageId); // New diagnostic log
+
     if (imageUrl) {
-        endpoint = `https://graph.facebook.com/${apiVersion}/${pageId}/photos`;
+        endpoint = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/photos";
         params.append('caption', fullMessage);
         params.append('url', imageUrl); // Use URL directly, assuming it's publicly accessible
     } else {
-        endpoint = `https://graph.facebook.com/${apiVersion}/${pageId}/feed`;
+        endpoint = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/feed";
         params.append('message', fullMessage);
     }
 

@@ -12,6 +12,7 @@ export const AFFILIATE_PRODUCTS_TABLE_NAME = 'Affiliate_Products';
 export const PERSONAS_TABLE_NAME = 'Personas';
 export const TRENDS_TABLE_NAME = 'Trends';
 export const IDEAS_TABLE_NAME = 'Ideas';
+export const SOCIAL_ACCOUNTS_TABLE_NAME = 'Social_Accounts';
 
 
 // --- SCHEMA DEFINITIONS ---
@@ -145,6 +146,7 @@ const PERSONAS_SCHEMA = [
     { name: 'avatar_image_key', type: 'singleLineText' },
     { name: 'avatar_image_url', type: 'url' },
     { name: 'brand', type: 'multipleRecordLinks', options: { linkedTableName: BRANDS_TABLE_NAME, prefersSingleRecordLink: true } },
+    { name: 'social_accounts', type: 'multipleRecordLinks', options: { linkedTableName: SOCIAL_ACCOUNTS_TABLE_NAME, prefersSingleRecordLink: false } },
 ];
 
 const TRENDS_SCHEMA = [
@@ -167,6 +169,13 @@ const IDEAS_SCHEMA = [
     { name: 'trend', type: 'multipleRecordLinks', options: { linkedTableName: TRENDS_TABLE_NAME, prefersSingleRecordLink: true } },
 ];
 
+const SOCIAL_ACCOUNTS_SCHEMA = [
+    { name: 'account_id', type: 'singleLineText' }, // Primary Key
+    { name: 'platform', type: 'singleLineText' },
+    { name: 'credentials_json', type: 'multilineText' },
+    { name: 'persona', type: 'multipleRecordLinks', options: { linkedTableName: PERSONAS_TABLE_NAME, prefersSingleRecordLink: true } },
+];
+
 export const ALL_TABLE_SCHEMAS = {
     [BRANDS_TABLE_NAME]: BRANDS_SCHEMA,
     [LOGO_CONCEPTS_TABLE_NAME]: LOGO_CONCEPTS_SCHEMA,
@@ -179,6 +188,7 @@ export const ALL_TABLE_SCHEMAS = {
     [PERSONAS_TABLE_NAME]: PERSONAS_SCHEMA,
     [TRENDS_TABLE_NAME]: TRENDS_SCHEMA,
     [IDEAS_TABLE_NAME]: IDEAS_SCHEMA,
+    [SOCIAL_ACCOUNTS_TABLE_NAME]: SOCIAL_ACCOUNTS_SCHEMA,
 };
 
 let schemaEnsured = false;
@@ -728,7 +738,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{
         // This is a placeholder, as the actual URL might be elsewhere. The UI relies on the generatedImages map.
     }
 
-    const personas: Persona[] = personaRecords.map((r: any) => {
+    const personas: Persona[] = await Promise.all(personaRecords.map(async (r: any) => {
         if (r.fields.avatar_image_key && r.fields.avatar_image_url) {
             generatedImages[r.fields.avatar_image_key] = r.fields.avatar_image_url;
         }
@@ -741,6 +751,14 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{
             // Put the main avatar in the first slot
             photos[0].imageKey = r.fields.avatar_image_key;
         }
+
+        // Fetch social accounts for this persona
+        const socialAccountRecords = await fetchLinkedRecords(SOCIAL_ACCOUNTS_TABLE_NAME, r.fields.social_accounts || []);
+        const socialAccounts = socialAccountRecords.map((sa: any) => ({
+            platform: sa.fields.platform,
+            credentials: JSON.parse(sa.fields.credentials_json || '{}'),
+        }));
+
         return {
             id: personaId,
             nickName: r.fields.nick_name,
@@ -750,8 +768,9 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{
             avatarImageKey: r.fields.avatar_image_key,
             avatarImageUrl: r.fields.avatar_image_url,
             photos: photos,
+            socialAccounts: socialAccounts,
         };
-    });
+    }));
 
     
 
@@ -834,6 +853,7 @@ export const savePersona = async (persona: Persona, brandId: string) => {
     if (!brandRecord) throw new Error(`Brand with ID ${brandId} not found for saving persona.`);
     const brandRecordId = brandRecord.id;
 
+    // 1. Save/Update Persona record
     const personaFields = {
         persona_id: persona.id,
         nick_name: persona.nickName,
@@ -846,14 +866,14 @@ export const savePersona = async (persona: Persona, brandId: string) => {
     };
 
     let personaAirtableRecord;
-    const existingRecord = await findRecordByField(PERSONAS_TABLE_NAME, 'persona_id', persona.id);
+    const existingPersonaRecord = await findRecordByField(PERSONAS_TABLE_NAME, 'persona_id', persona.id);
 
-    if (existingRecord) {
-        personaAirtableRecord = (await patchAirtableRecords(PERSONAS_TABLE_NAME, [{ id: existingRecord.id, fields: personaFields }]))[0];
+    if (existingPersonaRecord) {
+        personaAirtableRecord = (await patchAirtableRecords(PERSONAS_TABLE_NAME, [{ id: existingPersonaRecord.id, fields: personaFields }]))[0];
     } else {
         personaAirtableRecord = (await sendToAirtable([{ fields: personaFields }], PERSONAS_TABLE_NAME))[0];
         
-        // This is a new record, so link it back to the brand.
+        // If new persona, link it back to the brand
         const existingPersonaRecordIds = brandRecord.fields.personas || [];
         if (!existingPersonaRecordIds.includes(personaAirtableRecord.id)) {
             await patchAirtableRecords(BRANDS_TABLE_NAME, [{
@@ -864,6 +884,59 @@ export const savePersona = async (persona: Persona, brandId: string) => {
             }]);
         }
     }
+    const personaRecordId = personaAirtableRecord.id;
+
+    // 2. Manage Social Accounts for this Persona
+    const existingSocialAccountRecords = await fetchFullRecordsByFormula(SOCIAL_ACCOUNTS_TABLE_NAME, `{persona} = '${personaRecordId}'`);
+    const existingSocialAccountMap = new Map(existingSocialAccountRecords.map((r: any) => [r.fields.platform, r]));
+
+    const socialAccountsToCreate = [];
+    const socialAccountsToUpdate = [];
+    const socialAccountsToDeleteRecordIds = [];
+
+    // Determine which accounts to create/update/delete
+    for (const socialAccount of (persona.socialAccounts || [])) {
+        const existingRecordForPlatform = existingSocialAccountMap.get(socialAccount.platform);
+        if (existingRecordForPlatform) {
+            // Update existing
+            socialAccountsToUpdate.push({
+                id: existingRecordForPlatform.id,
+                fields: {
+                    account_id: socialAccount.platform + '_' + persona.id, // Ensure unique ID
+                    platform: socialAccount.platform,
+                    credentials_json: JSON.stringify(socialAccount.credentials),
+                    persona: [personaRecordId],
+                }
+            });
+            existingSocialAccountMap.delete(socialAccount.platform); // Mark as processed
+        } else {
+            // Create new
+            socialAccountsToCreate.push({
+                fields: {
+                    account_id: socialAccount.platform + '_' + persona.id, // Ensure unique ID
+                    platform: socialAccount.platform,
+                    credentials_json: JSON.stringify(socialAccount.credentials),
+                    persona: [personaRecordId],
+                }
+            });
+        }
+    }
+
+    // Any remaining in existingSocialAccountMap should be deleted
+    for (const [platform, record] of existingSocialAccountMap.entries()) {
+        socialAccountsToDeleteRecordIds.push(record.id);
+    }
+
+    // Perform Airtable operations for social accounts
+    if (socialAccountsToCreate.length > 0) {
+        await sendToAirtable(socialAccountsToCreate, SOCIAL_ACCOUNTS_TABLE_NAME);
+    }
+    if (socialAccountsToUpdate.length > 0) {
+        await patchAirtableRecords(SOCIAL_ACCOUNTS_TABLE_NAME, socialAccountsToUpdate);
+    }
+    if (socialAccountsToDeleteRecordIds.length > 0) {
+        await deleteAirtableRecords(SOCIAL_ACCOUNTS_TABLE_NAME, socialAccountsToDeleteRecordIds);
+    }
 };
 
 export const deletePersonaFromAirtable = async (personaId: string, brandId: string) => {
@@ -871,7 +944,14 @@ export const deletePersonaFromAirtable = async (personaId: string, brandId: stri
     const personaRecord = await findRecordByField(PERSONAS_TABLE_NAME, 'persona_id', personaId);
 
     if (personaRecord) {
-        // Unlink from brand
+        // 1. Delete associated social accounts
+        const socialAccountRecords = await fetchFullRecordsByFormula(SOCIAL_ACCOUNTS_TABLE_NAME, `{persona} = '${personaRecord.id}'`);
+        if (socialAccountRecords.length > 0) {
+            const socialAccountRecordIds = socialAccountRecords.map(r => r.id);
+            await deleteAirtableRecords(SOCIAL_ACCOUNTS_TABLE_NAME, socialAccountRecordIds);
+        }
+
+        // 2. Unlink from brand
         if (brandRecord && brandRecord.fields.personas) {
             const updatedPersonaIds = brandRecord.fields.personas.filter((id: string) => id !== personaRecord.id);
             await patchAirtableRecords(BRANDS_TABLE_NAME, [{
@@ -879,7 +959,7 @@ export const deletePersonaFromAirtable = async (personaId: string, brandId: stri
                 fields: { personas: updatedPersonaIds }
             }]);
         }
-        // Delete the persona record itself
+        // 3. Delete the persona record itself
         await deleteAirtableRecords(PERSONAS_TABLE_NAME, [personaRecord.id]);
     }
 };

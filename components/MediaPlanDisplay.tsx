@@ -55,10 +55,11 @@ interface MediaPlanDisplayProps {
   onBulkGenerateImages: (posts: PostInfo[]) => void;
   onBulkSuggestPromotions: (posts: PostInfo[]) => void;
   onBulkGenerateComments: (posts: PostInfo[]) => void;
+  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
 }
 
 const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
-    const { plans, personas, settings, onExport, isExporting, onOpenWizard, planGroupsList, onSelectPlan, activePlanId, isAnyAnalysisRunning, onUpdatePost, onOpenScheduleModal, onOpenBulkScheduleModal, onPostDrop, isPerformingBulkAction, onBulkGenerateImages, onBulkSuggestPromotions, onBulkGenerateComments, onAssignPersonaToPlan } = props;
+    const { plans, personas, settings, onExport, isExporting, onOpenWizard, planGroupsList, onSelectPlan, activePlanId, isAnyAnalysisRunning, onUpdatePost, onOpenScheduleModal, onOpenBulkScheduleModal, onPostDrop, isPerformingBulkAction, onBulkGenerateImages, onBulkSuggestPromotions, onBulkGenerateComments, onAssignPersonaToPlan, onPublishPost } = props;
     const { language } = settings;
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
     const [viewMode, setViewMode] = useState<'feed' | 'calendar'>('feed');
@@ -663,6 +664,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                     onOpenScheduleModal={() => {
                         onOpenScheduleModal(viewingPost as SchedulingPost)
                     }}
+                    onPublishPost={props.onPublishPost} // Pass the new prop
                 />
             )}
         </div>
