@@ -102,6 +102,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
             filter_status: "Trạng thái:",
             filter_status_scheduled: "Đã lên lịch",
             filter_status_draft: "Bản nháp",
+            filter_status_published: "Đã đăng",
             filter_status_promo: "Có khuyến mãi",
             filter_status_comment: "Có bình luận",
             filter_status_image: "Có ảnh",
@@ -146,6 +147,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
             filter_status: "Status:",
             filter_status_scheduled: "Scheduled",
             filter_status_draft: "Draft",
+            filter_status_published: "Published",
             filter_status_promo: "Has Promo",
             filter_status_comment: "Has Comment",
             filter_status_image: "Has Image",
@@ -209,6 +211,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     ];
 
     const statusOptions = [
+        { id: 'published', text: currentTexts.filter_status_published, Icon: CheckSolidIcon },
         { id: 'scheduled', text: currentTexts.filter_status_scheduled, Icon: CalendarIcon },
         { id: 'draft', text: currentTexts.filter_status_draft, Icon: PencilIcon },
         { id: 'promo', text: currentTexts.filter_status_promo, Icon: KhongMinhIcon },
@@ -269,6 +272,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                 const imageUrl = p.post.imageKey ? props.generatedImages[p.post.imageKey] : undefined;
                 return selectedStatuses.every(status => {
                     switch (status) {
+                        case 'published': return p.post.status === 'published';
                         case 'scheduled': return p.post.status === 'scheduled';
                         case 'draft': return p.post.status === 'draft' || !p.post.status;
                         case 'promo': return (p.post.promotedProductIds?.length || 0) > 0;
@@ -285,8 +289,8 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
             const isAsc = dir === 'asc';
 
             if (key === 'date') {
-                const dateA = a.post.scheduledAt ? new Date(a.post.scheduledAt).getTime() : 0;
-                const dateB = b.post.scheduledAt ? new Date(b.post.scheduledAt).getTime() : 0;
+                const dateA = a.post.publishedAt ? new Date(a.post.publishedAt).getTime() : (a.post.scheduledAt ? new Date(a.post.scheduledAt).getTime() : 0);
+                const dateB = b.post.publishedAt ? new Date(b.post.publishedAt).getTime() : (b.post.scheduledAt ? new Date(b.post.scheduledAt).getTime() : 0);
                 if (dateA === 0 && dateB !== 0) return 1;
                 if (dateB === 0 && dateA !== 0) return -1;
                 return isAsc ? dateA - dateB : dateB - dateA;
@@ -577,6 +581,8 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                                                         onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}
                                                         onViewDetails={handleViewDetails}
                                                         scheduledAt={postInfo.post.scheduledAt}
+                                                        publishedAt={postInfo.post.publishedAt}
+                                                        publishedUrl={postInfo.post.publishedUrl}
                                                     />
                                                 )
                                             })}
@@ -664,7 +670,11 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                     onOpenScheduleModal={() => {
                         onOpenScheduleModal(viewingPost as SchedulingPost)
                     }}
-                    onPublishPost={props.onPublishPost} // Pass the new prop
+                    onPublishPost={async (postInfo) => {
+                        await props.onPublishPost(postInfo);
+                    }}
+                    publishedUrl={viewingPost.post.publishedUrl}
+                    publishedAt={viewingPost.post.publishedAt}
                 />
             )}
         </div>

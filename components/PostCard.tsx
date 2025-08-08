@@ -24,11 +24,13 @@ export interface PostCardProps {
     isDraft: boolean;
     isSelected: boolean;
     onToggleSelection: (postId: string) => void;
-    scheduledAt?: string; // New prop for scheduled date/time
+    scheduledAt?: string;
+    publishedAt?: string;
+    publishedUrl?: string;
 }
 
 const PostCard: React.FC<PostCardProps> = (props) => {
-    const { postInfo, language, onViewDetails, imageUrl, videoUrl, promotedProductsCount, isDraft, isSelected, onToggleSelection, scheduledAt } = props;
+    const { postInfo, language, onViewDetails, imageUrl, videoUrl, promotedProductsCount, isDraft, isSelected, onToggleSelection, scheduledAt, publishedAt, publishedUrl } = props;
     const { post } = postInfo;
     const Icon = platformIcons[post.platform] || SparklesIcon;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -44,7 +46,9 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             promoted: "SP KM",
             commented: "Bình luận",
             video: "Video",
-            scheduled: "Đã lên lịch vào", // New translation
+            scheduled: "Đã lên lịch vào",
+            published: "Đã đăng vào",
+            viewPost: "Xem bài đăng",
         },
         'English': {
             edit: "View / Edit",
@@ -54,7 +58,9 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             promoted: "Promo",
             commented: "Comment",
             video: "Video",
-            scheduled: "Scheduled at", // New translation
+            scheduled: "Scheduled at",
+            published: "Published at",
+            viewPost: "View Post",
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -78,7 +84,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
     }, []);
 
     const handleCardClick = (e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest('.no-expand')) {
+        if ((e.target as HTMLElement).closest('.no-expand') || (e.target as HTMLElement).closest('a')) {
             return;
         }
         onViewDetails(postInfo);
@@ -111,10 +117,15 @@ const PostCard: React.FC<PostCardProps> = (props) => {
 
     const firstMedia = orderedMedia[0];
 
+    const TitleComponent = publishedUrl ? 'a' : 'h4';
+    const titleProps = publishedUrl ? { href: publishedUrl, target: '_blank', rel: 'noopener noreferrer', className: "hover:underline" } : {};
+
+
     return (
         <div 
             className={`relative bg-white rounded-xl p-4 flex flex-col h-full border-2 shadow-sm group transition-all duration-200 ease-in-out cursor-pointer hover:shadow-md hover:-translate-y-0.5
                 ${isSelected ? 'border-brand-green bg-green-50/50 shadow-lg' : 'border-gray-200'}
+                ${publishedUrl ? 'bg-blue-50/50' : ''}
             `}
             onClick={handleCardClick}
         >
@@ -135,6 +146,12 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             </div>
 
             <div className="absolute top-3 right-3 z-20 flex items-center gap-2 no-expand">
+                {publishedUrl && (
+                     <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-xs px-2 py-1 rounded-full font-semibold text-blue-800 bg-blue-100 hover:bg-blue-200 transition-colors flex items-center gap-1.5">
+                        <CheckCircleIcon className="h-4 w-4" />
+                        {texts.viewPost}
+                    </a>
+                )}
                 <div className="relative" ref={menuRef}>
                     <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(o => !o); }} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
                         <DotsVerticalIcon className="h-5 w-5" />
@@ -156,7 +173,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                  <div className="flex items-start gap-3 mb-3 ml-8">
                     <Icon className="h-10 w-10 mt-0.5 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                         <h4 className="font-bold font-sans text-gray-900 truncate pr-8" title={post.title}>{post.title}</h4>
+                         <TitleComponent className="font-bold font-sans text-gray-900 truncate pr-8" title={post.title} {...titleProps}>{post.title}</TitleComponent>
                         <span className="text-sm text-gray-500 block truncate">{post.platform} - {post.contentType}</span>
                     </div>
                 </div>
@@ -180,14 +197,19 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             </div>
             
             <div className="mt-auto flex-shrink-0 pt-2 flex justify-start items-center flex-wrap gap-2">
-                 {isDraft && (
+                 {isDraft && !publishedAt && !scheduledAt && (
                     <div className="text-xs px-2 py-0.5 rounded-full font-medium text-gray-800 bg-gray-100">
                         {texts.draft}
                     </div>
                  )}
-                 {scheduledAt && (
+                 {scheduledAt && !publishedAt && (
                     <div className="text-xs px-2 py-0.5 rounded-full font-medium text-green-800 bg-green-100">
                         {texts.scheduled} {scheduledAt}
+                    </div>
+                 )}
+                 {publishedAt && (
+                    <div className="text-xs px-2 py-0.5 rounded-full font-medium text-blue-800 bg-blue-100">
+                        {texts.published} {publishedAt}
                     </div>
                  )}
                  {post.videoKey && (

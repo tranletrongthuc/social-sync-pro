@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo } from '../types';
 import { Button, Input, TextArea } from './ui';
@@ -28,7 +27,7 @@ const renderPostContent = (content: string | any): string => {
 };
 
 
-const GenerateIdeaHandler: React.FC<{
+const GenerateIdeaHandler: React.FC <{
     onGeneratePrompt: () => void;
     isGenerating: boolean;
     texts: any;
@@ -252,13 +251,18 @@ interface PostDetailModalProps {
   onGenerateComment: (postInfo: PostInfo) => void;
   isGeneratingComment: boolean;
   onOpenScheduleModal: (post: SchedulingPost) => void;
-  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
+  onPublishPost: (postInfo: PostInfo) => Promise<void>; 
+  publishedUrl?: string;
+  publishedAt?: string;
 }
 
+
+
 const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
-    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo, onPublishPost } = props;
+    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo, onPublishPost, publishedAt, publishedUrl } = props;
     const [isEditing, setIsEditing] = useState(false);
     const [isRefining, setIsRefining] = useState(false);
+    const [isPublishing, setIsPublishing] = useState(false);
     const [editedPost, setEditedPost] = useState<MediaPlanPost | null>(postInfo.post);
     
     useEffect(() => {
@@ -297,8 +301,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             cta_title: "Kêu gọi hành động",
             sources: "Nguồn",
             scheduled_for: "Lên lịch cho",
-            generating: 'Đang tạo...', 
-            generate: 'Tạo ảnh', 
+            generating: 'Đang tạo...',
+            generate: 'Tạo ảnh',
             prompt: 'Prompt ảnh:',
             changeImage: 'Đổi ảnh',
             changeVideo: 'Đổi video',
@@ -307,6 +311,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             youtube_description: "Mô tả YouTube",
             youtube_script: "Kịch bản YouTube",
             publishNow: "Đăng ngay",
+            publishing: "Đang đăng...",
+            published: "Đã đăng vào",
+            viewPost: "Xem bài đăng",
+            postIsPublished: "Bài đăng này đã được xuất bản và không thể chỉnh sửa.",
         },
         'English': {
             edit: "Edit",
@@ -330,8 +338,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             cta_title: "Call to Action",
             sources: "Sources",
             scheduled_for: "Scheduled for",
-            generating: 'Generating...', 
-            generate: 'Generate Image', 
+            generating: 'Generating...',
+            generate: 'Generate Image',
             prompt: 'Image Prompt:',
             changeImage: 'Change Image',
             changeVideo: 'Change Video',
@@ -340,6 +348,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             youtube_description: "YouTube Description",
             youtube_script: "YouTube Script",
             publishNow: "Publish Now",
+            publishing: "Publishing...",
+            published: "Published at",
+            viewPost: "View Post",
+            postIsPublished: "This post has been published and cannot be edited.",
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -391,6 +403,21 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
         }
     };
     
+    const handlePublish = async () => {
+        if (isPublishing) return;
+        setIsPublishing(true);
+        try {
+            await onPublishPost(postInfo);
+            // Optionally close modal on success, or show a success message
+            onClose(); 
+        } catch (error) {
+            console.error("Failed to publish post:", error);
+            // Optionally show an error message to the user
+        } finally {
+            setIsPublishing(false);
+        }
+    };
+    
     const acceptedProducts = props.affiliateLinks.filter(link => (post.promotedProductIds || []).includes(link.id));
     const suggestedProducts = props.khongMinhSuggestions[post.id] || [];
     const hasPromotedProducts = (post.promotedProductIds || []).length > 0;
@@ -398,7 +425,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
     const hasMediaPath = editedPost.imagePrompt || (editedPost.imageKey && props.generatedImages[editedPost.imageKey]) || (editedPost.videoKey && props.generatedVideos[editedPost.videoKey]);
 
     const isYouTubePillar = post.isPillar && post.platform === 'YouTube';
-    
+    const isPublished = !!publishedUrl;
+
     return (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-40 backdrop-blur-sm" onClick={onClose}>
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200 m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
@@ -406,7 +434,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                     <div className="flex items-center gap-3">
                         <Icon className="h-8 w-8 text-gray-700 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                            {isEditing ? (
+                            {isEditing && !isPublished ? (
                                 <Input name="title" value={editedPost.title} onChange={handleEditChange} className="text-xl font-bold p-1" />
                             ) : (
                                 <h2 className="text-2xl font-bold font-sans text-gray-900">{editedPost.title}</h2>
@@ -415,6 +443,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
+                         {isPublished && (
+                            <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm px-3 py-1.5 rounded-full font-semibold text-white bg-brand-green hover:bg-brand-green-dark transition-colors flex items-center gap-2">
+                                <CheckCircleIcon className="h-5 w-5" />
+                                {texts.viewPost}
+                            </a>
+                        )}
                         <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
                     </div>
                 </header>
@@ -422,7 +456,12 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                 <main className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 p-6">
                     {/* Left Column (Content) */}
                     <div className="lg:col-span-3 flex flex-col">
-                        {isEditing ? (
+                        {isPublished && (
+                             <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg mb-4">
+                                <p className="text-sm text-blue-800">{texts.postIsPublished}</p>
+                            </div>
+                        )}
+                        {isEditing && !isPublished ? (
                             <div className="flex-grow space-y-4">
                                 { isYouTubePillar ? (
                                     <>
@@ -458,8 +497,11 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                     {props.weekTheme && (
                                         <span className="font-semibold">Week {postInfo.weekIndex + 1}: <span className="font-normal">{props.weekTheme}</span></span>
                                     )}
-                                    {editedPost.scheduledAt && (
+                                    {editedPost.scheduledAt && !publishedAt && (
                                         <span>{texts.scheduled_for}: {new Date(editedPost.scheduledAt).toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' })}</span>
+                                    )}
+                                     {publishedAt && (
+                                        <span>{texts.published}: {new Date(publishedAt).toLocaleString(locale, { dateStyle: 'long', timeStyle: 'short' })}</span>
                                     )}
                                 </div>
 
@@ -518,19 +560,19 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             </div>
                         )}
                          <div className="mt-auto pt-4 border-t border-gray-200">
-                            {isEditing ? (
+                            {isEditing && !isPublished ? (
                                 <div className="flex items-center justify-end gap-2">
                                     <Button variant="tertiary" onClick={handleCancelEdit}>{texts.cancel}</Button>
                                     <Button variant="secondary" onClick={handleRefine} disabled={isRefining || !(typeof editedPost?.content === 'string' && editedPost.content.trim())}>
                                         {isRefining ? (
                                             <>
                                                 <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                                <span className="ml-2">{texts.refining}</span>
+                                                <span>{texts.refining}</span>
                                             </>
                                         ) : (
                                             <>
                                                 <SparklesIcon className="h-4 w-4" />
-                                                <span className="ml-2">{texts.refine_with_ai}</span>
+                                                <span>{texts.refine_with_ai}</span>
                                             </>
                                         )}
                                     </Button>
@@ -538,9 +580,24 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-end gap-2">
-                                    <Button variant="secondary" onClick={() => onOpenScheduleModal(postInfo as SchedulingPost)} className="flex items-center gap-2"><CalendarIcon className="h-4 w-4"/> {texts.schedule}</Button>
-                                    <Button variant="secondary" onClick={() => onPublishPost(postInfo)} className="flex items-center gap-2"><LinkIcon className="h-4 w-4"/> {texts.publishNow}</Button>
-                                    <Button variant="primary" onClick={() => setIsEditing(true)}>{texts.edit}</Button>
+                                    {!isPublished && (
+                                        <>
+                                            <Button variant="secondary" onClick={() => onOpenScheduleModal(postInfo as SchedulingPost)} className="flex items-center gap-2"><CalendarIcon className="h-4 w-4"/> {texts.schedule}</Button>
+                                            <Button variant="secondary" onClick={handlePublish} disabled={isPublishing} className="flex items-center gap-2">
+                                                {isPublishing ? (
+                                                    <>
+                                                        <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
+                                                        <span>{texts.publishing}</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <LinkIcon className="h-4 w-4"/> {texts.publishNow}
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </>
+                                    )}
+                                    <Button variant="primary" onClick={() => setIsEditing(true)} disabled={isPublished}>{texts.edit}</Button>
                                 </div>
                             )}
                         </div>
@@ -582,7 +639,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
 
                         <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
                             <h5 className="font-bold text-sm text-gray-800 mb-2">{texts.auto_comment}</h5>
-                            {isEditing ? (
+                            {isEditing && !isPublished ? (
                                 <TextArea
                                     name="autoComment"
                                     value={editedPost.autoComment || ''}
@@ -607,18 +664,18 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                             if (!isEditing) setIsEditing(true);
                                             onGenerateComment(postInfo);
                                         }}
-                                        disabled={isGeneratingComment}
+                                        disabled={isGeneratingComment || isPublished}
                                         className="text-xs py-1.5 px-2.5 flex items-center justify-center gap-1.5"
                                     >
                                         {isGeneratingComment ? (
                                             <>
                                                 <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                                <span className="ml-2">{texts.generating_comment}</span>
+                                                <span>{texts.generating_comment}</span>
                                             </>
                                         ) : (
                                             <>
                                                 <SparklesIcon className="h-4 w-4" />
-                                                <span className="ml-2">{editedPost.autoComment ? texts.regenerate : texts.generate_comment}</span>
+                                                <span>{editedPost.autoComment ? texts.regenerate : texts.generate_comment}</span>
                                             </>
                                         )}
                                     </Button>

@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import ExcelJS, { Cell } from 'exceljs';
 import type { AffiliateLink } from '../types';
 import { Button, Input, Select } from './ui';
@@ -31,7 +31,13 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
+    const [currentPage, setCurrentPage] = useState(1);
+    const [productsPerPage, setProductsPerPage] = useState(20);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, sortBy, productsPerPage]);
 
     const T = {
         'Việt Nam': {
@@ -53,7 +59,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             topPerformer: "Hiệu suất cao nhất",
             // Toolbar
             searchPlaceholder: "Tìm kiếm theo tên, ID, hoặc nhà cung cấp...",
-            sortBy: "Sắp xếp theo"
+            sortBy: "Sắp xếp theo",
+            productsPerPage: "Sản phẩm/trang"
         },
         'English': {
             title: "Affiliate Vault",
@@ -74,7 +81,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             topPerformer: "Top Performer",
             // Toolbar
             searchPlaceholder: "Search by name, ID, or provider...",
-            sortBy: "Sort by"
+            sortBy: "Sort by",
+            productsPerPage: "Products/page"
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -100,7 +108,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
         }
         const totalComm = affiliateLinks.reduce((sum, link) => sum + link.commissionValue, 0);
         const totalRate = affiliateLinks.reduce((sum, link) => sum + link.commissionRate, 0);
-        const avgRate = totalRate / totalLinks;
+        const avgRate = totalLinks > 0 ? totalRate / totalLinks : 0;
         const topPerformer = [...affiliateLinks].sort((a,b) => b.commissionValue - a.commissionValue)[0];
 
         return {
@@ -108,13 +116,13 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             totalComm: formatCurrency(totalComm),
             avgRate: `${avgRate.toFixed(1)}%`,
             topPerformer: {
-                name: topPerformer.productName,
-                value: formatCurrency(topPerformer.commissionValue)
+                name: topPerformer?.productName || 'N/A',
+                value: formatCurrency(topPerformer?.commissionValue || 0)
             }
         }
     }, [affiliateLinks, formatCurrency]);
 
-    const displayLinks = useMemo(() => {
+    const processedLinks = useMemo(() => {
         const filtered = affiliateLinks.filter(link => 
             link.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
             link.productId.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -143,6 +151,11 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
         });
 
     }, [affiliateLinks, searchQuery, sortBy]);
+
+    const displayLinks = useMemo(() => {
+        const startIndex = (currentPage - 1) * productsPerPage;
+        return processedLinks.slice(startIndex, startIndex + productsPerPage);
+    }, [processedLinks, currentPage, productsPerPage]);
 
     const handleDelete = (linkId: string) => {
         if (window.confirm(texts.confirmDeleteMessage)) {
@@ -271,6 +284,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
         event.target.value = '';
     };
 
+    const totalPages = Math.ceil(processedLinks.length / productsPerPage);
+
     return (
         <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
@@ -329,51 +344,87 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                     />
                     <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 </div>
-                <div className="flex items-center gap-2">
-                    <label htmlFor="sort-by" className="text-sm font-medium text-gray-700 whitespace-nowrap">{texts.sortBy}:</label>
-                    <Select id="sort-by" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                        <option value="productName-asc">{language === 'Việt Nam' ? 'Tên sản phẩm (A-Z)' : 'Product Name (A-Z)'}</option>
-                        <option value="productName-desc">{language === 'Việt Nam' ? 'Tên sản phẩm (Z-A)' : 'Product Name (Z-A)'}</option>
-                        <option value="price-desc">{language === 'Việt Nam' ? 'Giá (Cao-Thấp)' : 'Price (High-Low)'}</option>
-                        <option value="price-asc">{language === 'Việt Nam' ? 'Giá (Thấp-Cao)' : 'Price (Low-High)'}</option>
-                        <option value="commissionValue-desc">{language === 'Việt Nam' ? 'Hoa hồng (Cao-Thấp)' : 'Commission (High-Low)'}</option>
-                        <option value="commissionValue-asc">{language === 'Việt Nam' ? 'Hoa hồng (Thấp-Cao)' : 'Commission (Low-High)'}</option>
-                    </Select>
+                <div className="flex items-center gap-4 flex-shrink-0">
+                     <div className="flex items-center gap-2">
+                        <label htmlFor="products-per-page" className="text-sm font-medium text-gray-700 whitespace-nowrap">{texts.productsPerPage}:</label>
+                        <Select id="products-per-page" value={productsPerPage} onChange={(e) => setProductsPerPage(Number(e.target.value))}>
+                            <option value={10}>10</option>
+                            <option value={20}>20</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                        </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="sort-by" className="text-sm font-medium text-gray-700 whitespace-nowrap">{texts.sortBy}:</label>
+                        <Select id="sort-by" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                            <option value="productName-asc">{language === 'Việt Nam' ? 'Tên sản phẩm (A-Z)' : 'Product Name (A-Z)'}</option>
+                            <option value="productName-desc">{language === 'Việt Nam' ? 'Tên sản phẩm (Z-A)' : 'Product Name (Z-A)'}</option>
+                            <option value="price-desc">{language === 'Việt Nam' ? 'Giá (Cao-Thấp)' : 'Price (High-Low)'}</option>
+                            <option value="price-asc">{language === 'Việt Nam' ? 'Giá (Thấp-Cao)' : 'Price (Low-High)'}</option>
+                            <option value="commissionValue-desc">{language === 'Việt Nam' ? 'Hoa hồng (Cao-Thấp)' : 'Commission (High-Low)'}</option>
+                            <option value="commissionValue-asc">{language === 'Việt Nam' ? 'Hoa hồng (Thấp-Cao)' : 'Commission (Low-High)'}</option>
+                        </Select>
+                    </div>
                 </div>
             </div>
 
-            <main className="flex-grow overflow-y-auto -mx-2 p-2 sm:p-4 lg:p-6 min-h-[calc(100vh-200px)]">
+            <main className="flex-grow overflow-y-auto -mx-2 p-2 sm:p-4 lg:p-6 flex flex-col">
                 {(affiliateLinks.length > 0 || isAddingNewLink) ? (
-                    (displayLinks.length > 0 || isAddingNewLink) ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                             {isAddingNewLink && (
-                                <ProductCard
-                                    isNew
-                                    link={{...emptyLink, id: 'new'}}
-                                    onSave={handleSaveNew}
-                                    onCancel={() => setIsAddingNewLink(false)}
-                                    formatCurrency={formatCurrency}
-                                    language={language}
-                                />
+                    <>
+                        <div className="flex-grow">
+                            {(displayLinks.length > 0 || isAddingNewLink) ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                     {isAddingNewLink && (
+                                        <ProductCard
+                                            isNew
+                                            link={{...emptyLink, id: 'new'}}
+                                            onSave={handleSaveNew}
+                                            onCancel={() => setIsAddingNewLink(false)}
+                                            formatCurrency={formatCurrency}
+                                            language={language}
+                                        />
+                                    )}
+                                    {displayLinks.map(link => (
+                                        <ProductCard 
+                                            key={link.id}
+                                            link={link}
+                                            onSave={onSaveLink}
+                                            onDelete={() => handleDelete(link.id)}
+                                            formatCurrency={formatCurrency}
+                                            language={language}
+                                        />
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-20">
+                                    <SearchIcon className="mx-auto h-16 w-16 text-gray-400" />
+                                    <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">{texts.noResults}</h3>
+                                    <p className="mt-1 text-md text-gray-500 font-serif">{texts.noResultsDesc}</p>
+                                </div>
                             )}
-                            {displayLinks.map(link => (
-                                <ProductCard 
-                                    key={link.id}
-                                    link={link}
-                                    onSave={onSaveLink}
-                                    onDelete={() => handleDelete(link.id)}
-                                    formatCurrency={formatCurrency}
-                                    language={language}
-                                />
-                            ))}
                         </div>
-                    ) : (
-                        <div className="text-center py-20">
-                            <SearchIcon className="mx-auto h-16 w-16 text-gray-400" />
-                            <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">{texts.noResults}</h3>
-                            <p className="mt-1 text-md text-gray-500 font-serif">{texts.noResultsDesc}</p>
-                        </div>
-                    )
+                        {totalPages > 1 && (
+                            <div className="mt-6 flex justify-center items-center gap-4 pt-4 border-t border-gray-200">
+                                <Button
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                    variant="outline"
+                                >
+                                    {language === 'Việt Nam' ? 'Trước' : 'Previous'}
+                                </Button>
+                                <span className="text-sm font-medium text-gray-700">
+                                    {language === 'Việt Nam' ? `Trang ${currentPage} / ${totalPages}` : `Page ${currentPage} of ${totalPages}`}
+                                </span>
+                                <Button
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                    variant="outline"
+                                >
+                                    {language === 'Việt Nam' ? 'Sau' : 'Next'}
+                                </Button>
+                            </div>
+                        )}
+                    </>
                 ) : (
                     <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300">
                         <LinkIcon className="mx-auto h-16 w-16 text-gray-400" />

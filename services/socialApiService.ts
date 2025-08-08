@@ -1,61 +1,70 @@
-import type { MediaPlanPost, Persona } from '../types';
-import { connectSocialAccountToPersona, disconnectSocialAccountFromPersona, directPost, schedulePost as socialAccountServiceSchedulePost, getSocialAccountForPersona } from './socialAccountService';
+import { getSocialAccountForPersona } from './socialAccountService';
 
-declare const FB: any; // Declare the FB object from the SDK
+export class SocialAccountNotConnectedError extends Error {
+    platform: string;
+    personaId: string;
 
-// --- API FUNCTIONS ---
+    constructor(message: string, platform: string, personaId: string) {
+        super(message);
+        this.name = "SocialAccountNotConnectedError";
+        this.platform = platform;
+        this.personaId = personaId;
+    }
+}
 
-/**
- * Handles connecting a social media account to a persona.
- * @param persona The persona to connect the account to.
- * @param platform The platform to connect (e.g., 'Facebook', 'Instagram').
- * @returns The updated persona with the new social account.
- */
-export const connectAccount = async (persona: Persona, platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest'): Promise<Persona> => {
-    return connectSocialAccountToPersona(persona, platform);
+// Placeholder for direct posting (will be expanded)
+export const directPost = async (
+    personaId: string,
+    platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest',
+    postContent: any, // This will be a more specific type later
+    imageUrl?: string,
+    videoUrl?: string
+): Promise<{ publishedUrl: string }> => {
+    const socialAccount = getSocialAccountForPersona(personaId, platform);
+    if (!socialAccount) {
+        throw new SocialAccountNotConnectedError(`No ${platform} account connected for this persona.`, platform, personaId);
+    }
+
+    switch (platform) {
+        case 'Facebook':
+            const fbPageId = socialAccount.credentials.pageId;
+            const fbAccessToken = socialAccount.credentials.pageAccessToken;
+            console.log("Facebook credentials for publishing:", { fbPageId, fbAccessToken: fbAccessToken ? '[REDACTED]' : '[MISSING]' });
+            if (!fbPageId || !fbAccessToken) {
+                throw new Error('Facebook credentials missing.');
+            }
+            // Assuming postContent has title, content, hashtags, cta for MediaPlanPost
+            console.log("Calling publishToFacebookPage with args:", postContent, imageUrl, fbPageId, fbAccessToken, videoUrl);
+            return publishToFacebookPage(postContent, imageUrl, fbPageId, fbAccessToken, videoUrl);
+        case 'Instagram':
+        case 'TikTok':
+        case 'YouTube':
+        case 'Pinterest':
+            // Simulate direct post for other platforms
+            console.log(`Simulating direct post to ${platform} for persona ${personaId}:`, postContent);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return { publishedUrl: `https://simulated.social/${platform}/${Date.now()}` };
+        default:
+            throw new Error(`Unsupported platform for direct posting: ${platform}`);
+    }
 };
 
-/**
- * Disconnects a social media account from a persona.
- * @param persona The persona from which to disconnect the account.
- * @param platform The platform to disconnect.
- * @returns The updated persona with the social account removed.
- */
-export const disconnectAccount = async (persona: Persona, platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest'): Promise<Persona> => {
-    return disconnectSocialAccountFromPersona(persona.id, platform);
-};
+// Placeholder for scheduled posting (will be expanded)
+export const schedulePost = async (
+    personaId: string,
+    platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest',
+    postContent: any, // This will be a more specific type later
+    scheduleDate: string,
+    imageUrl?: string,
+    videoUrl?: string
+): Promise<void> => {
+    const socialAccount = getSocialAccountForPersona(personaId, platform);
+    if (!socialAccount) {
+        throw new Error(`No ${platform} account connected for this persona.`);
+    }
 
-/**
- * Retrieves the social account for a given persona and platform.
- * @param personaId The ID of the persona.
- * @param platform The platform to retrieve the account for.
- * @returns The social account, or undefined if not found.
- */
-export const getSocialAccount = (personaId: string, platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest') => {
-    return getSocialAccountForPersona(personaId, platform);
-};
-
-/**
- * Publishes a post to a social media platform for a specific persona.
- * @param personaId The ID of the persona associated with the post.
- * @param post The post object to publish.
- * @param imageUrl The public URL of the image to be included in the post.
- * @param videoUrl The public URL of the video to be included in the post.
- * @returns A promise that resolves with the URL of the "published" post.
- */
-export const publishPost = async (personaId: string, post: MediaPlanPost, imageUrl?: string, videoUrl?: string): Promise<{ publishedUrl: string }> => {
-    return directPost(personaId, post.platform, post, imageUrl, videoUrl);
-};
-
-/**
- * Schedules a post for a future date for a specific persona.
- * @param personaId The ID of the persona associated with the post.
- * @param post The post object to schedule.
- * @param scheduleDate The ISO string of the date to schedule the post for.
- * @param imageUrl The public URL of the image to be included in the post.
- * @param videoUrl The public URL of the video to be included in the post.
- * @returns A promise that resolves when the post is "scheduled".
- */
-export const schedulePost = async (personaId: string, post: MediaPlanPost, scheduleDate: string, imageUrl?: string, videoUrl?: string): Promise<void> => {
-    return socialAccountServiceSchedulePost(personaId, post.platform, post, scheduleDate, imageUrl, videoUrl);
+    console.log(`Simulating scheduling post to ${platform} for persona ${personaId} on ${scheduleDate}:`, postContent);
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    // In a real scenario, this would interact with the platform's scheduling API or an internal scheduler.
+    console.log(`Post successfully scheduled for ${platform}.`);
 };

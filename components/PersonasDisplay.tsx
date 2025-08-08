@@ -384,17 +384,23 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
                     </div>
                     <div className="mt-4 pt-4 border-t border-gray-100">
                         <h4 className="text-md font-semibold text-gray-800 mb-2">{texts.socialAccounts}</h4>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 gap-2">
                             {socialPlatforms.map(platform => {
-                                const isConnected = editedPersona.socialAccounts?.some(acc => acc.platform === platform);
+                                const account = editedPersona.socialAccounts?.find(acc => acc.platform === platform);
                                 const isLoading = connectingPlatform === platform;
                                 return (
-                                    <div key={platform} className="flex items-center justify-between p-2 border border-gray-200 rounded-md">
-                                        <div className="flex items-center gap-2">
+                                    <div key={platform} className="flex items-center justify-between p-2 border border-gray-200 rounded-md bg-gray-50/50">
+                                        <div className="flex items-center gap-3">
                                             {getPlatformIcon(platform)}
-                                            <span className="text-sm font-medium text-gray-700">{texts[platform.toLowerCase() as keyof typeof texts]}</span>
+                                            {account ? (
+                                                <a href={account.profileUrl || '#'} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-blue-600 hover:underline">
+                                                    {account.displayName || `${platform} Connected`}
+                                                </a>
+                                            ) : (
+                                                <span className="text-sm font-medium text-gray-700">{texts[platform.toLowerCase() as keyof typeof texts]}</span>
+                                            )}
                                         </div>
-                                        {isConnected ? (
+                                        {account ? (
                                             <Button
                                                 onClick={() => handleDisconnectAccount(platform)}
                                                 variant="secondary"
@@ -444,7 +450,7 @@ interface PersonasDisplayProps {
   onUpdatePersona: (persona: Persona) => void; // New prop for updating persona after social account changes
 }
 
-const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language }) => {
+const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language, onUpdatePersona }) => {
     const [newPersona, setNewPersona] = useState<Persona | null>(null);
 
     const T = {
@@ -550,7 +556,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                                 generatedImages={generatedImages}
                                 isUploadingImage={isUploadingImage}
                                 language={language}
-                                onUpdatePersona={onSavePersona}
+                                onUpdatePersona={onUpdatePersona}
                             />
                         ))}
                     </div>

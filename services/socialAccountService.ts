@@ -1,4 +1,4 @@
-import { Persona, SocialAccount } from '../types';
+import { Persona, SocialAccount, FacebookPage } from '../types';
 import { connectAndGetPageToken, publishToFacebookPage } from './facebookService';
 
 // This is a placeholder for a more robust credential storage mechanism.
@@ -22,6 +22,8 @@ export const connectSocialAccountToPersona = async (
     platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest'
 ): Promise<Persona | { pages: FacebookPage[]; userAccessToken: string; }> => {
     let credentials: Record<string, string> = {};
+    let displayName: string = platform;
+    let profileUrl: string = '#';
 
     switch (platform) {
         case 'Facebook':
@@ -44,6 +46,8 @@ export const connectSocialAccountToPersona = async (
                     // Auto-select the only available page
                     const page = fbLoginResponse.pages[0];
                     credentials = { pageId: page.id, pageAccessToken: page.access_token };
+                    displayName = page.name;
+                    profileUrl = `https://www.facebook.com/${page.id}`;
                 }
             } catch (error) {
                 console.error('Facebook connection failed:', error);
@@ -57,6 +61,8 @@ export const connectSocialAccountToPersona = async (
             // Simulate connection for other platforms
             await new Promise(resolve => setTimeout(resolve, 1500));
             credentials = { accessToken: `simulated_token_${platform.toLowerCase()}_${Date.now()}` };
+            displayName = `My ${platform} Profile`;
+            profileUrl = `https://www.simulated.com/${platform.toLowerCase()}/myprofile`;
             console.log(`Simulated connection for ${platform}.`);
             break;
         default:
@@ -64,7 +70,7 @@ export const connectSocialAccountToPersona = async (
     }
 
     const existingAccounts = getPersonaSocialAccounts(persona.id);
-    const newAccount: SocialAccount = { platform, credentials };
+    const newAccount: SocialAccount = { platform, credentials, displayName, profileUrl };
 
     // Check if an account for this platform already exists for the persona
     const accountIndex = existingAccounts.findIndex(acc => acc.platform === platform);
@@ -83,11 +89,15 @@ export const connectSocialAccountToPersona = async (
 
 export const handleConnectFacebookPage = (
     personaId: string,
-    pageId: string,
-    pageAccessToken: string
+    page: FacebookPage
 ): Persona => {
     const existingAccounts = getPersonaSocialAccounts(personaId);
-    const newAccount: SocialAccount = { platform: 'Facebook', credentials: { pageId, pageAccessToken } };
+    const newAccount: SocialAccount = {
+        platform: 'Facebook',
+        credentials: { pageId: page.id, pageAccessToken: page.access_token },
+        displayName: page.name,
+        profileUrl: `https://www.facebook.com/${page.id}`
+    };
 
     const accountIndex = existingAccounts.findIndex(acc => acc.platform === 'Facebook');
     if (accountIndex > -1) {
@@ -96,7 +106,18 @@ export const handleConnectFacebookPage = (
         existingAccounts.push(newAccount);
     }
     setPersonaSocialAccounts(personaId, existingAccounts);
-    return { id: personaId, socialAccounts: existingAccounts } as Persona;
+    const persona = { id: personaId, socialAccounts: existingAccounts } as Persona;
+    // This is a bit of a hack, we need to get the full persona object from the state
+    // to avoid overwriting other properties. This should be improved with a proper state management solution.
+    const storedPersonasString = localStorage.getItem('personas');
+    if (storedPersonasString) {
+        const storedPersonas = JSON.parse(storedPersonasString);
+        const fullPersona = storedPersonas.find((p: Persona) => p.id === personaId);
+        if (fullPersona) {
+            return { ...fullPersona, socialAccounts: existingAccounts };
+        }
+    }
+    return persona;
 };
 
 export const getSocialAccountForPersona = (
@@ -120,7 +141,18 @@ export const disconnectSocialAccountFromPersona = (
 
     // This function would ideally return the updated persona from a central state management
     // For now, it returns a partial persona with updated social accounts
-    return { id: personaId, socialAccounts: updatedAccounts } as Persona;
+    const persona = { id: personaId, socialAccounts: updatedAccounts } as Persona;
+    // This is a bit of a hack, we need to get the full persona object from the state
+    // to avoid overwriting other properties. This should be improved with a proper state management solution.
+    const storedPersonasString = localStorage.getItem('personas');
+    if (storedPersonasString) {
+        const storedPersonas = JSON.parse(storedPersonasString);
+        const fullPersona = storedPersonas.find((p: Persona) => p.id === personaId);
+        if (fullPersona) {
+            return { ...fullPersona, socialAccounts: updatedAccounts };
+        }
+    }
+    return persona;
 };
 
 // Placeholder for direct posting (will be expanded)

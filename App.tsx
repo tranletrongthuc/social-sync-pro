@@ -9,6 +9,7 @@ import Loader from './components/Loader';
 import AirtableLoadModal from './components/AirtableLoadModal';
 import SettingsModal from './components/SettingsModal';
 import IntegrationModal from './components/IntegrationModal';
+import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
 import { generateBrandKit, generateMediaPlanGroup, generateImage, generateBrandProfile, generateImagePromptForPost, generateAffiliateComment, refinePostContentWithGemini, generateViralIdeas, generateContentPackage, generateFacebookTrends, generatePostsForFacebookTrend } from './services/geminiService';
 import { createDocxBlob, createMediaPlanXlsxBlob } from './services/exportService';
@@ -40,7 +41,7 @@ import {
     fetchAffiliateLinksForBrand,
 } from './services/airtableService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
-import { schedulePost as socialApiSchedulePost, publishPost as socialApiPublishPost } from './services/socialApiService';
+import { schedulePost as socialApiSchedulePost, directPost, SocialAccountNotConnectedError } from './services/socialApiService';
 import { getPersonaSocialAccounts } from './services/socialAccountService';
 import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, BrandFoundation, FacebookTrend, FacebookPostIdea } from './types';
 import { AirtableIcon, KhongMinhIcon } from './components/icons';
@@ -430,6 +431,10 @@ const App: React.FC = () => {
     const [isAirtableLoadModalOpen, setIsAirtableLoadModalOpen] = useState<boolean>(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
     const [isIntegrationModalOpen, setIsIntegrationModalOpen] = useState<boolean>(false);
+    const [isPersonaConnectModalOpen, setIsPersonaConnectModalOpen] = useState<boolean>(false);
+    const [personaToConnect, setPersonaToConnect] = useState<Persona | null>(null);
+    const [platformToConnect, setPlatformToConnect] = useState<string | null>(null);
+    const personaConnectSuccessCallback = useRef<(() => void) | null>(null);
     const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
     const [airtableBrandId, setAirtableBrandId] = useState<string | null>(null);
     const [integrationsVersion, setIntegrationsVersion] = useState(0);
@@ -457,7 +462,7 @@ const App: React.FC = () => {
     const [bulkActionStatus, setBulkActionStatus] = useState<{ title: string; steps: string[]; currentStep: number } | null>(null);
 
     // Credential Assurance Workflow
-    const onIntegrationModalClose = useRef<(() => void) | null>(null);
+    const onModalCloseRef = useRef<(() => void) | null>(null);
     
     const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
@@ -500,8 +505,12 @@ const App: React.FC = () => {
         }
 
         const promise = new Promise<void>((resolve) => {
-            onIntegrationModalClose.current = resolve;
-            setIsIntegrationModalOpen(true);
+            onModalCloseRef.current = resolve;
+            if (personaToConnect && platformToConnect) {
+                setIsPersonaConnectModalOpen(true);
+            } else {
+                setIsIntegrationModalOpen(true);
+            }
         });
 
         await promise;
@@ -1705,8 +1714,7 @@ const App: React.FC = () => {
 
     const handlePublishPost = useCallback(async (postInfo: PostInfo) => {
         const { planId, weekIndex, postIndex, post } = postInfo;
-        const updates = { status: 'published' as PostStatus };
-
+        
         setIsScheduling(true); // Use scheduling state for publishing too
         try {
             const currentPlan = generatedAssets?.mediaPlans.find(p => p.id === planId);
@@ -1718,14 +1726,21 @@ const App: React.FC = () => {
             const imageUrl = post.imageKey ? generatedImages[post.imageKey] : undefined;
             const videoUrl = post.videoKey ? generatedVideos[post.videoKey] : undefined;
 
-            console.log("Calling socialApiPublishPost with:", { personaId, post, imageUrl, videoUrl });
-            const { publishedUrl } = await socialApiPublishPost(personaId, post, imageUrl, videoUrl);
+            console.log("Calling directPost with:", { personaId, post, imageUrl, videoUrl });
+            const { publishedUrl } = await directPost(personaId, post.platform, post, imageUrl, videoUrl);
             
-            dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates: { ...updates, publishedUrl } } });
+            const updates = { 
+                status: 'published' as PostStatus, 
+                publishedUrl: publishedUrl,
+                publishedAt: new Date().toISOString(),
+                scheduledAt: undefined, // Clear scheduledAt when published
+            };
+
+            dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
             if (airtableBrandId) {
                 updateAutoSaveStatus('saving');
-                await updateMediaPlanPostInAirtable({ ...post, ...updates, publishedUrl }, airtableBrandId);
+                await updateMediaPlanPostInAirtable({ ...post, ...updates }, airtableBrandId);
                 updateAutoSaveStatus('saved');
             }
             setSuccessMessage(`Post published successfully! URL: ${publishedUrl}`);
@@ -1733,7 +1748,24 @@ const App: React.FC = () => {
             setViewingPost(null);
         } catch (err) {
             console.error("Failed to publish post:", err);
-            setError(err instanceof Error ? err.message : "Failed to publish post.");
+            if (err instanceof SocialAccountNotConnectedError) {
+                const persona = generatedAssets?.personas?.find(p => p.id === err.personaId);
+                if (persona) {
+                    setPersonaToConnect(persona);
+                    setPlatformToConnect(err.platform);
+                    setIsPersonaConnectModalOpen(true);
+                    personaConnectSuccessCallback.current = () => {
+                        // After successful connection, re-attempt publishing the post
+                        handlePublishPost(postInfo);
+                        setPersonaToConnect(null);
+                        setPlatformToConnect(null);
+                    };
+                } else {
+                    setError(`Failed to publish: ${err.message}`);
+                }
+            } else {
+                setError(err instanceof Error ? err.message : "Failed to publish post.");
+            }
         } finally {
             setIsScheduling(false);
         }
@@ -1905,11 +1937,27 @@ const App: React.FC = () => {
 
     const handleCloseIntegrationModal = () => {
         setIsIntegrationModalOpen(false);
-        if (onIntegrationModalClose.current) {
-            onIntegrationModalClose.current();
-            onIntegrationModalClose.current = null;
+        if (onModalCloseRef.current) {
+            onModalCloseRef.current();
+            onModalCloseRef.current = null;
         }
     };
+
+    const handleClosePersonaConnectModal = useCallback(() => {
+        setIsPersonaConnectModalOpen(false);
+        if (onModalCloseRef.current) {
+            onModalCloseRef.current();
+            onModalCloseRef.current = null;
+        }
+    }, []);
+
+    const handleSocialAccountConnected = useCallback((updatedPersona: Persona) => {
+        dispatchAssets({ type: 'SAVE_PERSONA', payload: updatedPersona });
+        if (personaConnectSuccessCallback.current) {
+            personaConnectSuccessCallback.current();
+            personaConnectSuccessCallback.current = null;
+        }
+    }, [dispatchAssets]);
     
     // --- NEW FACEBOOK STRATEGY HANDLERS ---
     const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
@@ -2154,10 +2202,19 @@ const App: React.FC = () => {
                             currentSettings={settings}
                         />
                         <IntegrationModal
-                            isOpen={isIntegrationModalOpen}
+                            isOpen={isIntegrationModalOpen && !isPersonaConnectModalOpen}
                             onClose={handleCloseIntegrationModal}
                             language={settings.language}
                             onCredentialsConfigured={() => setIntegrationsVersion(v => v + 1)}
+                        />
+
+                        <PersonaConnectModal
+                            isOpen={isPersonaConnectModalOpen}
+                            onClose={handleClosePersonaConnectModal}
+                            language={settings.language}
+                            personaToConnect={personaToConnect}
+                            platformToConnect={platformToConnect}
+                            onSocialAccountConnected={handleSocialAccountConnected}
                         />
                     </>
                 );

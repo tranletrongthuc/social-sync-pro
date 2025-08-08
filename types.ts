@@ -7,6 +7,8 @@ export interface PersonaPhoto {
 export interface SocialAccount {
     platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest';
     credentials: Record<string, string>; // Stores platform-specific credentials (e.g., accessToken, pageId)
+    displayName?: string; // e.g., "My Facebook Page"
+    profileUrl?: string; // e.g., "https://www.facebook.com/mypage"
 }
 
 export interface Persona {
@@ -70,6 +72,8 @@ export interface MediaPlanPost {
     sources?: { uri: string; title: string; }[];
     promotedProductIds?: string[];
     scheduledAt?: string;
+    publishedAt?: string; 
+    publishedUrl?: string;
     autoComment?: string;
     status?: PostStatus;
     // New fields for package context

@@ -1,18 +1,21 @@
-
-
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui';
 import { UploadIcon, PlugIcon, CheckCircleIcon, LinkIcon } from './icons';
+import { Persona } from '../types';
 
 interface IntegrationModalProps {
   isOpen: boolean;
   onClose: () => void;
   language: string;
   onCredentialsConfigured: () => void;
+  personaToConnect: Persona | null;
+  platformToConnect: string | null;
+  onSocialAccountConnected: (persona: Persona) => void;
 }
 
-const IntegrationModal: React.FC<IntegrationModalProps> = ({ isOpen, onClose, language, onCredentialsConfigured }) => {
+const IntegrationModal: React.FC<IntegrationModalProps> = ({ isOpen, onClose, language, onCredentialsConfigured, personaToConnect, platformToConnect, onSocialAccountConnected }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isConnectingSocialAccount, setIsConnectingSocialAccount] = useState(false);
 
   interface CredentialStatus {
     airtable: boolean;
@@ -96,6 +99,10 @@ const IntegrationModal: React.FC<IntegrationModalProps> = ({ isOpen, onClose, la
       configured: 'Đã cấu hình',
       not_configured: 'Chưa cấu hình',
       close: 'Đóng',
+      connect_social_account_title: 'Kết nối tài khoản xã hội',
+      connect_social_account_subtitle: (personaName: string, platformName: string) => `Vui lòng kết nối tài khoản ${platformName} cho KOL/KOC ${personaName} để tiếp tục.`,
+      connect_button: 'Kết nối',
+      connecting: 'Đang kết nối...',
     },
     'English': {
       title: 'Integration Management',
@@ -111,10 +118,30 @@ const IntegrationModal: React.FC<IntegrationModalProps> = ({ isOpen, onClose, la
       configured: 'Configured',
       not_configured: 'Not Configured',
       close: 'Close',
+      connect_social_account_title: 'Connect Social Account',
+      connect_social_account_subtitle: (personaName: string, platformName: string) => `Please connect the ${platformName} account for persona ${personaName} to proceed.`,
+      connect_button: 'Connect',
+      connecting: 'Connecting...',
     }
   };
   const texts = (T as any)[language] || T['English'];
 
+  const handleConnectSocialAccount = async () => {
+    if (!personaToConnect || !platformToConnect) return;
+
+    setIsConnectingSocialAccount(true);
+    try {
+      const { connectSocialAccountToPersona } = await import('../services/socialAccountService');
+      const updatedPersona = await connectSocialAccountToPersona(personaToConnect, platformToConnect as any);
+      onSocialAccountConnected(updatedPersona as Persona);
+      onClose();
+    } catch (error) {
+      console.error("Failed to connect social account:", error);
+      alert(`Failed to connect ${platformToConnect} account. Please try again.`);
+    } finally {
+      setIsConnectingSocialAccount(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
@@ -123,29 +150,55 @@ const IntegrationModal: React.FC<IntegrationModalProps> = ({ isOpen, onClose, la
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
               <PlugIcon className="h-8 w-8 text-brand-green" />
-              {texts.title}
+              {personaToConnect ? texts.connect_social_account_title : texts.title}
             </h2>
-            <p className="text-gray-500 mt-1 font-serif">{texts.subtitle}</p>
+            <p className="text-gray-500 mt-1 font-serif">
+              {personaToConnect ? texts.connect_social_account_subtitle(personaToConnect.nickName, platformToConnect!) : texts.subtitle}
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
         </div>
         
-        <div className="mt-6 space-y-8 flex-grow overflow-y-auto pr-2">
-            {/* External Services Section */}
-            <div>
-                 <h3 className="text-lg font-semibold text-gray-800 mb-3">{texts.external_services}</h3>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
-                        <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2">
-                            <UploadIcon />
-                            {texts.upload_creds}
-                        </Button>
-                        <input type="file" ref={fileInputRef} onChange={handleCredentialFileChange} className="hidden" accept=".json" />
-                        
-                        <div>
-                            <p className="text-sm text-gray-500 font-serif">{texts.creds_file_format}</p>
-                            <pre className="mt-2 bg-gray-200 p-3 rounded-md text-xs text-gray-700 overflow-x-auto">
-                                <code>
+        {personaToConnect && platformToConnect ? (
+          <div className="mt-6 flex-grow flex flex-col items-center justify-center text-center">
+            <p className="text-lg text-gray-700 mb-4">
+              {texts.connect_social_account_subtitle(personaToConnect.nickName, platformToConnect)}
+            </p>
+            <Button
+              onClick={handleConnectSocialAccount}
+              disabled={isConnectingSocialAccount}
+              className="mt-4 px-6 py-3 text-lg flex items-center gap-2"
+            >
+              {isConnectingSocialAccount ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+                  <span>{texts.connecting}</span>
+                </>
+              ) : (
+                <>
+                  <LinkIcon className="h-5 w-5" />
+                  <span>{texts.connect_button}</span>
+                </>
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-6 space-y-8 flex-grow overflow-y-auto pr-2">
+              {/* External Services Section */}
+              <div>
+                   <h3 className="text-lg font-semibold text-gray-800 mb-3">{texts.external_services}</h3>
+                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-4">
+                          <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="w-full flex items-center justify-center gap-2">
+                              <UploadIcon />
+                              {texts.upload_creds}
+                          </Button>
+                          <input type="file" ref={fileInputRef} onChange={handleCredentialFileChange} className="hidden" accept=".json" />
+                          
+                          <div>
+                              <p className="text-sm text-gray-500 font-serif">{texts.creds_file_format}</p>
+                              <pre className="mt-2 bg-gray-200 p-3 rounded-md text-xs text-gray-700 overflow-x-auto">
+                                  <code>
 {`{
   "AIRTABLE_PAT": "...",
   "AIRTABLE_BASE_ID": "...",
@@ -155,63 +208,64 @@ const IntegrationModal: React.FC<IntegrationModalProps> = ({ isOpen, onClose, la
   "CLOUDFLARE_ACCOUNT_ID": "...",
   "CLOUDFLARE_API_TOKEN": "..."
 }`}
-                                </code>
-                            </pre>
-                        </div>
-                    </div>
+                                  </code>
+                              </pre>
+                          </div>
+                      </div>
 
-                    <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                        <h4 className="text-md font-semibold text-gray-800 mb-3">{texts.creds_status}</h4>
-                        <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-700">{texts.airtable_status}</span>
-                                {credentialStatus.airtable ? (
-                                    <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
-                                        <CheckCircleIcon className="h-4 w-4" />
-                                        {texts.configured}
-                                    </span>
-                                ) : (
-                                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
-                                )}
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-700">{texts.cloudinary_status}</span>
-                                {credentialStatus.cloudinary ? (
-                                     <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
-                                        <CheckCircleIcon className="h-4 w-4" />
-                                        {texts.configured}
-                                    </span>
-                                ) : (
-                                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
-                                )}
-                            </div>
-                             <div className="flex justify-between items-center">
-                                <span className="text-gray-700">{texts.openrouter_status}</span>
-                                {credentialStatus.openrouter ? (
-                                     <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
-                                        <CheckCircleIcon className="h-4 w-4" />
-                                        {texts.configured}
-                                    </span>
-                                ) : (
-                                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
-                                )}
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-700">{texts.cloudflare_status}</span>
-                                {credentialStatus.cloudflare ? (
-                                     <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
-                                        <CheckCircleIcon className="h-4 w-4" />
-                                        {texts.configured}
-                                    </span>
-                                ) : (
-                                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
+                      <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <h4 className="text-md font-semibold text-gray-800 mb-3">{texts.creds_status}</h4>
+                          <div className="space-y-3">
+                              <div className="flex justify-between items-center">
+                                  <span className="text-gray-700">{texts.airtable_status}</span>
+                                  {credentialStatus.airtable ? (
+                                      <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                          <CheckCircleIcon className="h-4 w-4" />
+                                          {texts.configured}
+                                      </span>
+                                  ) : (
+                                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
+                                  )}
+                              </div>
+                              <div className="flex justify-between items-center">
+                                  <span className="text-gray-700">{texts.cloudinary_status}</span>
+                                  {credentialStatus.cloudinary ? (
+                                       <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                          <CheckCircleIcon className="h-4 w-4" />
+                                          {texts.configured}
+                                      </span>
+                                  ) : (
+                                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
+                                  )}
+                              </div>
+                               <div className="flex justify-between items-center">
+                                  <span className="text-gray-700">{texts.openrouter_status}</span>
+                                  {credentialStatus.openrouter ? (
+                                       <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                          <CheckCircleIcon className="h-4 w-4" />
+                                          {texts.configured}
+                                      </span>
+                                  ) : (
+                                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
+                                  )}
+                              </div>
+                              <div className="flex justify-between items-center">
+                                  <span className="text-gray-700">{texts.cloudflare_status}</span>
+                                  {credentialStatus.cloudflare ? (
+                                       <span className="flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full bg-green-100 text-green-800">
+                                          <CheckCircleIcon className="h-4 w-4" />
+                                          {texts.configured}
+                                      </span>
+                                  ) : (
+                                      <span className="text-xs font-medium px-2 py-1 rounded-full bg-red-100 text-red-800">{texts.not_configured}</span>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+        )}
 
         <div className="flex justify-end gap-4 pt-6 mt-auto border-t border-gray-200">
             <Button type="button" onClick={onClose} variant="tertiary">
