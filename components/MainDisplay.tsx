@@ -24,11 +24,11 @@ interface MainDisplayProps {
   isExportingBrandKit: boolean;
   onExportPlan: () => void;
   isExportingPlan: boolean;
-  onGeneratePlan: (prompt: string, useSearch: boolean, totalPosts: number, selectedPlatforms: string[], options: { tone: string; style: string; length: string; includeEmojis: boolean; }, serializedProductImages: { name: string, type: string, data: string }[], personaId: string | null) => void;
+  onGeneratePlan: (prompt: string, useSearch: boolean, totalPosts: number, selectedPlatforms: string[], options: { tone: string; style: string; length: string; includeEmojis: boolean; }, selectedProductId: string | null, personaId: string | null) => void;
   isGeneratingPlan: boolean;
   onRegenerateWeekImages: (planId: string, weekIndex: number) => void;
   productImages: File[]; // This prop is deprecated but kept for avoiding breaking changes in unrelated components.
-  onSetProductImages: (files: File[]) => void; // This prop is deprecated.
+  onSetProductImages: (files: File[]) => void;
   onSaveProject: () => void;
   isSavingProject: boolean;
   onStartOver: () => void;
@@ -37,62 +37,20 @@ interface MainDisplayProps {
   onOpenIntegrations: () => void;
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  // Media Plan Props
-  mediaPlanGroupsList: {id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[]; personaId?: string;}[];
+  // Media Plan props
+  mediaPlanGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[];
   onSelectPlan: (planId: string) => void;
   activePlanId: string | null;
-  onUpdatePost: (postInfo: PostInfo) => void;
-  onRefinePost: (text: string) => Promise<string>;
+  onUpdatePost: (postInfo: PostInfo, updates: Partial<MediaPlanPost>) => void;
+  onRefinePost: (postInfo: PostInfo, refinementPrompt: string) => void;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
-  // Affiliate Vault Props
+  // Affiliate Vault props
   onSaveAffiliateLink: (link: AffiliateLink) => void;
   onDeleteAffiliateLink: (linkId: string) => void;
   onImportAffiliateLinks: (links: AffiliateLink[]) => void;
-  onReloadLinks: () => void;
-  // KhongMinh Props
-  analyzingPostIds: Set<string>;
-  isAnyAnalysisRunning: boolean;
-  khongMinhSuggestions: Record<string, AffiliateLink[]>;
-  onAcceptSuggestion: (postInfo: PostInfo, productId: string) => void;
-  onRunKhongMinhForPost: (postInfo: PostInfo) => void;
-  // On-demand prompt generation
-  generatingPromptKeys: Set<string>;
-  onGeneratePrompt: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
-  // Comment Generation
-  onGenerateAffiliateComment: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
-  generatingCommentPostIds: Set<string>;
-  // Selection & Scheduling
-  selectedPostIds: Set<string>;
-  onTogglePostSelection: (postId: string) => void;
-  onSelectAllPosts: (posts: PostInfo[]) => void;
-  onClearSelection: () => void;
-  onOpenScheduleModal: (post: SchedulingPost | null) => void;
-  isScheduling: boolean;
-  onSchedulePost: (postInfo: SchedulingPost, scheduledAt: string) => void;
-  onPostDrop: (postInfo: SchedulingPost, newDate: Date) => void;
-  schedulingPost: SchedulingPost | null;
-  onOpenBulkScheduleModal: () => void;
-  isBulkScheduleModalOpen: boolean;
-  onCloseBulkScheduleModal: () => void;
-  onBulkSchedule: (startDate: string, intervalDays: number, intervalHours: number, intervalMinutes: number) => void;
-  // Bulk Actions
-  isPerformingBulkAction: boolean;
-  onBulkGenerateImages: (posts: PostInfo[]) => void;
-  onBulkSuggestPromotions: (posts: PostInfo[]) => void;
-  onBulkGenerateComments: (posts: PostInfo[]) => void;
-  // Personas
-  onSavePersona: (persona: Persona) => void;
-  onDeletePersona: (personaId: string) => void;
-  onSetPersonaImage: (personaId: string, photoId: string, dataUrl: string) => Promise<string | undefined>;
-  onUpdatePersona: (persona: Persona) => void;
-  // Strategy Hub
-  onSaveTrend: (trend: Trend) => void;
-  onDeleteTrend: (trendId: string) => void;
-  onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
-  onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
-  onGenerateTrendsFromSearch: (industry: string) => void;
-  isGeneratingTrendsFromSearch: boolean;
-  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
+  onReloadLinks: () => void; // New prop for reloading links
+  onGenerateIdeasFromProduct: (product: AffiliateLink) => void;
+  productTrendToSelect: string | null; // New prop to specify which product trend to select
 }
 
 const MainDisplay: React.FC<MainDisplayProps> = (props) => {
@@ -168,13 +126,16 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
         onGenerateTrendsFromSearch,
         isGeneratingTrendsFromSearch,
         onPublishPost,
+        productTrendToSelect, // Add the new prop
     } = props;
     
     const [isWizardOpen, setIsWizardOpen] = useState(false);
     const [initialWizardPrompt, setInitialWizardPrompt] = useState('');
+    const [initialWizardProductId, setInitialWizardProductId] = useState<string | undefined>(undefined);
 
-    const handleOpenWizard = (prompt = '') => {
+    const handleOpenWizard = (prompt = '', productId?: string) => {
         setInitialWizardPrompt(prompt);
+        setInitialWizardProductId(productId);
         // If we're opening from another tab, switch to the media plan tab
         if (activeTab !== 'mediaPlan') {
             setActiveTab('mediaPlan');
@@ -274,8 +235,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onCreatePlanFromIdea={handleOpenWizard}
                         onGenerateContentPackage={onGenerateContentPackage}
                         isGeneratingIdeas={isGeneratingPlan}
-                        onGenerateTrendsFromSearch={onGenerateTrendsFromSearch}
+                        onGenerateFacebookTrends={onGenerateTrendsFromSearch}
                         isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
+                        productTrendToSelect={productTrendToSelect} // Pass the product trend to select
                     />
                 )}
                 {activeTab === 'affiliateVault' && (
@@ -285,6 +247,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onDeleteLink={onDeleteAffiliateLink}
                         onImportLinks={onImportAffiliateLinks}
                         onReloadLinks={props.onReloadLinks}
+                        onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
                         language={settings.language}
                     />
                 )}
@@ -322,13 +285,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
 
             <MediaPlanWizardModal
                 isOpen={isWizardOpen}
-                onClose={() => { setIsWizardOpen(false); setInitialWizardPrompt(''); }}
+                onClose={() => { setIsWizardOpen(false); setInitialWizardPrompt(''); setInitialWizardProductId(undefined); }}
                 settings={settings}
                 onGenerate={onGeneratePlan}
                 isGenerating={isGeneratingPlan}
                 personas={assets.personas || []}
                 generatedImages={generatedImages}
                 initialPrompt={initialWizardPrompt}
+                affiliateLinks={assets.affiliateLinks || []}
+                initialProductId={initialWizardProductId}
             />
         </div>
     );

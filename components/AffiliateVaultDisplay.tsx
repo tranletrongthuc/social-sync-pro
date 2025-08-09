@@ -12,6 +12,7 @@ interface AffiliateVaultDisplayProps {
   onDeleteLink: (linkId: string) => void;
   onImportLinks: (links: AffiliateLink[]) => void;
   onReloadLinks: () => void; // New prop for reloading links
+  onGenerateIdeasFromProduct?: (product: AffiliateLink) => void; // New prop for generating ideas from a product
   language: string;
 }
 
@@ -27,7 +28,7 @@ const emptyLink: Omit<AffiliateLink, 'id'> = {
     promotionLink: '',
 };
 
-const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, language }) => {
+const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language }) => {
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
@@ -166,6 +167,13 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
     const handleSaveNew = (link: AffiliateLink) => {
         onSaveLink(link);
         setIsAddingNewLink(false);
+    };
+
+    const handleGenerateIdeas = (product: AffiliateLink) => {
+        // This function will be called when the "Generate Ideas" button is clicked
+        if (onGenerateIdeasFromProduct) {
+            onGenerateIdeasFromProduct(product);
+        }
     };
 
     const getCellValue = (cell: Cell): string => {
@@ -392,6 +400,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                             onDelete={() => handleDelete(link.id)}
                                             formatCurrency={formatCurrency}
                                             language={language}
+                                            onGenerateIdeas={handleGenerateIdeas}
                                         />
                                     ))}
                                 </div>

@@ -11,10 +11,10 @@ import SettingsModal from './components/SettingsModal';
 import IntegrationModal from './components/IntegrationModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
-import { generateBrandKit, generateMediaPlanGroup, generateImage, generateBrandProfile, generateImagePromptForPost, generateAffiliateComment, refinePostContentWithGemini, generateViralIdeas, generateContentPackage, generateFacebookTrends, generatePostsForFacebookTrend } from './services/geminiService';
+import { generateBrandKit, generateMediaPlanGroup, generateImage, generateBrandProfile, generateImagePromptForPost, generateAffiliateComment, refinePostContentWithGemini, generateViralIdeas, generateContentPackage, generateFacebookTrends, generatePostsForFacebookTrend, generateIdeasFromProduct } from './services/geminiService';
 import { createDocxBlob, createMediaPlanXlsxBlob } from './services/exportService';
 import { suggestProductsForPost } from './services/khongminhService';
-import { refinePostContentWithOpenRouter, generateBrandProfileWithOpenRouter, generateBrandKitWithOpenRouter, generateMediaPlanGroupWithOpenRouter, generateImagePromptForPostWithOpenRouter, generateImageWithOpenRouter, generateAffiliateCommentWithOpenRouter, generateViralIdeasWithOpenRouter, generateContentPackageWithOpenRouter } from './services/openrouterService';
+import { refinePostContentWithOpenRouter, generateBrandProfileWithOpenRouter, generateBrandKitWithOpenRouter, generateMediaPlanGroupWithOpenRouter, generateImagePromptForPostWithOpenRouter, generateImageWithOpenRouter, generateAffiliateCommentWithOpenRouter, generateViralIdeasWithOpenRouter, generateContentPackageWithOpenRouter, generateIdeasFromProductWithOpenRouter } from './services/openrouterService';
 import { generateImageWithCloudflare } from './services/cloudflareService';
 import {
     createOrUpdateBrandRecord,
@@ -394,10 +394,9 @@ const isVisionModel = (modelName: string): boolean => {
 };
 
 const TEXT_MODEL_FALLBACK_ORDER = [
-    'deepseek/deepseek-r1-0528:free',
-    'google/gemini-2.0-flash-exp:free',
-    'qwen/qwen3-235b-a22b:free',
-    'gemini-2.5-flash'
+    'google/gemini-2.0-flash-exp:free'
+    // Removing models that require API keys or have known issues
+    // 'gemini-2.0-flash'  // Requires API key that might not be loaded properly
 ];
 
 
@@ -423,7 +422,7 @@ const App: React.FC = () => {
         totalPostsPerMonth: 16,
         imagePromptSuffix: ', photorealistic, 8k, high quality',
         affiliateContentKit: AFFILIATE_CONTENT_KIT_DEFAULT,
-        textGenerationModel: 'gemini-2.5-flash',
+        textGenerationModel: 'google/gemini-2.0-flash-exp:free',
         imageGenerationModel: 'imagen-4.0-ultra-generate-preview-06-06',
     });
     
@@ -442,10 +441,34 @@ const App: React.FC = () => {
     // Auto-Save State
     const autoSaveTimeoutRef = useRef<number | null>(null);
 
+    // Ref to store the product trend ID to select in StrategyDisplay
+    const productTrendToSelectRef = useRef<string | null>(null);
+    
+    // State to track the product trend to select (for passing to MainDisplay)
+    const [productTrendToSelect, setProductTrendToSelect] = useState<string | null>(null);
+
+    // Log environment variables for debugging
+    useEffect(() => {
+        // console.log("Environment variables at startup:", import.meta.env);
+        const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        if (geminiApiKey) {
+            console.log("Gemini API Key is configured");
+        } else {
+            console.log("Gemini API Key is not configured or not loaded properly");
+        }
+    }, []);
+
     // Media Plan On-Demand Loading State
     const [mediaPlanGroupsList, setMediaPlanGroupsList] = useState<{id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]>([]);
     const [activePlanId, setActivePlanId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('brandKit');
+    
+    // Reset productTrendToSelect when we switch away from the strategy tab
+    useEffect(() => {
+        if (activeTab !== 'strategyHub' && productTrendToSelect) {
+            setProductTrendToSelect(null);
+        }
+    }, [activeTab, productTrendToSelect]);
     
     // KhongMinh State
     const [analyzingPostIds, setAnalyzingPostIds] = useState<Set<string>>(new Set());
@@ -540,18 +563,38 @@ const App: React.FC = () => {
         generationTask: (model: string) => Promise<T>,
         preferredModel: string
     ): Promise<T> => {
+        console.log("Preferred model:", preferredModel);
+        // Log all environment variables for debugging
+        // console.log("Environment variables:", import.meta.env);
+        
+        // Create a model list that prioritizes the user's configured model
         const modelsToTry = [
-            preferredModel,
+            preferredModel, // Always try the user's preferred model first
             ...TEXT_MODEL_FALLBACK_ORDER.filter(m => m !== preferredModel)
         ];
+        console.log("Models to try:", modelsToTry);
 
         let lastError: Error | null = null;
+        let rateLimitErrorCount = 0;
+        const RATE_LIMIT_THRESHOLD = 2; // Number of rate limit errors before giving up
 
         for (const model of modelsToTry) {
             try {
                 console.log(`Attempting text generation with model: ${model}`);
+                
+                // Skip Gemini models if API key is not configured
+                if (model.startsWith('gemini-') && !model.includes('free')) {
+                    const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+                    console.log(`Checking Gemini API key for model ${model}:`, geminiApiKey ? "Key exists" : "Key is missing");
+                    if (!geminiApiKey) {
+                        console.log(`Skipping ${model} because Gemini API key is not configured`);
+                        throw new Error("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
+                    }
+                }
+                
                 const result = await generationTask(model);
                 
+                // Only update the settings if we had to fall back to a different model
                 if (model !== preferredModel) {
                     setSettings(prev => ({ ...prev, textGenerationModel: model }));
                     setSuccessMessage(`Switched to model ${model} after request failed.`);
@@ -559,9 +602,27 @@ const App: React.FC = () => {
                 return result;
             } catch (e: any) {
                 lastError = e;
+                
+                // Count rate limit errors
+                if (e.message && (e.message.includes('rate limit') || e.message.includes('Rate limit'))) {
+                    rateLimitErrorCount++;
+                }
+                
+                // If we've hit too many rate limits, give up
+                if (rateLimitErrorCount >= RATE_LIMIT_THRESHOLD) {
+                    console.warn(`Too many rate limit errors. Stopping fallback attempts.`);
+                    throw new Error("Too many rate limit errors. Please try again later or configure a different model in Settings.");
+                }
+                
                 console.warn(`Model ${model} failed: ${e.message}. Trying next model...`);
             }
         }
+        
+        // If we get here, all models failed
+        if (lastError && lastError.message.includes('rate limit')) {
+            throw new Error("All models are currently rate limited. Please try again later or configure a different model in Settings.");
+        }
+        
         throw lastError || new Error("All text generation models failed.");
     }, [setSettings, setSuccessMessage]);
 
@@ -729,7 +790,7 @@ const App: React.FC = () => {
         totalPosts: number, 
         selectedPlatforms: string[],
         options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-        serializedProductImages: { name: string, type: string, data: string }[],
+        selectedProductId: string | null, // Changed this line
         personaId: string | null
     ) => {
         if (!generatedAssets?.brandFoundation) {
@@ -764,6 +825,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             const persona = personaId ? generatedAssets.personas?.find(p => p.id === personaId) ?? null : null;
+            const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null; // Added this line
             
             const generationTask = (model: string) => {
                 const commonArgs = [
@@ -779,17 +841,17 @@ const App: React.FC = () => {
 
                 if (model.startsWith('gemini-')) {
                     return generateMediaPlanGroup(
-                        commonArgs[0], commonArgs[1], commonArgs[2], commonArgs[3], useSearch, commonArgs[4], commonArgs[5], commonArgs[6], commonArgs[7], persona
+                        commonArgs[0], commonArgs[1], commonArgs[2], commonArgs[3], useSearch, commonArgs[4], commonArgs[5], commonArgs[6], commonArgs[7], persona, selectedProduct // Changed this line
                     );
                 } else {
                      return generateMediaPlanGroupWithOpenRouter(
-                        ...commonArgs, persona
+                        ...commonArgs, persona, selectedProduct // Changed this line
                     );
                 }
             };
             const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
-            newGroup.productImages = serializedProductImages;
+            // newGroup.productImages = serializedProductImages;
 
             dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: newGroup });
             setMediaPlanGroupsList(prev => [...prev, { id: newGroup.id, name: newGroup.name, prompt: newGroup.prompt, productImages: newGroup.productImages }]);
@@ -1267,6 +1329,134 @@ const App: React.FC = () => {
             setLoaderContent(null);
         }
     }, [generatedAssets, settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedImages]);
+
+    // New function for generating ideas from a product
+    const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
+        setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
+        console.log("User configured model:", settings.textGenerationModel);
+        
+        // Validate that we're using a model that doesn't require an API key
+        if (settings.textGenerationModel.startsWith('gemini-') && !settings.textGenerationModel.includes('free')) {
+            const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+            if (!geminiApiKey) {
+                setError("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
+                setLoaderContent(null);
+                return;
+            }
+        }
+        
+        try {
+            const generationTask = (model: string) => {
+                console.log("Attempting to generate ideas with model:", model);
+                console.log("Model starts with 'gemini-':", model.startsWith('gemini-'));
+                // Models that start with 'gemini-' but don't contain 'free' should use the Gemini service
+                // Models that contain 'free' or don't start with 'gemini-' should use OpenRouter
+                if (model.startsWith('gemini-') && !model.includes('free')) {
+                    console.log("Using Gemini service for model:", model);
+                    return generateIdeasFromProduct(product, settings.language, model);
+                } else {
+                    console.log("Using OpenRouter service for model:", model);
+                    return generateIdeasFromProductWithOpenRouter(product, settings.language, model);
+                }
+            };
+            const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
+            
+            // Validate that we received proper data
+            if (!Array.isArray(newIdeaData) || newIdeaData.length === 0) {
+                throw new Error("Failed to generate ideas: No valid ideas returned from AI service.");
+            }
+            
+            // Validate each idea has required fields
+            for (let i = 0; i < newIdeaData.length; i++) {
+                const idea = newIdeaData[i];
+                if (!idea.title || !idea.description || !idea.targetAudience) {
+                    console.error("Invalid idea structure:", idea);
+                    throw new Error(`Idea ${i + 1} is missing required fields. Please try again.`);
+                }
+            }
+            
+            const newIdeas: Idea[] = newIdeaData.map(idea => ({
+                ...idea,
+                id: crypto.randomUUID(),
+                trendId: 'product-' + product.id, // Using a special trendId for product-based ideas
+            }));
+            
+            dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
+            
+            // Create a special "trend" for this product if it doesn't exist
+            const productTrendId = 'product-' + product.id;
+            const existingTrends = generatedAssets?.trends || [];
+            const productTrendExists = existingTrends.some(trend => trend.id === productTrendId);
+            
+            let productTrend: Trend;
+            if (!productTrendExists) {
+                productTrend = {
+                    id: productTrendId,
+                    brandId: airtableBrandId || '',
+                    industry: 'Product Ideas',
+                    topic: `Ideas for: ${product.productName}`,
+                    keywords: [product.productName, product.providerName],
+                    links: [{ title: 'Product Link', url: product.productLink }],
+                    notes: `Generated ideas for affiliate product: ${product.productName}`,
+                    analysis: `Affiliate product ideas for ${product.productName}`,
+                    createdAt: new Date().toISOString(),
+                };
+                dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
+                
+                // Also save to Airtable if connected
+                if (airtableBrandId) {
+                    updateAutoSaveStatus('saving');
+                    try {
+                        await saveTrend(productTrend, airtableBrandId);
+                        updateAutoSaveStatus('saved');
+                    } catch (e) {
+                        console.error("Failed to save trend to Airtable:", e);
+                        setError(e instanceof Error ? e.message : "Failed to save trend to Airtable.");
+                        updateAutoSaveStatus('error');
+                    }
+                }
+            } else {
+                // Get the existing trend
+                productTrend = existingTrends.find(trend => trend.id === productTrendId)!;
+            }
+            
+            if (airtableBrandId) {
+                updateAutoSaveStatus('saving');
+                try {
+                    await saveIdeas(newIdeas);
+                    updateAutoSaveStatus('saved');
+                } catch (e) {
+                    console.error("Failed to save ideas to Airtable:", e);
+                    setError(e instanceof Error ? e.message : "Failed to save ideas to Airtable.");
+                    updateAutoSaveStatus('error');
+                }
+            }
+            
+            // Show success message
+            setSuccessMessage(`Generated ${newIdeas.length} ideas from ${product.productName}`);
+            setTimeout(() => setSuccessMessage(null), 3000);
+            
+            // Switch to the Strategy Hub tab and ensure the new product trend is selected
+            setActiveTab('strategy');
+            setProductTrendToSelect(productTrendId);
+        } catch (err) {
+            console.error("Failed to generate ideas from product:", err);
+            let errorMessage = "Failed to generate ideas from product. Please check your API keys and try again.";
+            if (err instanceof Error) {
+                if (err.message.includes('rate limit')) {
+                    errorMessage = "All models are currently rate limited. Please try again later or configure a different model in Settings.";
+                } else if (err.message.includes('API Key')) {
+                    errorMessage = "Please configure your API keys in the Integrations panel.";
+                } else {
+                    errorMessage = err.message;
+                }
+            }
+            setError(errorMessage);
+            setLoaderContent(null);
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedAssets, setActiveTab]);
 
     const handleSaveProjectToFile = useCallback(() => {
         if (!generatedAssets) {
@@ -2166,6 +2356,8 @@ const App: React.FC = () => {
                             onDeleteTrend={handleDeleteTrend}
                             onGenerateIdeas={handleGenerateIdeas}
                             onGenerateContentPackage={handleGenerateContentPackage}
+                            onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
+                            productTrendToSelect={productTrendToSelect}
                             // Video
                             generatedVideos={generatedVideos}
                             onSetVideo={handleSetVideo}

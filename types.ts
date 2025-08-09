@@ -179,6 +179,7 @@ export interface Idea {
   targetAudience?: string;
   imagePrompt?: string;
   cta?: string;
+  productId?: string; // New field to link idea to a product
 }
 
 export interface GeneratedAssets {

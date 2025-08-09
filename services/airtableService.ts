@@ -363,24 +363,24 @@ const mapPostToAirtableFields = (post: MediaPlanPost, brandRecordId: string, pla
     post_id: post.id,
     title: post.title,
     platform: post.platform,
-    contentType: post.contentType,
+    content_type: post.contentType,
     content: post.content,
     description: post.description,
     hashtags: (post.hashtags || []).join(', '),
     cta: post.cta,
-    imagePrompt: post.imagePrompt,
-    imageKey: post.imageKey,
-    imageUrl: post.imageKey ? publicImageUrls[post.imageKey] : undefined,
-    videoKey: post.videoKey,
-    videoUrl: post.videoKey ? publicVideoUrls[post.videoKey] : undefined,
-    mediaOrder: post.mediaOrder?.join(','),
+    image_prompt: post.imagePrompt,
+    image_key: post.imageKey,
+    image_url: post.imageKey ? publicImageUrls[post.imageKey] : undefined,
+    video_key: post.videoKey,
+    video_url: post.videoKey ? publicVideoUrls[post.videoKey] : undefined,
+    media_order: post.mediaOrder?.join(','),
     sources: post.sources?.map(s => `${s.title}: ${s.uri}`).join('\n'),
-    scheduledAt: post.scheduledAt,
-    publishedAt: post.publishedAt,
-    publishedUrl: post.publishedUrl,
-    autoComment: post.autoComment,
+    scheduled_at: post.scheduledAt,
+    published_at: post.publishedAt,
+    published_url: post.publishedUrl,
+    auto_comment: post.autoComment,
     status: post.status ? post.status.charAt(0).toUpperCase() + post.status.slice(1) : 'Draft',
-    isPillar: !!post.isPillar,
+    is_pillar: !!post.isPillar,
     // Linked Records
     brand: [brandRecordId],
     media_plan: planRecordId ? [planRecordId] : undefined,
@@ -1271,6 +1271,16 @@ export const deleteTrendFromAirtable = async (trendId: string, brandId: string) 
 
 export const saveIdeas = async (ideas: Idea[]) => {
     if (ideas.length === 0) return;
+    
+    // Validate that all ideas have the required fields
+    for (let i = 0; i < ideas.length; i++) {
+        const idea = ideas[i];
+        if (!idea.id || !idea.title || !idea.description || !idea.targetAudience) {
+            console.error("Invalid idea structure at index", i, ":", idea);
+            throw new Error(`Idea at index ${i} is missing required fields for Airtable save. ID: ${!!idea.id}, Title: ${!!idea.title}, Description: ${!!idea.description}, TargetAudience: ${!!idea.targetAudience}`);
+        }
+    }
+    
     const trendRecord = await findRecordByField(TRENDS_TABLE_NAME, 'trend_id', ideas[0].trendId);
     if (!trendRecord) {
         console.warn(`Could not find parent trend with ID ${ideas[0]?.trendId}. Ideas will be saved without being linked.`);
@@ -1287,18 +1297,26 @@ export const saveIdeas = async (ideas: Idea[]) => {
         }
     }));
     
-    const createdIdeaRecords = await sendToAirtable(recordsToCreate, IDEAS_TABLE_NAME);
+    try {
+        const createdIdeaRecords = await sendToAirtable(recordsToCreate, IDEAS_TABLE_NAME);
+        console.log(`Successfully saved ${createdIdeaRecords.length} ideas to Airtable`);
 
-    // Link new ideas back to the parent trend
-    if (trendRecord && createdIdeaRecords.length > 0) {
-        const newIdeaRecordIds = createdIdeaRecords.map(r => r.id);
-        const existingIdeaRecordIds = trendRecord.fields.ideas || [];
-        await patchAirtableRecords(TRENDS_TABLE_NAME, [{
-            id: trendRecord.id,
-            fields: {
-                ideas: [...existingIdeaRecordIds, ...newIdeaRecordIds]
-            }
-        }]);
+        // Link new ideas back to the parent trend
+        if (trendRecord && createdIdeaRecords.length > 0) {
+            const newIdeaRecordIds = createdIdeaRecords.map(r => r.id);
+            const existingIdeaRecordIds = trendRecord.fields.ideas || [];
+            await patchAirtableRecords(TRENDS_TABLE_NAME, [{
+                id: trendRecord.id,
+                fields: {
+                    ideas: [...existingIdeaRecordIds, ...newIdeaRecordIds]
+                }
+            }]);
+        }
+        
+        return createdIdeaRecords;
+    } catch (error) {
+        console.error("Failed to save ideas to Airtable:", error);
+        throw new Error(`Failed to save ideas to Airtable: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 };
 

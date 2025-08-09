@@ -4,7 +4,7 @@ describe('generateTrends', () => {
     it('should return an array of trends with keywords property', async () => {
         const industry = 'tech';
         const language = 'English';
-        const model = 'gemini-pro'; // Use a valid model for testing
+        const model = 'gemini-2.5-pro'; // Use a valid model for testing
 
         const trends = await generateTrends(industry, language, model);
 

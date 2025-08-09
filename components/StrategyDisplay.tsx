@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Trend, Idea, Settings, Persona } from '../types';
 import { Button, Input, TextArea, Switch } from './ui';
-import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, SearchIcon } from './icons';
+import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, SearchIcon, TagIcon } from './icons';
 import ContentPackageWizardModal from './ContentPackageWizardModal';
 
 // --- SUB-COMPONENTS ---
@@ -62,15 +62,16 @@ interface StrategyDisplayProps {
     onSaveTrend: (trend: Trend) => void;
     onDeleteTrend: (trendId: string) => void;
     onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
-    onCreatePlanFromIdea: (prompt: string) => void;
+    onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
     onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
     isGeneratingIdeas: boolean;
     onGenerateFacebookTrends: (industry: string) => void;
     isGeneratingTrendsFromSearch: boolean;
+    productTrendToSelect?: string | null; // New prop to specify which product trend to select
 }
 
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
-    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch } = props;
+    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect } = props;
     
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
@@ -81,10 +82,17 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
     const [industryForSearch, setIndustryForSearch] = useState('');
 
     useEffect(() => {
-        if (!selectedTrend && trends.length > 0) {
+        // If a product trend to select was specified, select it
+        if (productTrendToSelect && trends.length > 0) {
+            const trendToSelect = trends.find(t => t.id === productTrendToSelect);
+            if (trendToSelect) {
+                setSelectedTrend(trendToSelect);
+            }
+        } else if (!selectedTrend && trends.length > 0) {
+            // Default behavior: select the first trend if none is selected
             setSelectedTrend(trends[0]);
         }
-    }, [trends, selectedTrend]);
+    }, [trends, selectedTrend, productTrendToSelect]);
     
     const T = {
         'Việt Nam': {
@@ -194,12 +202,26 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                         </div>
                     </div>
                     <div className="flex-grow overflow-y-auto space-y-2 -mr-2 pr-2">
-                        {trends.map(trend => (
-                            <button key={trend.id} onClick={() => { setSelectedTrend(trend); setEditingTrend(null); }} className={`w-full text-left p-3 rounded-md transition-colors ${selectedTrend?.id === trend.id && !editingTrend ? 'bg-green-100' : 'hover:bg-gray-100'}`}>
-                                <p className="font-semibold text-gray-900 truncate">{trend.topic}</p>
-                                <p className="text-xs text-gray-500 truncate">{trend.keywords ? trend.keywords.join(', ') : ''}</p>
-                            </button>
-                        ))}
+                        {trends.map(trend => {
+                            const isProductTrend = trend.id.startsWith('product-');
+                            return (
+                                <button 
+                                    key={trend.id} 
+                                    onClick={() => { setSelectedTrend(trend); setEditingTrend(null); }} 
+                                    className={`w-full text-left p-3 rounded-md transition-colors ${selectedTrend?.id === trend.id && !editingTrend ? 'bg-green-100' : 'hover:bg-gray-100'}`}
+                                >
+                                    <div className="flex items-start gap-2">
+                                        {isProductTrend && (
+                                            <TagIcon className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                                        )}
+                                        <div className="flex-grow min-w-0">
+                                            <p className="font-semibold text-gray-900 truncate">{trend.topic}</p>
+                                            <p className="text-xs text-gray-500 truncate">{trend.keywords ? trend.keywords.join(', ') : ''}</p>
+                                        </div>
+                                    </div>
+                                </button>
+                            );
+                        })}
                     </div>
                 </aside>
 
@@ -210,24 +232,42 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                         <div>
                             <div className="flex justify-between items-start mb-4">
                                 <div>
-                                    <h3 className="text-xl font-bold text-gray-800">{texts.ideasFor}</h3>
+                                    <h3 className="text-xl font-bold text-gray-800">
+                                        {selectedTrend.id.startsWith('product-') ? 'Product Ideas for:' : texts.ideasFor}
+                                    </h3>
                                     <p className="text-2xl font-bold text-brand-green">{selectedTrend.topic}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <Button variant="tertiary" onClick={() => setEditingTrend(selectedTrend)}><PencilIcon className="h-4 w-4"/></Button>
-                                    <Button variant="tertiary" onClick={() => handleDeleteTrend(selectedTrend.id)} className="text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/></Button>
-                                    <Button onClick={() => onGenerateIdeas(selectedTrend, useSearchForIdeas)} disabled={isGeneratingIdeas} className="flex items-center justify-center gap-1.5 w-40">
-                                        {isGeneratingIdeas ? '...' : <><SparklesIcon className="h-4 w-4"/> {texts.generateIdeas}</>}
+                                    {!selectedTrend.id.startsWith('product-') && (
+                                        <>
+                                            <Button variant="tertiary" onClick={() => setEditingTrend(selectedTrend)}><PencilIcon className="h-4 w-4"/></Button>
+                                            <Button variant="tertiary" onClick={() => handleDeleteTrend(selectedTrend.id)} className="text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/></Button>
+                                        </>
+                                    )}
+                                    <Button 
+                                        onClick={() => onGenerateIdeas(selectedTrend, useSearchForIdeas)} 
+                                        disabled={isGeneratingIdeas || selectedTrend.id.startsWith('product-')} 
+                                        className="flex items-center justify-center gap-1.5 w-40"
+                                        title={selectedTrend.id.startsWith('product-') ? "Cannot generate new ideas for product-based trends" : ""}
+                                    >
+                                        {isGeneratingIdeas ? '...' : (
+                                            <>
+                                                <SparklesIcon className="h-4 w-4"/> 
+                                                {selectedTrend.id.startsWith('product-') ? "Product Ideas" : texts.generateIdeas}
+                                            </>
+                                        )}
                                     </Button>
                                 </div>
                             </div>
-                            {selectedTrend.analysis && (
+                            {!selectedTrend.id.startsWith('product-') && selectedTrend.analysis && (
                                 <p className="text-sm text-gray-600 italic border-l-4 border-gray-200 pl-4 my-4">{selectedTrend.analysis}</p>
                             )}
-                            <div className="p-4 bg-gray-100 rounded-lg border mb-4">
-                                <Switch id="idea-hub-use-search" label={texts.useSearch} checked={useSearchForIdeas} onChange={setUseSearchForIdeas} disabled={!isGeminiModel}/>
-                                <p className="text-sm text-gray-500 mt-1">{texts.useSearchDesc} <span className="font-bold text-gray-600">{texts.geminiOnly}</span></p>
-                            </div>
+                            {!selectedTrend.id.startsWith('product-') && (
+                                <div className="p-4 bg-gray-100 rounded-lg border mb-4">
+                                    <Switch id="idea-hub-use-search" label={texts.useSearch} checked={useSearchForIdeas} onChange={setUseSearchForIdeas} disabled={!isGeminiModel}/>
+                                    <p className="text-sm text-gray-500 mt-1">{texts.useSearchDesc} <span className="font-bold text-gray-600">{texts.geminiOnly}</span></p>
+                                </div>
+                            )}
                             <div className="space-y-4">
                                 {ideasForSelectedTrend.map(idea => (
                                     <div key={idea.id} className="bg-white p-4 rounded-lg border border-gray-200">

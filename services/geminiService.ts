@@ -37,9 +37,8 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     try {
         return JSON.parse(sanitized);
     } catch (e) {
-        console.error("Failed to parse sanitized AI JSON response:", sanitized);
-        console.error("Original text was:", jsonText);
-        throw e; // rethrow the original error after logging
+        console.error("Failed to parse AI JSON response for product-based ideas:", jsonText);
+        throw new Error("The AI returned a malformed or unexpected response. This may be a temporary issue with the model. Please try again later or configure a different model in Settings.");
     }
 };
 
@@ -817,4 +816,122 @@ export const generatePostsForFacebookTrend = async (
     const jsonText = response.text;
     if (!jsonText) throw new Error("Received empty response from AI for Facebook post ideas.");
     return sanitizeAndParseJson(jsonText);
+};
+
+// --- NEW FUNCTION FOR GENERATING CONTENT IDEAS FROM A PRODUCT ---
+
+export const generateIdeasFromProduct = async (
+    product: AffiliateLink,
+    language: string,
+    model: string
+): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
+    // Check if API key is set before creating the GoogleGenAI instance
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    console.log("Gemini API Key from env:", apiKey ? "Key exists (length: " + apiKey.length + ")" : "Key is undefined/null");
+    
+    if (!apiKey) {
+        throw new Error("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
+    }
+    
+    // Additional validation to ensure the API key is a valid string
+    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+        throw new Error("Gemini API key is invalid or empty. Please check your configuration in the Integrations panel.");
+    }
+    
+    const ai = new GoogleGenAI({ apiKey });
+    
+    // Build a detailed product description
+    const productDetails = [
+        `Product Name: ${product.productName}`,
+        `Product ID: ${product.productId}`,
+        `Price: ${product.price}`,
+        `Provider: ${product.providerName}`,
+        `Commission Rate: ${product.commissionRate}%`,
+        `Commission Value: ${product.commissionValue}`,
+        product.product_description ? `Description: ${product.product_description}` : '',
+        product.features && product.features.length > 0 ? `Features: ${product.features.join(', ')}` : '',
+        product.use_cases && product.use_cases.length > 0 ? `Use Cases: ${product.use_cases.join(', ')}` : '',
+        product.customer_reviews ? `Customer Reviews: ${product.customer_reviews}` : '',
+        product.product_rating ? `Product Rating: ${product.product_rating}/5` : ''
+    ].filter(Boolean).join('\n');
+    
+    const prompt = `You are a creative marketing strategist. Based on the following affiliate product details, generate 5 unique and engaging content ideas in ${language} that can be used to promote this product effectively.\n\nFor each idea, provide:\n1.  A catchy 'title' that would grab attention.\n2.  A detailed 'description' explaining the concept and how it would showcase the product.\n3.  A specific 'targetAudience' that this idea would appeal to.\n\nProduct Details:\n${productDetails}\n\nMake sure each idea is distinct and highlights different aspects of the product. Consider various content formats like tutorials, reviews, comparisons, lifestyle content, unboxings, etc.\n`;
+
+    const ideasSchema = {
+        type: Type.ARRAY,
+        items: {
+            type: Type.OBJECT,
+            properties: {
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                targetAudience: { type: Type.STRING },
+            },
+            required: ['title', 'description', 'targetAudience'],
+        },
+    };
+
+    const response = await geminiFetchWithRetry(() =>
+        ai.models.generateContent({
+            model: model,
+            contents: prompt,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: ideasSchema,
+            }
+        })
+    );
+    const jsonText = response.text;
+    if (!jsonText) throw new Error("Received empty response from AI for product-based ideas.");
+    
+    // Log the raw response for debugging
+    console.log("Raw AI response for product ideas:", jsonText);
+    
+    // Fix malformed JSON responses that are missing array brackets
+    let fixedJsonText = jsonText.trim();
+    if (fixedJsonText.startsWith('{') && fixedJsonText.includes('title') && fixedJsonText.includes('description') && fixedJsonText.includes('targetAudience')) {
+        // This looks like individual idea objects separated by commas
+        // Wrap them in an array
+        fixedJsonText = '[' + fixedJsonText + ']';
+    } else if (fixedJsonText.startsWith('"') && fixedJsonText.endsWith('"')) {
+        // This might be a JSON string that needs to be parsed twice
+        try {
+            fixedJsonText = JSON.parse(fixedJsonText);
+        } catch (e) {
+            // If parsing fails, continue with original text
+        }
+    }
+    
+    let ideas = sanitizeAndParseJson(fixedJsonText);
+    
+    // Handle case where ideas might be wrapped in an object with an "ideas" property
+    if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.ideas) {
+        ideas = ideas.ideas;
+    }
+    
+    // Special handling for malformed responses that are missing the opening bracket
+    if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.title) {
+        // This looks like a single idea object instead of an array
+        ideas = [ideas];
+    }
+    
+    // Ensure we have an array of ideas
+    if (!Array.isArray(ideas)) {
+        console.error("Invalid ideas format received:", ideas);
+        throw new Error("Expected an array of ideas, but received: " + JSON.stringify(ideas));
+    }
+    
+    // Validate each idea has the required fields
+    for (let i = 0; i < ideas.length; i++) {
+        const idea = ideas[i];
+        if (!idea.title || !idea.description || !idea.targetAudience) {
+            console.error("Invalid idea structure at index", i, ":", idea);
+            throw new Error(`Idea at index ${i} is missing required fields. Title: ${!!idea.title}, Description: ${!!idea.description}, TargetAudience: ${!!idea.targetAudience}`);
+        }
+    }
+    
+    // Add the productId to each idea
+    return ideas.map((idea: any) => ({
+        ...idea,
+        productId: product.id
+    }));
 };

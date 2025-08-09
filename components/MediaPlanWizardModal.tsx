@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Settings, Persona } from '../types';
+import type { Settings, Persona, AffiliateLink } from '../types';
 import { Button, TextArea, Switch, Input, Select } from './ui';
-import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, CheckCircleIcon, SparklesIcon, UploadIcon, UsersIcon } from './icons';
+import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, CheckCircleIcon, SparklesIcon, UsersIcon } from './icons';
+import ProductSelector from './ProductSelector'; // Import the new component
 
 interface GenerationOptions {
     tone: string;
@@ -14,161 +15,14 @@ interface MediaPlanWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: Settings;
-  onGenerate: (prompt: string, useSearch: boolean, totalPosts: number, selectedPlatforms: string[], options: GenerationOptions, serializedProductImages: { name: string, type: string, data: string }[], personaId: string | null) => void;
+  onGenerate: (prompt: string, useSearch: boolean, totalPosts: number, selectedPlatforms: string[], options: GenerationOptions, selectedProductId: string | null, personaId: string | null) => void; // Updated onGenerate signature
   isGenerating: boolean;
   personas: Persona[];
   generatedImages: Record<string, string>;
   initialPrompt?: string;
+  affiliateLinks: AffiliateLink[]; // New prop for affiliate links
+  initialProductId?: string; // New prop to pre-select a product
 }
-
-const fileToBase64 = (file: File): Promise<{ name: string, type: string, data: string }> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve({
-            name: file.name,
-            type: file.type,
-            data: reader.result as string
-        });
-        reader.onerror = error => reject(error);
-    });
-};
-
-const ProductImageUploader: React.FC<{
-    language: string;
-    productImages: File[];
-    onSetProductImages: (files: File[]) => void;
-}> = ({ language, productImages, onSetProductImages }) => {
-
-    const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-    const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        const newImagePreviews = productImages.map(file => URL.createObjectURL(file));
-        setImagePreviews(newImagePreviews);
-
-        return () => {
-            newImagePreviews.forEach(url => URL.revokeObjectURL(url));
-        };
-    }, [productImages]);
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files) {
-            onSetProductImages([...productImages, ...Array.from(e.target.files)]);
-        }
-    };
-
-    const handleRemoveImage = (index: number) => {
-        const newImages = [...productImages];
-        newImages.splice(index, 1);
-        onSetProductImages(newImages);
-    };
-    
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            onSetProductImages([...productImages, ...Array.from(e.dataTransfer.files)]);
-            e.dataTransfer.clearData();
-        }
-    };
-
-    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragging(false);
-    };
-
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
-    const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
-        const items = e.clipboardData.items;
-        const files: File[] = [];
-        for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf('image') !== -1) {
-                const file = items[i].getAsFile();
-                if (file) {
-                    files.push(file);
-                }
-            }
-        }
-        if (files.length > 0) {
-            onSetProductImages([...productImages, ...files]);
-        }
-    };
-
-    const texts = {
-        'Việt Nam': {
-            uploadLabel: "Tải lên Hình ảnh Sản phẩm (Tùy chọn)",
-            uploadHint: "Kéo và thả, dán, hoặc nhấp để tải lên hình ảnh sản phẩm để có các bài đăng phù hợp hơn.",
-            remove: "Xóa",
-            uploadedProducts: "Sản phẩm đã tải lên:",
-            dropHere: "Thả tệp vào đây"
-        },
-        'English': {
-            uploadLabel: "Upload Product Images (Optional)",
-            uploadHint: "Drag & drop, paste, or click to upload product images for more relevant posts.",
-            remove: "Remove",
-            uploadedProducts: "Uploaded Products:",
-            dropHere: "Drop files here"
-        }
-    };
-    const currentTexts = (texts as any)[language] || texts['English'];
-
-    return (
-        <div className="mt-6">
-            <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onPaste={handlePaste}
-                onClick={() => fileInputRef.current?.click()}
-                className={`mt-2 flex flex-col justify-center items-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md transition-colors cursor-pointer ${isDragging ? 'bg-green-50 border-brand-green' : 'hover:border-gray-400'}`}
-            >
-                <div className="space-y-1 text-center">
-                   {isDragging ? (
-                       <p className="text-lg font-semibold text-brand-green">{currentTexts.dropHere}</p>
-                   ) : (
-                       <>
-                           <UploadIcon className="mx-auto h-12 w-12 text-gray-400" />
-                           <p className="text-sm text-gray-500">{currentTexts.uploadHint}</p>
-                       </>
-                   )}
-                </div>
-            </div>
-            <input id="product-images-upload" name="product-images-upload" type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={handleFileChange} />
-            {imagePreviews.length > 0 && (
-                <div className="mt-4">
-                    <h4 className="text-sm font-medium text-gray-700">{currentTexts.uploadedProducts}</h4>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-4 mt-2">
-                        {imagePreviews.map((previewUrl, index) => (
-                            <div key={index} className="relative group aspect-square">
-                                <img src={previewUrl} alt={`Product ${index + 1}`} className="h-full w-full object-cover rounded-md shadow-md" />
-                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                     <button onClick={() => handleRemoveImage(index)} title={currentTexts.remove} className="text-white bg-red-600/80 rounded-full p-1 leading-none">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
 
 const getStrategyTemplates = (language: string) => {
     const T = {
@@ -186,7 +40,7 @@ const getStrategyTemplates = (language: string) => {
     return (T as any)[language] || T['English'];
 };
 
-export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOpen, onClose, settings, onGenerate, isGenerating, personas, generatedImages, initialPrompt }) => {
+export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOpen, onClose, settings, onGenerate, isGenerating, personas, generatedImages, initialPrompt, affiliateLinks, initialProductId }) => {
     const [step, setStep] = useState(1);
     const [prompt, setPrompt] = useState(initialPrompt || '');
     const [useSearch, setUseSearch] = useState(false);
@@ -200,8 +54,8 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const [includeEmojis, setIncludeEmojis] = useState(true);
     const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
 
-    // Local state for product images, no longer from props
-    const [localProductImages, setLocalProductImages] = useState<File[]>([]);
+    // New state for selected product ID
+    const [selectedProductId, setSelectedProductId] = useState<string | null>(initialProductId || null);
 
     const { language } = settings;
     const isGeminiModel = settings.textGenerationModel.startsWith('gemini-');
@@ -220,9 +74,9 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             setPostLength('Medium (e.g. for Facebook)');
             setIncludeEmojis(true);
             setSelectedPersonaId(null);
-            setLocalProductImages([]);
+            setSelectedProductId(initialProductId || null); // Reset selected product ID
         }
-    }, [isOpen, initialPrompt, settings.totalPostsPerMonth]);
+    }, [isOpen, initialPrompt, settings.totalPostsPerMonth, initialProductId]);
 
     const platforms = [
         { id: 'YouTube', Icon: YouTubeIcon },
@@ -259,9 +113,9 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             step3Subtitle: "Chọn một nhân vật để làm gương mặt đại diện cho chiến dịch này. Nội dung sẽ được tạo từ góc nhìn của họ.",
             noPersona: "Không có KOL/KOC",
             noPersonasAvailable: "Chưa có KOL/KOC nào được định nghĩa. Bạn có thể thêm họ trong tab 'KOL/KOC'.",
-            // Step 4
-            step4Title: "Thêm Hình ảnh Sản phẩm (Tùy chọn)",
-            step4Subtitle: "Tải lên hình ảnh sản phẩm để AI tạo ra các bài đăng và hình ảnh phù hợp hơn với sản phẩm của bạn.",
+            // Step 4 - Updated
+            step4Title: "Chọn Sản phẩm để Quảng bá (Tùy chọn)",
+            step4Subtitle: "Chọn một sản phẩm từ Kho Affiliate của bạn để tự động liên kết với các bài đăng trong kế hoạch truyền thông này.",
             // Step 5
             step5Title: "Tinh chỉnh & Tạo",
             step5Subtitle: "Điều chỉnh các cài đặt cuối cùng trước khi AI của chúng tôi bắt đầu làm việc.",
@@ -299,9 +153,9 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             step3Subtitle: "Choose a persona to be the face of this campaign. Content will be generated from their perspective.",
             noPersona: "No KOL/KOC",
             noPersonasAvailable: "No KOLs/KOCs have been defined yet. You can add them in the 'KOL/KOC' tab.",
-            // Step 4
-            step4Title: "Add Product Images (Optional)",
-            step4Subtitle: "Upload product images to have the AI generate more relevant posts and visuals.",
+            // Step 4 - Updated
+            step4Title: "Select Product to Promote (Optional)",
+            step4Subtitle: "Choose a product from your Affiliate Vault to automatically link to posts in this media plan.",
             // Step 5
             step5Title: "Refine & Generate",
             step5Subtitle: "Adjust the final settings before our AI gets to work.",
@@ -325,8 +179,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const texts = (T as any)[language] || T['English'];
 
     const handleGenerate = async () => {
-      const serializedImages = await Promise.all(localProductImages.map(fileToBase64));
-      onGenerate(prompt, useSearch, totalPosts, selectedPlatforms, { tone, style: writingStyle, length: postLength, includeEmojis }, serializedImages, selectedPersonaId);
+      onGenerate(prompt, useSearch, totalPosts, selectedPlatforms, { tone, style: writingStyle, length: postLength, includeEmojis }, selectedProductId, selectedPersonaId);
       onClose();
     };
 
@@ -435,15 +288,12 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
                         </div>
                     )}
                     {step === 4 && (
-                        <div>
-                             <h3 className="text-2xl font-bold font-sans text-center text-gray-900">{texts.step4Title}</h3>
-                            <p className="text-gray-500 font-serif text-center mt-1">{texts.step4Subtitle}</p>
-                            <ProductImageUploader
-                                language={language}
-                                productImages={localProductImages}
-                                onSetProductImages={setLocalProductImages}
-                            />
-                        </div>
+                        <ProductSelector
+                            affiliateLinks={affiliateLinks}
+                            onSelectProduct={setSelectedProductId}
+                            selectedProductId={selectedProductId}
+                            language={language}
+                        />
                     )}
                     {step === 5 && (
                         <div>

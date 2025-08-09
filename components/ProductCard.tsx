@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { AffiliateLink } from '../types';
 import { Button, Input } from './ui';
-import { DotsVerticalIcon, PencilIcon, TrashIcon, LinkIcon, TagIcon } from './icons';
+import { DotsVerticalIcon, PencilIcon, TrashIcon, LinkIcon, TagIcon, SparklesIcon } from './icons';
 
 interface ProductCardProps {
     link: AffiliateLink;
@@ -11,9 +11,10 @@ interface ProductCardProps {
     isNew?: boolean;
     language: string;
     formatCurrency: (value: number) => string;
+    onGenerateIdeas?: (product: AffiliateLink) => void; // New prop for generating ideas
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, formatCurrency }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, formatCurrency, onGenerateIdeas }) => {
     const [isEditing, setIsEditing] = useState(isNew);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [editedLink, setEditedLink] = useState<AffiliateLink>(link);
@@ -38,6 +39,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
             productName: "Tên sản phẩm",
             providerName: "Nhà cung cấp",
             salesVolume: "Doanh số",
+            generateIdeas: "Tạo ý tưởng",
         },
         'English': {
             edit: "Edit",
@@ -53,6 +55,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
             productName: "Product Name",
             providerName: "Provider",
             salesVolume: "Sales Volume",
+            generateIdeas: "Generate Ideas",
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -195,6 +198,20 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                     </>
                 ) : (
                     <>
+                        {onGenerateIdeas && (
+                            <Button 
+                                variant="secondary" 
+                                size="sm" 
+                                onClick={(e) => { 
+                                    e.stopPropagation();
+                                    onGenerateIdeas(link);
+                                }}
+                                className="text-xs py-1 px-2"
+                            >
+                                <SparklesIcon className="h-4 w-4 mr-1" />
+                                {texts.generateIdeas}
+                            </Button>
+                        )}
                         <a href={link.productLink} onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer" title={texts.productLink} className="text-gray-500 hover:text-brand-green transition-colors"><LinkIcon className="h-5 w-5"/></a>
                         {link.promotionLink && <a href={link.promotionLink} onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer" title={texts.promoLink} className="text-yellow-500 hover:text-yellow-700 transition-colors"><TagIcon className="h-5 w-5"/></a>}
                     </>
