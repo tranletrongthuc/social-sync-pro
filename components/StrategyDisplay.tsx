@@ -277,7 +277,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                                         {idea.imagePrompt && <p className="text-xs text-gray-400 mt-1">Image Prompt: {idea.imagePrompt}</p>}
                                         {idea.cta && <p className="text-xs text-gray-400 mt-1">CTA: {idea.cta}</p>}
                                         <div className="flex justify-end gap-2 mt-3">
-                                            <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description)} className="text-xs py-1 px-2">{texts.createPlan}</Button>
+                                            <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} className="text-xs py-1 px-2">{texts.createPlan}</Button>
                                             <Button variant="primary" onClick={() => setWizardIdea(idea)} className="text-xs py-1 px-2">{texts.createPackage}</Button>
                                         </div>
                                     </div>

@@ -1379,6 +1379,7 @@ const App: React.FC = () => {
                 ...idea,
                 id: crypto.randomUUID(),
                 trendId: 'product-' + product.id, // Using a special trendId for product-based ideas
+                productId: product.id, // Link the idea to the product
             }));
             
             dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });

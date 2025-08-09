@@ -74,7 +74,8 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             setPostLength('Medium (e.g. for Facebook)');
             setIncludeEmojis(true);
             setSelectedPersonaId(null);
-            setSelectedProductId(initialProductId || null); // Reset selected product ID
+            // Initialize selectedProductId with initialProductId if provided, otherwise null
+            setSelectedProductId(initialProductId || null);
         }
     }, [isOpen, initialPrompt, settings.totalPostsPerMonth, initialProductId]);
 
@@ -186,6 +187,10 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const isNextDisabled = () => {
         if (step === 1 && !prompt.trim()) return true;
         if (step === 2 && selectedPlatforms.length === 0) return true;
+        // In step 4, if we have an initialProductId, don't disable the next button
+        if (step === 4 && initialProductId) return false;
+        // In step 4, if we don't have an initialProductId, disable if no product is selected
+        if (step === 4 && !initialProductId && !selectedProductId) return true;
         return false;
     }
 
@@ -288,12 +293,67 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
                         </div>
                     )}
                     {step === 4 && (
-                        <ProductSelector
-                            affiliateLinks={affiliateLinks}
-                            onSelectProduct={setSelectedProductId}
-                            selectedProductId={selectedProductId}
-                            language={language}
-                        />
+                        <div>
+                            <h3 className="text-2xl font-bold font-sans text-center text-gray-900">{texts.step4Title}</h3>
+                            <p className="text-gray-500 font-serif text-center mt-1">{texts.step4Subtitle}</p>
+                            {initialProductId ? (
+                                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                    <h3 className="text-lg font-bold text-gray-900 mb-2">
+                                        {language === 'Việt Nam' ? 'Sản phẩm đã được liên kết tự động' : 'Product Automatically Linked'}
+                                    </h3>
+                                    <p className="text-gray-600 mb-4">
+                                        {language === 'Việt Nam' 
+                                            ? 'Kế hoạch truyền thông này được tạo từ một ý tưởng sản phẩm, do đó sản phẩm đã được chọn tự động.' 
+                                            : 'This media plan is created from a product idea, so the product has been automatically selected.'}
+                                    </p>
+                                    {affiliateLinks.find(link => link.id === initialProductId) && (
+                                        <div className="bg-white p-4 rounded border">
+                                            <div className="flex items-center">
+                                                {affiliateLinks.find(link => link.id === initialProductId)?.product_avatar && (
+                                                    <img 
+                                                        src={affiliateLinks.find(link => link.id === initialProductId)?.product_avatar} 
+                                                        alt={affiliateLinks.find(link => link.id === initialProductId)?.productName} 
+                                                        className="w-16 h-16 rounded-md object-cover mr-4" 
+                                                    />
+                                                )}
+                                                <div>
+                                                    <h4 className="font-bold text-gray-900">
+                                                        {affiliateLinks.find(link => link.id === initialProductId)?.productName}
+                                                    </h4>
+                                                    <p className="text-sm text-gray-600">
+                                                        {language === 'Việt Nam' ? 'Nhà cung cấp' : 'Provider'}: {affiliateLinks.find(link => link.id === initialProductId)?.providerName}
+                                                    </p>
+                                                    <p className="text-sm text-gray-600">
+                                                        {language === 'Việt Nam' ? 'Giá' : 'Price'}: {new Intl.NumberFormat(language === 'Việt Nam' ? 'vi-VN' : 'en-US', { 
+                                                            style: 'currency', 
+                                                            currency: language === 'Việt Nam' ? 'VND' : 'USD' 
+                                                        }).format(affiliateLinks.find(link => link.id === initialProductId)?.price || 0)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="mt-4 flex gap-2">
+                                        <Button 
+                                            variant="secondary" 
+                                            onClick={() => {
+                                                // Allow user to manually select a different product
+                                                setSelectedProductId(null);
+                                            }}
+                                        >
+                                            {language === 'Việt Nam' ? 'Chọn sản phẩm khác' : 'Select Different Product'}
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <ProductSelector
+                                    affiliateLinks={affiliateLinks}
+                                    onSelectProduct={setSelectedProductId}
+                                    selectedProductId={selectedProductId}
+                                    language={language}
+                                />
+                            )}
+                        </div>
                     )}
                     {step === 5 && (
                         <div>

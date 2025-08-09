@@ -168,6 +168,7 @@ const IDEAS_SCHEMA = [
     { name: 'title', type: 'singleLineText' },
     { name: 'description', type: 'multilineText' },
     { name: 'target_audience', type: 'singleLineText' },
+    { name: 'product_id', type: 'singleLineText' }, // New field to store the source product ID
     { name: 'trend', type: 'multipleRecordLinks', options: { linkedTableName: TRENDS_TABLE_NAME, prefersSingleRecordLink: true } },
 ];
 
@@ -1293,6 +1294,7 @@ export const saveIdeas = async (ideas: Idea[]) => {
             title: idea.title,
             description: idea.description,
             target_audience: idea.targetAudience,
+            product_id: idea.productId, // Include the product ID if it exists
             trend: trendRecordId ? [trendRecordId] : undefined,
         }
     }));
