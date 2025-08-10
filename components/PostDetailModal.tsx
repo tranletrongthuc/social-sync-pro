@@ -110,10 +110,10 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
         if (!generatedImage) return null;
         return (
              <div className="relative group rounded-lg overflow-hidden" tabIndex={0}>
-                <img src={generatedImage} alt={post.imagePrompt} className="w-full object-cover" style={{ aspectRatio }}/>
+                <img src={generatedImage} alt={post.mediaPrompt} className="w-full object-cover" style={{ aspectRatio }}/>
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                      <div className="flex flex-col gap-2 items-center p-2">
-                        <Button onClick={() => onGenerateImage(post.imagePrompt!, post.imageKey!, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
+                        <Button onClick={() => onGenerateImage(post.mediaPrompt!, post.imageKey!, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
                             <SparklesIcon className="h-4 w-4" /> {texts.regenerate}
                         </Button>
                         <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
@@ -146,15 +146,39 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
     };
     
     const renderImagePromptUploader = () => {
-        if (!post.imagePrompt) return null;
+        if (!post.mediaPrompt) return null;
+
+        const renderMediaPrompt = () => {
+            if (Array.isArray(post.mediaPrompt)) {
+                return (
+                    <div className="space-y-2">
+                        {post.mediaPrompt.map((prompt, index) => (
+                            <HoverCopyWrapper key={index} textToCopy={prompt}>
+                                <p className="text-gray-500 italic text-sm font-serif">{index + 1}: "{prompt}"</p>
+                            </HoverCopyWrapper>
+                        ))}
+                    </div>
+                )
+            }
+            return (
+                <HoverCopyWrapper textToCopy={post.mediaPrompt as string}>
+                    <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">"{post.mediaPrompt}"</p>
+                </HoverCopyWrapper>
+            )
+        }
+
         return (
             <div className="bg-white border border-gray-200 p-4 rounded-lg h-full flex flex-col">
-                <HoverCopyWrapper textToCopy={post.imagePrompt}>
-                    <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
-                    <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">"{post.imagePrompt}"</p>
-                </HoverCopyWrapper>
+                <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
+                {renderMediaPrompt()}
+                {post.script && (
+                    <>
+                        <h5 className="font-semibold font-sans text-gray-700 text-sm mt-4">{texts.script}</h5>
+                        <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">{post.script}</p>
+                    </>
+                )}
                 <div className="space-y-2 mt-auto">
-                    <Button onClick={() => onGenerateImage(post.imagePrompt!, post.imageKey || post.id, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
+                    <Button onClick={() => onGenerateImage(post.mediaPrompt!, post.imageKey || post.id, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
                         <SparklesIcon /> {texts.generate}
                     </Button>
                     <div 
@@ -312,6 +336,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             uploadMedia: 'Tải lên Ảnh hoặc Video',
             youtube_description: "Mô tả YouTube",
             youtube_script: "Kịch bản YouTube",
+            script: "Kịch bản",
             publishNow: "Đăng ngay",
             publishing: "Đang đăng...",
             published: "Đã đăng vào",
@@ -349,6 +374,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             uploadMedia: 'Upload Image or Video',
             youtube_description: "YouTube Description",
             youtube_script: "YouTube Script",
+            script: "Script",
             publishNow: "Publish Now",
             publishing: "Publishing...",
             published: "Published at",
@@ -365,6 +391,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             if (!prev) return null;
             if (name === 'hashtags') {
                 return { ...prev, hashtags: value.split(',').map(h => h.trim()) };
+            }
+            if (name === 'script') {
+                return { ...prev, script: value };
             }
             return { ...prev, [name]: value };
         });
@@ -424,7 +453,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
     const suggestedProducts = props.khongMinhSuggestions[post.id] || [];
     const hasPromotedProducts = (post.promotedProductIds || []).length > 0;
     
-    const hasMediaPath = editedPost.imagePrompt || (editedPost.imageKey && props.generatedImages[editedPost.imageKey]) || (editedPost.videoKey && props.generatedVideos[editedPost.videoKey]);
+    const hasMediaPath = editedPost.mediaPrompt || editedPost.script || (editedPost.imageKey && props.generatedImages[editedPost.imageKey]) || (editedPost.videoKey && props.generatedVideos[editedPost.videoKey]);
 
     const isYouTubePillar = post.isPillar && post.platform === 'YouTube';
     const isPublished = !!publishedUrl;
@@ -473,7 +502,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                         <TextArea name="content" value={typeof editedPost.content === 'string' ? editedPost.content : JSON.stringify(editedPost.content, null, 2)} onChange={handleEditChange} rows={10} className="text-base" />
                                     </>
                                 ) : (
-                                    <TextArea name="content" value={typeof editedPost.content === 'string' ? editedPost.content : JSON.stringify(editedPost.content, null, 2)} onChange={handleEditChange} rows={10} className="text-base" />
+                                    <>
+                                        <TextArea name="content" value={typeof editedPost.content === 'string' ? editedPost.content : JSON.stringify(editedPost.content, null, 2)} onChange={handleEditChange} rows={10} className="text-base" />
+                                        {editedPost.contentType.includes('Video') || editedPost.contentType.includes('Shorts') || editedPost.contentType.includes('Story') ? (
+                                            <>
+                                                <label className="font-bold text-sm">{texts.script}</label>
+                                                <TextArea name="script" value={editedPost.script || ''} onChange={handleEditChange} rows={5} className="text-base" />
+                                            </>
+                                        ) : null}
+                                    </>
                                 )}
                                 <Input name="hashtags" value={(editedPost.hashtags || []).join(', ')} onChange={handleEditChange} placeholder="hashtags, comma, separated" />
                                 <Input name="cta" value={editedPost.cta} onChange={handleEditChange} placeholder="Call to Action" />
@@ -492,7 +529,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                         </div>
                                     </div>
                                 ) : (
-                                    <p className="text-gray-800 text-base mb-4 font-serif whitespace-pre-wrap">{renderPostContent(editedPost.content)}</p>
+                                    <div className="space-y-4">
+                                        <p className="text-gray-800 text-base mb-4 font-serif whitespace-pre-wrap">{renderPostContent(editedPost.content)}</p>
+                                        {editedPost.script && (
+                                            <div>
+                                                <h4 className="font-bold text-gray-800">{texts.script}</h4>
+                                                <p className="text-gray-800 text-base mt-1 font-serif whitespace-pre-wrap border p-2 rounded-md bg-gray-50">{editedPost.script}</p>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
                                 
                                 <div className="text-sm text-gray-500 my-4 flex flex-wrap gap-x-4 gap-y-1">

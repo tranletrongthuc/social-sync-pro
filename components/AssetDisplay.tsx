@@ -150,7 +150,7 @@ const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
 };
 
 interface ImageGeneratorProps {
-    prompt: string;
+    mediaPrompt: string | string[];
     imageKey: string;
     aspectRatio?: "1:1" | "16:9";
     onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9") => void;
@@ -161,7 +161,7 @@ interface ImageGeneratorProps {
     buttonText?: string;
 };
 
-const ImageGenerator: React.FC<ImageGeneratorProps> = ({ prompt, imageKey, aspectRatio = "1:1", onGenerateImage, onSetImage, generatedImages, isGenerating, texts, buttonText = "" }) => {
+const ImageGenerator: React.FC<ImageGeneratorProps> = ({ mediaPrompt, imageKey, aspectRatio = "1:1", onGenerateImage, onSetImage, generatedImages, isGenerating, texts, buttonText = "" }) => { 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFile = (file: File | null) => {
@@ -201,10 +201,10 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ prompt, imageKey, aspec
     if (generatedImage) {
         return (
             <div className="relative group rounded-lg overflow-hidden" onPaste={handlePaste} tabIndex={0}>
-                <img src={generatedImage} alt={prompt} className="w-full object-cover" style={{ aspectRatio }}/>
+                <img src={generatedImage} alt={Array.isArray(mediaPrompt) ? mediaPrompt.join(", ") : mediaPrompt} className="w-full object-cover" style={{ aspectRatio }}/>
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="flex flex-col gap-2 items-center p-2">
-                        <Button onClick={() => onGenerateImage(prompt, imageKey, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
+                        <Button onClick={() => onGenerateImage(Array.isArray(mediaPrompt) ? mediaPrompt[0] : mediaPrompt, imageKey, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
                             <SparklesIcon className="h-4 w-4" /> Regenerate
                         </Button>
                         <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
@@ -222,12 +222,18 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ prompt, imageKey, aspec
 
     return (
         <div className="bg-white border border-gray-200 p-4 rounded-lg mt-2" onPaste={handlePaste} tabIndex={0}>
-            <HoverCopyWrapper textToCopy={prompt}>
+            <HoverCopyWrapper textToCopy={Array.isArray(mediaPrompt) ? mediaPrompt.join("\n") : mediaPrompt}>
                 <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
-                <p className="text-gray-500 italic mb-3 text-sm font-serif">"{prompt}"</p>
+                {Array.isArray(mediaPrompt) ? (
+                    mediaPrompt.map((p, idx) => (
+                        <p key={idx} className="text-gray-500 italic mb-1 text-sm font-serif">"{p}"</p>
+                    ))
+                ) : (
+                    <p className="text-gray-500 italic mb-3 text-sm font-serif">"{mediaPrompt}"</p>
+                )}
             </HoverCopyWrapper>
             <div className="space-y-2">
-                <Button onClick={() => onGenerateImage(prompt, imageKey, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
+                <Button onClick={() => onGenerateImage(Array.isArray(mediaPrompt) ? mediaPrompt[0] : mediaPrompt, imageKey, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
                     <SparklesIcon /> {buttonText || texts.generate}
                 </Button>
                 <div 
@@ -290,7 +296,7 @@ const CoreAssetsSection: React.FC<{ assets: CoreMediaAssets } & ImageGenSectionP
         <div className="grid md:grid-cols-2 gap-6">
             {(assets.logoConcepts || []).map((logo) => {
                 const imageKey = logo.imageKey;
-                return <ImageGenerator key={logo.id} prompt={logo.prompt} imageKey={imageKey} {...imgProps} isGenerating={imgProps.isGeneratingImage(imageKey)} />
+                return <ImageGenerator key={logo.id} mediaPrompt={logo.prompt} imageKey={imageKey} {...imgProps} isGenerating={imgProps.isGeneratingImage(imageKey)} />
             })}
         </div>
         
@@ -328,12 +334,12 @@ const UnifiedProfileAssetsSection: React.FC<{ assets: UnifiedProfileAssets } & I
              <div className="grid md:grid-cols-2 gap-6 mt-4">
                 <div>
                     <h4 className="text-lg font-bold font-sans text-gray-900 mb-1">{currentTexts.profilePic}</h4>
-                    <ImageGenerator prompt={assets.profilePicturePrompt} imageKey={profileImageKey} {...imgProps} isGenerating={imgProps.isGeneratingImage(profileImageKey)} />
+                    <ImageGenerator mediaPrompt={assets.profilePicturePrompt} imageKey={profileImageKey} {...imgProps} isGenerating={imgProps.isGeneratingImage(profileImageKey)} />
                 </div>
                 <div>
                     <h4 className="text-lg font-bold font-sans text-gray-900 mb-1">{currentTexts.cover}</h4>
                     <HoverCopyWrapper textToCopy={assets.coverPhoto?.designConcept}><p className="font-sans text-sm text-gray-500 mb-2">{assets.coverPhoto?.designConcept}</p></HoverCopyWrapper>
-                    <ImageGenerator prompt={assets.coverPhoto?.prompt} imageKey={coverImageKey} aspectRatio="16:9" {...imgProps} isGenerating={imgProps.isGeneratingImage(coverImageKey)} />
+                    <ImageGenerator mediaPrompt={assets.coverPhoto?.prompt} imageKey={coverImageKey} aspectRatio="16:9" {...imgProps} isGenerating={imgProps.isGeneratingImage(coverImageKey)} />
                 </div>
             </div>
         </Section>

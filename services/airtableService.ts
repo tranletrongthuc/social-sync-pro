@@ -30,7 +30,7 @@ const BRANDS_SCHEMA = [
     // Settings fields are now part of the Brands table
     { name: 'language', type: 'singleLineText' },
     { name: 'total_posts_per_month', type: 'number', options: { precision: 0 } },
-    { name: 'image_prompt_suffix', type: 'multilineText' },
+    { name: 'media_prompt_suffix', type: 'multilineText' },
     { name: 'affiliate_content_kit', type: 'multilineText' },
     { name: 'text_generation_model', type: 'singleLineText' },
     { name: 'image_generation_model', type: 'singleLineText' },
@@ -99,7 +99,8 @@ const POSTS_SCHEMA = [
     { name: 'description', type: 'multilineText' },
     { name: 'hashtags', type: 'multilineText' },
     { name: 'cta', type: 'singleLineText' },
-    { name: 'image_prompt', type: 'multilineText' },
+    { name: 'media_prompt', type: 'multilineText' },
+    { name: 'script', type: 'multilineText' },
     { name: 'image_key', type: 'singleLineText' },
     { name: 'image_url', type: 'url' },
     { name: 'video_key', type: 'singleLineText' },
@@ -354,13 +355,13 @@ const mapAssetsToBrandFields = (assets: GeneratedAssets, settings: Settings, bra
     // Settings fields
     language: settings.language,
     total_posts_per_month: settings.totalPostsPerMonth,
-    image_prompt_suffix: settings.imagePromptSuffix,
+    media_prompt_suffix: settings.mediaPromptSuffix,
     affiliate_content_kit: settings.affiliateContentKit,
     text_generation_model: settings.textGenerationModel,
     image_generation_model: settings.imageGenerationModel,
 });
 
-const mapPostToAirtableFields = (post: MediaPlanPost, brandRecordId: string, planRecordId?: string, promotedProductRecordIds?: string[]) => ({
+const mapPostToAirtableFields = (post: MediaPlanPost, brandRecordId: string, planRecordId?: string, promotedProductRecordIds?: string[], publicImageUrls?: Record<string, string>, publicVideoUrls?: Record<string, string>) => ({
     post_id: post.id,
     title: post.title,
     platform: post.platform,
@@ -369,11 +370,12 @@ const mapPostToAirtableFields = (post: MediaPlanPost, brandRecordId: string, pla
     description: post.description,
     hashtags: (post.hashtags || []).join(', '),
     cta: post.cta,
-    image_prompt: post.imagePrompt,
+    media_prompt: Array.isArray(post.mediaPrompt) ? JSON.stringify(post.mediaPrompt) : post.mediaPrompt,
+    script: post.script,
     image_key: post.imageKey,
-    image_url: post.imageKey ? publicImageUrls[post.imageKey] : undefined,
+    image_url: post.imageKey && publicImageUrls ? publicImageUrls[post.imageKey] : undefined,
     video_key: post.videoKey,
-    video_url: post.videoKey ? publicVideoUrls[post.videoKey] : undefined,
+    video_url: post.videoKey && publicVideoUrls ? publicVideoUrls[post.videoKey] : undefined,
     media_order: post.mediaOrder?.join(','),
     sources: post.sources?.map(s => `${s.title}: ${s.uri}`).join('\n'),
     scheduled_at: post.scheduledAt,
@@ -537,7 +539,7 @@ export const saveSettingsToAirtable = async (settings: Settings, brandId: string
     const settingsFields = {
         language: settings.language,
         total_posts_per_month: settings.totalPostsPerMonth,
-        image_prompt_suffix: settings.imagePromptSuffix,
+        media_prompt_suffix: settings.mediaPromptSuffix,
         affiliate_content_kit: settings.affiliateContentKit,
         text_generation_model: settings.textGenerationModel,
         image_generation_model: settings.imageGenerationModel,
@@ -599,7 +601,7 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, publicImageUrls:
     const postPayloads = group.plan.flatMap(week =>
         week.posts.map(post => {
             const promotedProductRecordIds = (post.promotedProductIds || []).map(id => productRecordIdMap.get(id)).filter(Boolean) as string[];
-            const fields = mapPostToAirtableFields(post, brandRecordId, planRecordId, promotedProductRecordIds);
+            const fields = mapPostToAirtableFields(post, brandRecordId, planRecordId, promotedProductRecordIds, publicImageUrls, {});
             // Manually add week and theme from the parent week object
             (fields as any).week = week.week;
             (fields as any).theme = week.theme;
@@ -1002,7 +1004,7 @@ export const assignPersonaToPlanInAirtable = async (planId: string, personaId: s
     // Update image prompts on all associated posts
     const postUpdates = updatedPosts.map(post => ({
         postId: post.id,
-        fields: { image_prompt: post.imagePrompt }
+        fields: { media_prompt: Array.isArray(post.mediaPrompt) ? JSON.stringify(post.mediaPrompt) : post.mediaPrompt }
     }));
     await bulkPatchPosts(postUpdates, brandId);
 };
@@ -1020,7 +1022,8 @@ export const updateMediaPlanPostInAirtable = async (post: MediaPlanPost, brandId
         description: post.description,
         hashtags: (post.hashtags || []).join(', '),
         cta: post.cta,
-        image_prompt: post.imagePrompt,
+        media_prompt: Array.isArray(post.mediaPrompt) ? JSON.stringify(post.mediaPrompt) : post.mediaPrompt,
+        script: post.script,
         image_key: post.imageKey,
         video_key: post.videoKey,
         media_order: post.mediaOrder?.join(','),
@@ -1113,7 +1116,7 @@ export const fetchSettingsFromAirtable = async (brandId: string): Promise<Partia
     const settings: Partial<Settings> = {
         language: fields.language,
         totalPostsPerMonth: fields.total_posts_per_month,
-        imagePromptSuffix: fields.image_prompt_suffix,
+        mediaPromptSuffix: fields.media_prompt_suffix,
         affiliateContentKit: fields.affiliate_content_kit,
         textGenerationModel: fields.text_generation_model,
         imageGenerationModel: fields.image_generation_model,
@@ -1188,7 +1191,8 @@ export const loadMediaPlan = async (planId: string, brandFoundation: BrandFounda
             description: fields.description,
             hashtags: (fields.hashtags || '').split(',').map((h:string) => h.trim()),
             cta: fields.cta,
-            imagePrompt: fields.image_prompt,
+            mediaPrompt: fields.media_prompt,
+            script: fields.script,
             imageKey: fields.image_key,
             videoKey: fields.video_key,
             mediaOrder: fields.media_order?.split(','),

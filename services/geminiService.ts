@@ -222,9 +222,16 @@ const mediaPlanSchema = {
                         content: { type: Type.STRING },
                         hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
                         cta: { type: Type.STRING },
-                        imagePrompt: { type: Type.STRING, description: "A detailed prompt in English for an image generation model." }
+                        mediaPrompt: { 
+                            oneOf: [
+                                { type: Type.STRING },
+                                { type: Type.ARRAY, items: { type: Type.STRING } }
+                            ],
+                            description: "A detailed prompt for the media content. Can be a string or an array of strings for carousels."
+                        }, 
+                        script: { type: Type.STRING, description: "A detailed script for video content." }
                     },
-                    required: ['platform', 'contentType', 'title', 'content', 'hashtags', 'cta', 'imagePrompt']
+                    required: ['platform', 'contentType', 'title', 'content', 'hashtags', 'cta', 'mediaPrompt']
                 }
             }
         },
@@ -345,7 +352,26 @@ export const generateBrandKit = async (brandInfo: BrandInfo, language: string, m
         throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
     }
     const ai = new GoogleGenAI({ apiKey });
-     const prompt = `\nYou are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.\n\nBrand Input (in ${language}):\n- Brand Name: ${brandInfo.name}\n- Brand Mission: ${brandInfo.mission}\n- Brand Values: ${brandInfo.values}\n- Target Audience: ${brandInfo.audience}\n- Brand Personality: ${brandInfo.personality}\n\nGenerate the following assets IN ${language}:\n1.  **Brand Foundation**\n: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.\n2.  **Core Media Assets**\n: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.\n3.  **Unified Profile Assets**\n: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.\n4.  **Initial 1-Month Media Plan**\n: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. Ensure every post includes a detailed, English image prompt.\n`;
+     const prompt = `
+You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.
+
+Brand Input (in ${language}):
+- Brand Name: ${brandInfo.name}
+- Brand Mission: ${brandInfo.mission}
+- Brand Values: ${brandInfo.values}
+- Target Audience: ${brandInfo.audience}
+- Brand Personality: ${brandInfo.personality}
+
+Generate the following assets IN ${language}:
+1.  **Brand Foundation**
+: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.
+2.  **Core Media Assets**
+: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.
+3.  **Unified Profile Assets**
+: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.
+4.  **Initial 1-Month Media Plan**
+: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. For each post, provide a detailed, English media prompt appropriate for the content type (e.g., image prompt, video script, carousel prompts). For video content, provide a separate 'script' field. The 'content' field should always be the post caption.
+`;
     const response = await geminiFetchWithRetry(() =>
         ai.models.generateContent({
             model: model,
@@ -392,7 +418,7 @@ export const generateBrandKit = async (brandInfo: BrandInfo, language: string, m
                 return {
                     ...restOfPost,
                     id: postId,
-                    imageKey: post.imagePrompt ? `media_plan_post_${postId}` : undefined,
+                    imageKey: post.mediaPrompt ? `media_plan_post_${postId}` : undefined,
                     status: 'draft',
                 } as MediaPlanPost;
             }),
@@ -435,9 +461,9 @@ export const generateMediaPlanGroup = async (
     }
     const ai = new GoogleGenAI({ apiKey });
 
-    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description (for image generation):** ${persona.outfitDescription}\n- **Tone:** The content's tone must perfectly match this persona's style.\n- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".\n` : '';
+    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description (for media generation):** ${persona.outfitDescription}\n- **Tone:** The content's tone must perfectly match this persona's style.\n- **Media Prompts (VERY IMPORTANT):** For any post that requires an image, the 'mediaPrompt' MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]".\n` : '';
 
-    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.\nThe output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.\n\n**Brand Foundation (Use this as your guide):**\n- Brand Name: ${brandFoundation.brandName}\n- Mission: ${brandFoundation.mission}\n- USP: ${brandFoundation.usp}\n- Values: ${(brandFoundation.values || []).join(', ')}\n- Target Audience: ${brandFoundation.targetAudience}\n- Personality: ${brandFoundation.personality}\n\n${personaInstruction}\n\n**User's Goal for the Plan:**\n"${userPrompt}"\n\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.\n- **Emojis**\n: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}\n\nBased on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.\n- **Name**\n: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").\n- **Plan Structure**\n: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").\n- **Content**\n: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.\n- **Post Details**\n: Each post object must be complete and ready-to-use, containing:\n    -   platform: The target platform. It MUST be one of the selected platforms: ${selectedPlatforms.map(p => `'${p}'`).join(', ')}.\n    -   contentType: e.g., "Image Post", "Video Idea", "Story", "Carousel Post".\n    -   title: An SEO-friendly title or headline.\n    -   content: The full caption, description, or script. This must be engaging and reflect the brand personality and customization instructions.\n    -   hashtags: An array of relevant and trending hashtags.\n    -   cta: A clear call-to-action (e.g., "Shop Now", "Learn More", "Comment below").\n    -   imagePrompt: A detailed, English-language prompt for an image generation model.\n- **Important Content Formatting Rules**\n:\n    - The 'content' field for any post must be the final, user-facing text (e.g., a caption, script, or description).\n    - For Instagram 'Carousel Post' types, the 'content' field should be a single, cohesive caption for the entire carousel. It must NOT include markers like "Slide 1:", "Slide 2:", etc. The caption should introduce the carousel and encourage users to swipe.\n    - The 'content' field must be clean and ready for publishing. It must NOT contain any extraneous data, especially numerical arrays or references like "[3, 6, 8]".\n- **Consistency**\n: The entire media plan must be thematically consistent with the Brand Foundation.\n`;
+    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.\nThe output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.\n\n**Brand Foundation (Use this as your guide):**\n- Brand Name: ${brandFoundation.brandName}\n- Mission: ${brandFoundation.mission}\n- USP: ${brandFoundation.usp}\n- Values: ${(brandFoundation.values || []).join(', ')}\n- Target Audience: ${brandFoundation.targetAudience}\n- Personality: ${brandFoundation.personality}\n\n${personaInstruction}\n\n**User's Goal for the Plan:**\n"${userPrompt}"\n\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.\n- **Emojis**\n: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}\n\nBased on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.\n- **Name**\n: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").\n- **Plan Structure**\n: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").\n- **Content**\n: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.\n- **Post Details (CRITICAL):**\n    -   **contentType**: e.g., "Image Post", "Video Idea", "Story", "Carousel Post", "Shorts Idea".\n    -   **content**: This is ALWAYS the user-facing text caption for the post.\n    -   **script**: For video contentTypes ("Video Idea", "Shorts Idea", "Story"), this field MUST contain the video script, storyboard, or detailed scene-by-scene description. For non-video posts, this should be null.\n    -   **mediaPrompt**: This is the prompt for the visual media. It MUST be in English.\n        -   For "Image Post": A single, detailed DALL-E prompt to generate the image.\n        -   For "Video Idea", "Shorts Idea", "Story": A concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.\n        -   For "Carousel Post": An array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts).\n- **Consistency**\n: The entire media plan must be thematically consistent with the Brand Foundation.\n`;
 
     const config: any = {
         systemInstruction: affiliateContentKitSystemInstruction,
@@ -446,6 +472,7 @@ export const generateMediaPlanGroup = async (
         config.tools = [{googleSearch: {}}];
     } else {
         config.responseMimeType = "application/json";
+        config.responseSchema = mediaPlanSchema;
     }
 
     const response = await geminiFetchWithRetry(() =>
@@ -503,7 +530,7 @@ export const generateMediaPlanGroup = async (
 
     return {
         id: crypto.randomUUID(),
-        name: planName || userPrompt.substring(0, 30),
+        name: (planName && planName !== 'Untitled Plan') ? planName : (selectedProduct ? `Promotion Plan: ${selectedProduct.productName}` : userPrompt.substring(0, 30)),
         prompt: userPrompt,
         plan: planWithEnhancements,
         source: 'wizard',
@@ -511,6 +538,7 @@ export const generateMediaPlanGroup = async (
         personaId: persona?.id,
     };
 };
+
 
 export const generateImage = async (
     prompt: string,
@@ -540,28 +568,76 @@ export const generateImage = async (
     return `data:image/jpeg;base64,${base64ImageBytes}`;
 };
 
-export const generateImagePromptForPost = async (
-    postContent: { title: string; content: string },
+export const generateMediaPromptForPost = async (
+    postContent: { title: string; content: string, contentType: string },
     brandFoundation: BrandFoundation,
     language: string,
     model: string,
     persona: Persona | null
-): Promise<string> => {
+): Promise<string | string[]> => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
         throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
     }
     const ai = new GoogleGenAI({ apiKey });
 
-    const personaInstruction = persona ? `\nThe image MUST feature the following persona:\n- Nickname: ${persona.nickName}\n- Main Style: ${persona.mainStyle}\n- Field of Activity: ${persona.activityField}\n- Detailed Description: ${persona.outfitDescription}\n\nIMPORTANT: The prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]".\n` : '';
+    const personaInstruction = persona ? `
+The media MUST feature the following persona:
+- Nickname: ${persona.nickName}
+- Main Style: ${persona.mainStyle}
+- Field of Activity: ${persona.activityField}
+- Detailed Description: ${persona.outfitDescription}
 
-    const prompt = `\nYou are a creative visual director for the brand "${brandFoundation.brandName}".\nThe brand's personality is: ${brandFoundation.personality}.\n${personaInstruction}\nBased on the following social media post content (in ${language}), generate a single, detailed, and compelling image generation prompt.\nThe prompt MUST BE IN ENGLISH.\nThe prompt should be a single paragraph describing a visual scene that captures the essence of the post.\nDo not add any explanations, labels, or extra text. Output ONLY the prompt.\n\nPost Title: "${postContent.title}"\nPost Content: "${postContent.content}"\n`;
+IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]"
+` : '';
+
+    let prompt = `
+You are a creative visual director for the brand "${brandFoundation.brandName}".
+The brand's personality is: ${brandFoundation.personality}.
+${personaInstruction}
+Based on the following social media post content (in ${language}), generate a detailed and compelling media prompt.
+The prompt MUST BE IN ENGLISH.
+Do not add any explanations, labels, or extra text. Output ONLY the prompt.
+
+Post Title: "${postContent.title}"
+Post Content: "${postContent.content}"
+`
+
+    switch (postContent.contentType) {
+        case 'Image Post':
+            prompt += `Generate a single, detailed DALL-E prompt to generate the image.`
+            break
+        case 'Video Idea':
+        case 'Shorts Idea':
+        case 'Story':
+            prompt += `Generate a concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.`
+            break
+        case 'Carousel Post':
+            prompt += `Generate an array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts). The output should be a JSON array of strings.`
+            break
+        default:
+            prompt += `Generate a single, detailed DALL-E prompt to generate the image.`
+            break
+    }
+
     const response = await ai.models.generateContent({
         model: model,
         contents: prompt,
     });
-    return response.text;
+    const textResponse = response.text;
+
+    if (postContent.contentType === 'Carousel Post') {
+        try {
+            return JSON.parse(textResponse);
+        } catch (e) {
+            console.error("Failed to parse carousel prompts, returning as single string:", textResponse);
+            return textResponse;
+        }
+    }
+
+    return textResponse;
 };
+
 
 export const generateAffiliateComment = async (
     post: MediaPlanPost,
@@ -784,20 +860,20 @@ All content MUST be generated from the perspective of the following KOL/KOC.
         }))
     ];
 
-    // 4. Generate image prompts for all posts
+    // 4. Generate media prompts for all posts
     const postsWithPrompts = await Promise.all(
         allPosts.map(async (post) => {
             try {
-                const newPrompt = await generateImagePromptForPost(
-                    { title: post.title, content: post.content },
+                const newPrompt = await generateMediaPromptForPost(
+                    { title: post.title, content: post.content, contentType: post.contentType },
                     brandFoundation,
                     language,
                     model,
                     persona
                 );
-                return { ...post, imagePrompt: newPrompt };
+                return { ...post, mediaPrompt: newPrompt };
             } catch (e) {
-                console.error(`Failed to generate image prompt for post: ${post.title}`, e);
+                console.error(`Failed to generate media prompt for post: ${post.title}`, e);
                 return post; // Return original post on error
             }
         })
@@ -896,7 +972,17 @@ export const generatePostsForFacebookTrend = async (
         throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
     }
     const ai = new GoogleGenAI({ apiKey });
-    const prompt = `You are a creative Facebook content strategist. Based on the following trend, generate 5 engaging Facebook post ideas in ${language}.\nFor each idea, provide:\n1.  A catchy 'title'.\n2.  The main 'content' for the post, optimized for Facebook's platform.\n3.  A detailed English 'imagePrompt' for an accompanying visual.\n4.  A strong 'cta' (call to action).\n\nTrend Topic: "${trend.topic}"\nTrend Keywords: ${trend.keywords.join(', ')}\nTrend Analysis: ${trend.analysis}\n`;
+    const prompt = `You are a creative Facebook content strategist. Based on the following trend, generate 5 engaging Facebook post ideas in ${language}.
+For each idea, provide:
+1.  A catchy 'title'.
+2.  The main 'content' for the post, optimized for Facebook's platform.
+3.  A detailed English 'mediaPrompt' for an accompanying visual.
+4.  A strong 'cta' (call to action).
+
+Trend Topic: "${trend.topic}"
+Trend Keywords: ${trend.keywords.join(', ')}
+Trend Analysis: ${trend.analysis}
+`;
     const postsSchema = {
         type: Type.ARRAY,
         items: {
@@ -904,10 +990,10 @@ export const generatePostsForFacebookTrend = async (
             properties: {
                 title: { type: Type.STRING },
                 content: { type: Type.STRING },
-                imagePrompt: { type: Type.STRING },
+                mediaPrompt: { type: Type.STRING },
                 cta: { type: Type.STRING },
             },
-            required: ['title', 'content', 'imagePrompt', 'cta'],
+            required: ['title', 'content', 'mediaPrompt', 'cta'],
         },
     };
 
@@ -992,7 +1078,7 @@ export const generateIdeasFromProduct = async (
     if (!jsonText) throw new Error("Received empty response from AI for product-based ideas.");
     
     // Log the raw response for debugging
-    console.log("Raw AI response for product ideas:", jsonText);
+    // console.log("Raw AI response for product ideas:", jsonText);
     
     // Fix malformed JSON responses that are missing array brackets
     let fixedJsonText = jsonText.trim();

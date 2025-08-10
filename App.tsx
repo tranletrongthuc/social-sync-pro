@@ -281,10 +281,9 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
 
             planToUpdate.personaId = personaId || undefined;
 
-            planToUpdate.plan.forEach((week: MediaPlanWeek) => {
-                week.posts.forEach((post: MediaPlanPost) => {
-                    if (post.imagePrompt) {
-                        let prompt = post.imagePrompt;
+                            week.posts.forEach((post: MediaPlanPost) => {
+                    if (post.mediaPrompt) {
+                        let prompt = Array.isArray(post.mediaPrompt) ? post.mediaPrompt[0] : post.mediaPrompt;
                         // 1. Remove old prefix if it exists
                         if (oldPersona && prompt.startsWith(`${oldPersona.outfitDescription}, `)) {
                             prompt = prompt.substring(`${oldPersona.outfitDescription}, `.length);
@@ -293,10 +292,9 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
                         if (newPersona) {
                             prompt = `${newPersona.outfitDescription}, ${prompt}`;
                         }
-                        post.imagePrompt = prompt;
+                        post.mediaPrompt = prompt;
                     }
                 });
-            });
 
             return newState;
         }
@@ -395,9 +393,9 @@ const isVisionModel = (modelName: string): boolean => {
 };
 
 const TEXT_MODEL_FALLBACK_ORDER = [
-    'google/gemini-2.0-flash-exp:free',
-    'deepseek/deepseek-r1-0528:free',
     'qwen/qwen3-235b-a22b:free',
+    'deepseek/deepseek-r1-0528:free',
+    'google/gemini-2.0-flash-exp:free',
     'gemini-2.5-pro'
 ];
 
@@ -422,7 +420,7 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings>({
         language: 'Việt Nam',
         totalPostsPerMonth: 16,
-        imagePromptSuffix: ', photorealistic, 8k, high quality, vietnamese style, vietnam',
+        mediaPromptSuffix: ', photorealistic, 8k, high quality, vietnamese style, vietnam',
         affiliateContentKit: AFFILIATE_CONTENT_KIT_DEFAULT,
         textGenerationModel: 'google/gemini-2.0-flash-exp:free',
         imageGenerationModel: 'imagen-4.0-ultra-generate-preview-06-06',
@@ -996,7 +994,7 @@ const App: React.FC = () => {
         }
     }, [airtableBrandId, updateAutoSaveStatus, ensureCredentials, setError]);
 
-    const generateSingleImageCore = async (prompt: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
+    const generateSingleImageCore = async (mediaPrompt: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
         let imagesToUse: File[] = [];
         if (postInfo && 'planId' in postInfo && generatedAssets) {
             const planGroup = generatedAssets.mediaPlans.find(p => p.id === postInfo.planId);
@@ -1008,20 +1006,20 @@ const App: React.FC = () => {
     
         const model = settings.imageGenerationModel;
         if (model.startsWith('@cf/')) {
-            return generateImageWithCloudflare(prompt, model, imagesToUse);
+            return generateImageWithCloudflare(mediaPrompt, model, imagesToUse);
         } else if (model.startsWith('imagen-')) {
-            return generateImage(prompt, settings.imagePromptSuffix, model, aspectRatio, imagesToUse);
+            return generateImage(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse);
         } else {
-            return generateImageWithOpenRouter(prompt, settings.imagePromptSuffix, model, aspectRatio, imagesToUse);
+            return generateImageWithOpenRouter(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse);
         }
     };
 
-    const handleGenerateImage = useCallback(async (prompt: string, imageKey: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo) => {
+    const handleGenerateImage = useCallback(async (mediaPrompt: string, imageKey: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo) => {
         setGeneratingImageKeys(prev => new Set(prev).add(imageKey));
         setError(null);
     
         try {
-            const dataUrl = await generateSingleImageCore(prompt, aspectRatio, postInfo);
+            const dataUrl = await generateSingleImageCore(mediaPrompt, aspectRatio, postInfo);
             
             const randomSuffix = Math.random().toString(36).substring(2, 10);
             let baseKey = imageKey;
@@ -1084,9 +1082,9 @@ const App: React.FC = () => {
                 return newSet;
             });
         }
-    }, [settings.imageGenerationModel, settings.imagePromptSuffix, airtableBrandId, generatedAssets, updateAutoSaveStatus, ensureCredentials]);
+    }, [settings.imageGenerationModel, settings.mediaPromptSuffix, airtableBrandId, generatedAssets, updateAutoSaveStatus, ensureCredentials]);
     
-    const handleGenerateImagePrompt = useCallback(async (postInfo: PostInfo): Promise<MediaPlanPost | null> => {
+    const handleGenerateMediaPrompt = useCallback(async (postInfo: PostInfo): Promise<MediaPlanPost | null> => {
         if (!('planId' in postInfo) || !generatedAssets?.brandFoundation) return null;
 
         const { planId, weekIndex, postIndex, post } = postInfo;
@@ -1099,20 +1097,20 @@ const App: React.FC = () => {
         
         try {
             const generationTask = (model: string) => {
-                // Define the common arguments for the image prompt generation
+                // Define the common arguments for the media prompt generation
                 const commonArgs = [
-                    { title: post.title, content: post.content },
+                    { title: post.title, content: post.content, contentType: post.contentType },
                     generatedAssets.brandFoundation,
                     settings.language,
                     model,
                     persona,
                 ] as const;
 
-                return textGenerationService.generateImagePromptForPost(...commonArgs);
+                return textGenerationService.generateMediaPromptForPost(...commonArgs);
             };
             const newPrompt = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
-            const updates = { imagePrompt: newPrompt };
+            const updates = { mediaPrompt: newPrompt };
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
             const updatedPost = { ...post, ...updates };
@@ -1129,7 +1127,7 @@ const App: React.FC = () => {
             }
             return updatedPost;
         } catch (err) {
-            console.error("Failed to generate image prompt:", err);
+            console.error("Failed to generate media prompt:", err);
             setError(err instanceof Error ? err.message : "Failed to generate prompt.");
         } finally {
             setGeneratingPromptKeys(prev => {
@@ -1289,7 +1287,7 @@ const App: React.FC = () => {
         const persona = personaId ? (generatedAssets.personas || []).find(p => p.id === personaId) ?? null : null;
         const selectedProduct = idea.productId ? (generatedAssets.affiliateLinks || []).find(l => l.id === idea.productId) ?? null : null;
 
-        setLoaderContent({ title: "Generating Content Package...", steps: ["Crafting pillar content...", "Repurposing for other platforms...", "Generating image prompts...", "Assembling package..."] });
+        setLoaderContent({ title: "Generating Content Package...", steps: ["Crafting pillar content...", "Repurposing for other platforms...", "Generating media prompts...", "Assembling package..."] });
         try {
             const generationTask = (model: string) => {
                  return textGenerationService.generateContentPackage(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options, selectedProduct);
@@ -1680,7 +1678,7 @@ const App: React.FC = () => {
                 postIndex,
                 post
             }))
-            .filter(pInfo => pInfo.post.imagePrompt);
+            .filter(pInfo => pInfo.post.mediaPrompt && !Array.isArray(pInfo.post.mediaPrompt));
 
         if (postsToGenerate.length === 0) {
             setSuccessMessage("No posts with image prompts found in this week.");
@@ -1698,7 +1696,7 @@ const App: React.FC = () => {
             const postInfo = postsToGenerate[i];
             setBulkActionStatus(prev => prev ? { ...prev, currentStep: i } : null);
             try {
-                await handleGenerateImage(postInfo.post.imagePrompt!, postInfo.post.imageKey || postInfo.post.id, '1:1', postInfo);
+                await handleGenerateImage(postInfo.post.mediaPrompt as string, postInfo.post.imageKey || postInfo.post.id, '1:1', postInfo);
             } catch (error) {
                 console.error(`Failed to regenerate image for post ${postInfo.post.id}`, error);
                 // Continue to the next one
@@ -2300,7 +2298,7 @@ const App: React.FC = () => {
                             onRunKhongMinhForPost={handleRunKhongMinhForPost}
                             // On-demand prompt generation
                             generatingPromptKeys={generatingPromptKeys}
-                            onGeneratePrompt={handleGenerateImagePrompt}
+                            onGeneratePrompt={handleGenerateMediaPrompt}
                             // Comment Generation
                             onGenerateAffiliateComment={handleGenerateAffiliateComment}
                             generatingCommentPostIds={generatingCommentPostIds}

@@ -34,7 +34,7 @@ export interface BrandInfo {
 export interface Settings {
     language: string;
     totalPostsPerMonth: number;
-    imagePromptSuffix: string;
+    mediaPromptSuffix: string;
     affiliateContentKit: string;
     textGenerationModel: string;
     imageGenerationModel: string;
@@ -65,7 +65,8 @@ export interface MediaPlanPost {
     description?: string; // For YouTube video descriptions
     hashtags: string[];
     cta: string;
-    imagePrompt?: string;
+    mediaPrompt?: string | string[];
+    script?: string;
     imageKey?: string;
     videoKey?: string;
     mediaOrder?: ('image' | 'video')[];
@@ -177,7 +178,7 @@ export interface Idea {
   title: string;
   description: string;
   targetAudience?: string;
-  imagePrompt?: string;
+  mediaPrompt?: string;
   cta?: string;
   productId?: string; // New field to link idea to a product
 }
@@ -236,6 +237,6 @@ export interface FacebookPostIdea {
   trendId: string;
   title: string;
   content: string;
-  imagePrompt: string;
+  mediaPrompt: string;
   cta: string;
 }

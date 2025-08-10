@@ -13,7 +13,7 @@ const openrouterFetch = async (body: object, retries = 3, initialDelay = 1000) =
     
     let lastError: Error | null = null;
     let delay = initialDelay;
-    let rateLimitRetries = 5; // Increase to 5 rate limit waits
+    let rateLimitRetries = 1; // Set to 1 rate limit wait
     const baseWaitSeconds = 61; // Base wait time
 
     for (let i = 0; i < retries; i++) {
@@ -267,7 +267,7 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
                     return {
                         ...restOfPost,
                         id: postId,
-                        imageKey: post.imagePrompt ? `media_plan_post_${postId}` : undefined,
+                        imageKey: post.mediaPrompt ? `media_plan_post_${postId}` : undefined,
                         status: 'draft',
                     } as MediaPlanPost;
                 }),
@@ -313,9 +313,9 @@ All content MUST be generated from the perspective of the following KOL/KOC. The
 - **Nickname:** ${persona.nickName}
 - **Main Style:** ${persona.mainStyle}
 - **Field of Activity:** ${persona.activityField}
-- **Detailed Description (for image generation):** ${persona.outfitDescription}
+- **Detailed Description (for media generation):** ${persona.outfitDescription}
 - **Tone:** The content's tone must perfectly match this persona's style.
-- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
+- **Media Prompts (VERY IMPORTANT):** For any post that requires an image, the 'mediaPrompt' MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]".
 ` : '';
 
     const openRouterPrompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.
@@ -339,28 +339,24 @@ ${personaInstruction}
 - **Tone of Voice**: Generate all content with a '${options.tone}' tone.
 - **Writing Style**: The primary style should be '${options.style}'.
 - **Post Length**: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.
-- **Emojis**: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}
+            - **Emojis**: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."} 
 
 Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
 - **Name**: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").
 - **Plan Structure**: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
 - **Content**: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.
-- **Post Details**: Each post object must be complete and ready-to-use, containing:
-    -   platform: The target platform. It MUST be one of the selected platforms: ${selectedPlatforms.map(p => `'${p}'`).join(', ')}.
-    -   contentType: e.g., "Image Post", "Video Idea", "Story", "Carousel Post".
-    -   title: An SEO-friendly title or headline.
-    -   content: The full caption, description, or script. This must be engaging and reflect the brand personality and customization instructions.
-    -   hashtags: An array of relevant and trending hashtags.
-    -   cta: A clear call-to-action (e.g., "Shop Now", "Learn More", "Comment below").
-    -   imagePrompt: A detailed, English-language prompt for an image generation model.
-- **Important Content Formatting Rules**:
-    - The 'content' field for any post must be the final, user-facing text (e.g., a caption, script, or description).
-    - For Instagram 'Carousel Post' types, the 'content' field should be a single, cohesive caption for the entire carousel. It must NOT include markers like "Slide 1:", "Slide 2:", etc. The caption should introduce the carousel and encourage users to swipe.
-    - The 'content' field must be clean and ready for publishing. It must NOT contain any extraneous data, especially numerical arrays or references like "[3, 6, 8]".
+- **Post Details (CRITICAL):
+    -   **contentType**: e.g., "Image Post", "Video Idea", "Story", "Carousel Post", "Shorts Idea".
+    -   **content**: This is ALWAYS the user-facing text caption for the post.
+    -   **script**: For video contentTypes ("Video Idea", "Shorts Idea", "Story"), this field MUST contain the video script, storyboard, or detailed scene-by-scene description. For non-video posts, this should be null.
+    -   **mediaPrompt**: This is the prompt for the visual media. It MUST be in English.
+        -   For "Image Post": A single, detailed DALL-E prompt to generate the image.
+        -   For "Video Idea", "Shorts Idea", "Story": A concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.
+        -   For "Carousel Post": An array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts).
 - **Consistency**: The entire media plan must be thematically consistent with the Brand Foundation.
 
 **JSON Schema for Media Plan Group (Strictly Adhere to This:)**
-\`\`\`json
+\\\`\\\`\\\`json
 {
   "type": "object",
   "properties": {
@@ -385,9 +381,10 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
                 "content": { "type": "string" },
                 "hashtags": { "type": "array", "items": { "type": "string" } },
                 "cta": { "type": "string" },
-                "imagePrompt": { "type": "string", "description": "Detailed English prompt for image generation." }
+                "mediaPrompt": { "type": ["string", "array"], "items": { "type": "string" }, "description": "A detailed prompt for the media content. Can be a string or an array of strings for carousels." },
+                "script": { "type": "string", "description": "A detailed script for video content." }
               },
-              "required": ["platform", "contentType", "title", "content", "hashtags", "cta", "imagePrompt"]
+              "required": ["platform", "contentType", "title", "content", "hashtags", "cta", "mediaPrompt"]
             }
           }
         },
@@ -397,80 +394,106 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
   },
   "required": ["name", "plan"]
 }
-\`\`\`
-`;
-    
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: openRouterPrompt }],
-        response_format: { "type": "json_object" },
-    });
-    const jsonText = parseOpenRouterResponse(response);
+\\\`\\\`\\\`
 
-    if (!jsonText) {
-        throw new Error("Received an empty response from the AI. This could be due to content filtering or an internal error. Please try adjusting your prompt.");
-    }
-    
-    try {
-        const parsedResult = sanitizeAndParseJson(jsonText);
-        const { name: planName, plan: planWeeks } = normalizeMediaPlanGroupResponse(parsedResult);
-
-        const planWithEnhancements = (planWeeks || []).map(week => ({
-            ...week,
-            posts: (week.posts || []).map((post: any) => {
-                const { status, ...restOfPost } = post;
-                return {
-                    ...restOfPost,
-                    id: crypto.randomUUID(),
-                    status: 'draft',
-                    promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
-                } as MediaPlanPost;
-            }),
-        }));
-        return {
-            id: crypto.randomUUID(),
-            name: planName,
-            prompt: userPrompt,
-            plan: planWithEnhancements,
-            personaId: persona?.id
-        };
-    } catch(e) {
-        console.error("Failed to parse AI JSON response:", jsonText);
-        throw new Error("The AI returned a malformed or unexpected response. Please try again.");
-    }
-};
-
-export const generateImagePromptForPostWithOpenRouter = async (
-    postContent: { title: string; content: string },
-    brandFoundation: BrandFoundation,
-    language: string,
-    model: string,
-    persona: Persona | null
-): Promise<string> => {
-    const personaInstruction = persona ? `
-**KOL/KOC Persona (Crucial):**
+**KOL/KOC Persona (Crucial):
 All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
 - **Nickname:** ${persona.nickName}
 - **Main Style:** ${persona.mainStyle}
 - **Field of Activity:** ${persona.activityField}
 - **Detailed Description:** ${persona.outfitDescription}
 
-IMPORTANT: The prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]".
+IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]" 
+- **Tone:** The content's tone must perfectly match this persona's style.
+`;
 
+    const response = await openrouterFetch({
+        model: model,
+        messages: [
+            { role: 'system', content: affiliateContentKitSystemInstruction },
+            { role: 'user', content: openRouterPrompt }
+        ],
+        response_format: { "type": "json_object" },
+    });
+    
+    const jsonText = parseOpenRouterResponse(response);
+    if (!jsonText) throw new Error("Received empty response from OpenRouter.");
+    
+    const parsedResult = sanitizeAndParseJson(jsonText);
+    const { name: planName, plan: planWeeks } = normalizeMediaPlanGroupResponse(parsedResult);
+
+    const planWithEnhancements = (planWeeks || []).map(week => ({
+        ...week,
+        posts: (week.posts || []).map((post: any) => {
+            const { status, ...restOfPost } = post;
+            return {
+                ...restOfPost,
+                id: crypto.randomUUID(),
+                status: 'draft',
+                promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
+            } as MediaPlanPost;
+        }),
+    }));
+
+    return {
+        id: crypto.randomUUID(),
+        name: (planName && planName !== 'Untitled Plan') ? planName : (selectedProduct ? `Promotion Plan: ${selectedProduct.productName}` : userPrompt.substring(0, 30)),
+        prompt: userPrompt,
+        plan: planWithEnhancements,
+        source: 'wizard',
+        sources: groundedContent?.map((c: any) => ({ uri: c.url, title: c.title })) || [],
+        personaId: persona?.id,
+    };
+};
+
+export const generateMediaPromptForPostWithOpenRouter = async (
+    postContent: { title: string; content: string; contentType: string },
+    brandFoundation: BrandFoundation,
+    language: string,
+    model: string,
+    persona: Persona | null
+): Promise<string | string[]> => {
+    
+    const personaInstruction = persona ? `
+**KOL/KOC Persona (Crucial):**
+All content MUST be generated from the perspective of the following KOL/KOC.
+- **Nickname:** ${persona.nickName}
+- **Main Style:** ${persona.mainStyle}
+- **Field of Activity:** ${persona.activityField}
+- **Detailed Description (for image generation):** ${persona.outfitDescription}
+- **Tone:** The content's tone must perfectly match this persona's style.
+- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]".
 ` : '';
 
-    const prompt = `
+    let prompt = `
 You are a creative visual director for the brand "${brandFoundation.brandName}".
 The brand's personality is: ${brandFoundation.personality}.
 ${personaInstruction}
-Based on the following social media post content (in ${language}), generate a single, detailed, and compelling image generation prompt.
+Based on the following social media post content (in ${language}), generate a detailed and compelling media prompt.
 The prompt MUST BE IN ENGLISH.
-The prompt should be a single paragraph describing a visual scene that captures the essence of the post.
 Do not add any explanations, labels, or extra text. Output ONLY the prompt.
 
 Post Title: "${postContent.title}"
 Post Content: "${postContent.content}"
 `;
+
+    switch (postContent.contentType) {
+        case 'Image Post':
+            prompt += `Generate a single, detailed DALL-E prompt to generate the image.`;
+            break;
+        case 'Video Idea':
+        case 'Shorts Idea':
+        case 'Story':
+            prompt += `Generate a concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.`;
+            break;
+        case 'Carousel Post':
+            prompt += `Generate an array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts). The output should be a JSON array of strings.`;
+            break;
+        default:
+            prompt += `Generate a single, detailed DALL-E prompt to generate the image.`;
+            break;
+    }
+
     const response = await openrouterFetch({
         model: model,
         messages: [{ role: 'user', content: prompt }]
@@ -480,6 +503,16 @@ Post Content: "${postContent.content}"
     if (!text) {
         return `A visually appealing image representing the concept of "${postContent.title}" in a style that is ${brandFoundation.personality}.`;
     }
+
+    if (postContent.contentType === 'Carousel Post') {
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            console.error("Failed to parse carousel prompts, returning as single string:", text);
+            return text;
+        }
+    }
+
     return text;
 };
 
@@ -803,20 +836,20 @@ All content MUST be generated from the perspective of the following KOL/KOC.
         }))
     ];
 
-    // 4. Generate image prompts for all posts
+    // 4. Generate media prompts for all posts
     const postsWithPrompts = await Promise.all(
         allPosts.map(async (post) => {
             try {
-                const newPrompt = await generateImagePromptForPostWithOpenRouter(
-                    { title: post.title, content: post.content },
+                const newPrompt = await generateMediaPromptForPostWithOpenRouter(
+                    { title: post.title, content: post.content, contentType: post.contentType },
                     brandFoundation,
                     language,
                     model,
                     persona
                 );
-                return { ...post, imagePrompt: newPrompt };
+                return { ...post, mediaPrompt: newPrompt };
             } catch (e) {
-                console.error(`Failed to generate image prompt for post: ${post.title}`, e);
+                console.error(`Failed to generate media prompt for post: ${post.title}`, e);
                 return post; // Return original post on error
             }
         })

@@ -3,7 +3,7 @@ import {
   generateBrandProfile, 
   generateBrandKit, 
   generateMediaPlanGroup, 
-  generateImagePromptForPost, 
+  generateMediaPromptForPost, 
   generateAffiliateComment, 
   generateViralIdeas, 
   generateContentPackage,
@@ -16,7 +16,7 @@ import {
   generateBrandProfileWithOpenRouter, 
   generateBrandKitWithOpenRouter, 
   generateMediaPlanGroupWithOpenRouter, 
-  generateImagePromptForPostWithOpenRouter, 
+  generateMediaPromptForPostWithOpenRouter, 
   generateAffiliateCommentWithOpenRouter, 
   generateViralIdeasWithOpenRouter, 
   generateContentPackageWithOpenRouter,
@@ -53,13 +53,13 @@ export interface TextGenerationService {
     persona: Persona | null,
     selectedProduct: AffiliateLink | null
   ) => Promise<MediaPlanGroup>;
-  generateImagePromptForPost: (
-    postContent: { title: string; content: string },
+  generateMediaPromptForPost: (
+    postContent: { title: string; content: string; contentType: string },
     brandFoundation: BrandFoundation,
     language: string,
     model: string,
     persona: Persona | null
-  ) => Promise<string>;
+  ) => Promise<string | string[]>;
   generateAffiliateComment: (
     post: MediaPlanPost,
     products: AffiliateLink[],
@@ -112,7 +112,7 @@ const googleService: TextGenerationService = {
   generateBrandProfile,
   generateBrandKit,
   generateMediaPlanGroup,
-  generateImagePromptForPost,
+  generateMediaPromptForPost,
   generateAffiliateComment,
   generateViralIdeas,
   generateContentPackage,
@@ -144,7 +144,7 @@ const openRouterService: TextGenerationService = {
       selectedProduct
     );
   },
-  generateImagePromptForPost,
+  generateMediaPromptForPost: generateMediaPromptForPostWithOpenRouter,
   generateAffiliateComment,
   generateViralIdeas: (trend, language, useSearch, model) => {
     // OpenRouter doesn't use the useSearch parameter, so we ignore it
@@ -231,15 +231,15 @@ export const textGenerationService: TextGenerationService = {
     }
   },
   
-  generateImagePromptForPost: async (
-    postContent: { title: string; content: string },
+  generateMediaPromptForPost: async (
+    postContent: { title: string; content: string; contentType: string },
     brandFoundation: BrandFoundation,
     language: string,
     model: string,
     persona: Persona | null
-  ): Promise<string> => {
+  ): Promise<string | string[]> => {
     const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateImagePromptForPost(postContent, brandFoundation, language, model, persona);
+    return service.generateMediaPromptForPost(postContent, brandFoundation, language, model, persona);
   },
   
   generateAffiliateComment: async (
