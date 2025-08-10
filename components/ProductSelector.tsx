@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AffiliateLink } from '../types';
 import { Input, Select, Button } from './ui';
 import { SearchIcon, LinkIcon, CheckCircleIcon } from './icons';
@@ -7,11 +7,12 @@ import { SearchIcon, LinkIcon, CheckCircleIcon } from './icons';
 interface ProductSelectorProps {
     affiliateLinks: AffiliateLink[];
     onSelectProduct: (productId: string | null) => void;
-    selectedProductId: string | null;
+    selectedProductId: string | null | undefined;
     language: string;
+    autoSelectedProductId?: string;
 }
 
-const ProductSelector: React.FC<ProductSelectorProps> = ({ affiliateLinks, onSelectProduct, selectedProductId, language }) => {
+const ProductSelector: React.FC<ProductSelectorProps> = ({ affiliateLinks, onSelectProduct, selectedProductId, language, autoSelectedProductId }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
 
@@ -72,6 +73,45 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({ affiliateLinks, onSel
 
     return (
         <div className="mt-6">
+            {autoSelectedProductId && selectedProductId === autoSelectedProductId && (
+                <div className="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h3 className="text-lg font-bold text-gray-900 mb-2">
+                        {language === 'Việt Nam' ? 'Sản phẩm đã được liên kết tự động' : 'Product Automatically Linked'}
+                    </h3>
+                    <p className="text-gray-600 mb-4">
+                        {language === 'Việt Nam' 
+                            ? 'Kế hoạch truyền thông này được tạo từ một ý tưởng sản phẩm, do đó sản phẩm đã được chọn tự động.' 
+                            : 'This media plan is created from a product idea, so the product has been automatically selected.'}
+                    </p>
+                    {affiliateLinks.find(link => link.id === autoSelectedProductId) && (
+                        <div className="bg-white p-4 rounded border">
+                            <div className="flex items-center">
+                                {affiliateLinks.find(link => link.id === autoSelectedProductId)?.product_avatar && (
+                                    <img 
+                                        src={affiliateLinks.find(link => link.id === autoSelectedProductId)?.product_avatar} 
+                                        alt={affiliateLinks.find(link => link.id === autoSelectedProductId)?.productName} 
+                                        className="w-16 h-16 rounded-md object-cover mr-4" 
+                                    />
+                                )}
+                                <div>
+                                    <h4 className="font-bold text-gray-900">
+                                        {affiliateLinks.find(link => link.id === autoSelectedProductId)?.productName}
+                                    </h4>
+                                    <p className="text-sm text-gray-600">
+                                        {language === 'Việt Nam' ? 'Nhà cung cấp' : 'Provider'}: {affiliateLinks.find(link => link.id === autoSelectedProductId)?.providerName}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                        {language === 'Việt Nam' ? 'Giá' : 'Price'}: {new Intl.NumberFormat(language === 'Việt Nam' ? 'vi-VN' : 'en-US', { 
+                                            style: 'currency', 
+                                            currency: language === 'Việt Nam' ? 'VND' : 'USD' 
+                                        }).format(affiliateLinks.find(link => link.id === autoSelectedProductId)?.price || 0)}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
             <h3 className="text-2xl font-bold font-sans text-center text-gray-900">{texts.title}</h3>
             <p className="text-gray-500 font-serif text-center mt-1">{texts.subtitle}</p>
 

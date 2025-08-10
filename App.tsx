@@ -11,10 +11,11 @@ import SettingsModal from './components/SettingsModal';
 import IntegrationModal from './components/IntegrationModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
-import { generateBrandKit, generateMediaPlanGroup, generateImage, generateBrandProfile, generateImagePromptForPost, generateAffiliateComment, refinePostContentWithGemini, generateViralIdeas, generateContentPackage, generateFacebookTrends, generatePostsForFacebookTrend, generateIdeasFromProduct } from './services/geminiService';
+import { generateImage } from './services/geminiService';
 import { createDocxBlob, createMediaPlanXlsxBlob } from './services/exportService';
 import { suggestProductsForPost } from './services/khongminhService';
-import { refinePostContentWithOpenRouter, generateBrandProfileWithOpenRouter, generateBrandKitWithOpenRouter, generateMediaPlanGroupWithOpenRouter, generateImagePromptForPostWithOpenRouter, generateImageWithOpenRouter, generateAffiliateCommentWithOpenRouter, generateViralIdeasWithOpenRouter, generateContentPackageWithOpenRouter, generateIdeasFromProductWithOpenRouter } from './services/openrouterService';
+import { generateImageWithOpenRouter } from './services/openrouterService';
+import { textGenerationService } from './services/textGenerationService';
 import { generateImageWithCloudflare } from './services/cloudflareService';
 import {
     createOrUpdateBrandRecord,
@@ -394,9 +395,10 @@ const isVisionModel = (modelName: string): boolean => {
 };
 
 const TEXT_MODEL_FALLBACK_ORDER = [
-    'google/gemini-2.0-flash-exp:free'
-    // Removing models that require API keys or have known issues
-    // 'gemini-2.0-flash'  // Requires API key that might not be loaded properly
+    'google/gemini-2.0-flash-exp:free',
+    'deepseek/deepseek-r1-0528:free',
+    'qwen/qwen3-235b-a22b:free',
+    'gemini-2.5-pro'
 ];
 
 
@@ -420,7 +422,7 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<Settings>({
         language: 'Việt Nam',
         totalPostsPerMonth: 16,
-        imagePromptSuffix: ', photorealistic, 8k, high quality',
+        imagePromptSuffix: ', photorealistic, 8k, high quality, vietnamese style, vietnam',
         affiliateContentKit: AFFILIATE_CONTENT_KIT_DEFAULT,
         textGenerationModel: 'google/gemini-2.0-flash-exp:free',
         imageGenerationModel: 'imagen-4.0-ultra-generate-preview-06-06',
@@ -614,13 +616,30 @@ const App: React.FC = () => {
                     throw new Error("Too many rate limit errors. Please try again later or configure a different model in Settings.");
                 }
                 
-                console.warn(`Model ${model} failed: ${e.message}. Trying next model...`);
+                // Special handling for Gemini API browser errors
+                if (model.startsWith('gemini-') && e.message && e.message.includes('API Key must be set when running in a browser')) {
+                    console.warn(`Model ${model} failed due to browser security restrictions. This is a known limitation. Trying next model...`);
+                    // Don't throw here, just continue to the next model
+                } else {
+                    console.warn(`Model ${model} failed: ${e.message}. Trying next model...`);
+                }
             }
         }
         
         // If we get here, all models failed
         if (lastError && lastError.message.includes('rate limit')) {
             throw new Error("All models are currently rate limited. Please try again later or configure a different model in Settings.");
+        }
+        
+        // Check if all failures were due to browser security restrictions with Gemini
+        const allGeminiBrowserErrors = modelsToTry.every(model => 
+            model.startsWith('gemini-') && 
+            lastError && 
+            lastError.message.includes('API Key must be set when running in a browser')
+        );
+        
+        if (allGeminiBrowserErrors) {
+            throw new Error("The Gemini API cannot be used directly in the browser due to security restrictions. Please use OpenRouter models or set up a backend proxy for Gemini.");
         }
         
         throw lastError || new Error("All text generation models failed.");
@@ -707,11 +726,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             const generationTask = (model: string) => {
-                if (model.startsWith('gemini-')) {
-                    return generateBrandProfile(idea, settings.language, model);
-                } else {
-                    return generateBrandProfileWithOpenRouter(idea, settings.language, model);
-                }
+                return textGenerationService.generateBrandProfile(idea, settings.language, model);
             };
             const profile = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             setBrandInfo(profile);
@@ -748,11 +763,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             const generationTask = (model: string) => {
-                 if (model.startsWith('gemini-')) {
-                    return generateBrandKit(info, settings.language, model);
-                } else {
-                    return generateBrandKitWithOpenRouter(info, settings.language, model);
-                }
+                return textGenerationService.generateBrandKit(info, settings.language, model);
             };
             const kit = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
 
@@ -827,27 +838,20 @@ const App: React.FC = () => {
             const persona = personaId ? generatedAssets.personas?.find(p => p.id === personaId) ?? null : null;
             const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null; // Added this line
             
-            const generationTask = (model: string) => {
-                const commonArgs = [
-                    generatedAssets.brandFoundation, 
-                    prompt, 
-                    settings.language, 
+            const generationTask = async (model: string) => {
+                return textGenerationService.generateMediaPlanGroup(
+                    generatedAssets.brandFoundation,
+                    prompt,
+                    settings.language,
                     totalPosts,
+                    useSearch,
                     selectedPlatforms,
                     options,
                     settings.affiliateContentKit,
-                    model
-                ] as const;
-
-                if (model.startsWith('gemini-')) {
-                    return generateMediaPlanGroup(
-                        commonArgs[0], commonArgs[1], commonArgs[2], commonArgs[3], useSearch, commonArgs[4], commonArgs[5], commonArgs[6], commonArgs[7], persona, selectedProduct // Changed this line
-                    );
-                } else {
-                     return generateMediaPlanGroupWithOpenRouter(
-                        ...commonArgs, persona, selectedProduct // Changed this line
-                    );
-                }
+                    model,
+                    persona,
+                    selectedProduct
+                );
             };
             const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
@@ -1095,19 +1099,16 @@ const App: React.FC = () => {
         
         try {
             const generationTask = (model: string) => {
+                // Define the common arguments for the image prompt generation
                 const commonArgs = [
                     { title: post.title, content: post.content },
                     generatedAssets.brandFoundation,
                     settings.language,
                     model,
-                    persona
+                    persona,
                 ] as const;
 
-                if (model.startsWith('gemini-')) {
-                    return generateImagePromptForPost(...commonArgs);
-                } else {
-                    return generateImagePromptForPostWithOpenRouter(...commonArgs);
-                }
+                return textGenerationService.generateImagePromptForPost(...commonArgs);
             };
             const newPrompt = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
@@ -1142,11 +1143,7 @@ const App: React.FC = () => {
 
     const handleRefinePost = useCallback(async (text: string): Promise<string> => {
         const generationTask = (model: string) => {
-            if (model.startsWith('gemini-')) {
-                return refinePostContentWithGemini(text, model);
-            } else {
-                return refinePostContentWithOpenRouter(text, model);
-            }
+            return textGenerationService.refinePostContent(text, model);
         };
         try {
             const refinedText = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1198,11 +1195,7 @@ const App: React.FC = () => {
                     model,
                 ] as const;
 
-                if (model.startsWith('gemini-')) {
-                    return generateAffiliateComment(...commonArgs);
-                } else {
-                    return generateAffiliateCommentWithOpenRouter(...commonArgs);
-                }
+                return textGenerationService.generateAffiliateComment(...commonArgs);
             };
 
             const newComment = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1260,11 +1253,7 @@ const App: React.FC = () => {
         setLoaderContent({ title: "Generating Viral Ideas...", steps: ["Analyzing trend...", "Brainstorming concepts...", "Finalizing ideas..."] });
         try {
              const generationTask = (model: string) => {
-                if (model.startsWith('gemini-')) {
-                    return generateViralIdeas(trend, settings.language, useSearch, model);
-                } else {
-                    return generateViralIdeasWithOpenRouter(trend, settings.language, model);
-                }
+                return textGenerationService.generateViralIdeas(trend, settings.language, useSearch, model);
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             const newIdeas: Idea[] = newIdeaData.map(idea => ({
@@ -1298,15 +1287,12 @@ const App: React.FC = () => {
         if (!generatedAssets?.brandFoundation) return;
         
         const persona = personaId ? (generatedAssets.personas || []).find(p => p.id === personaId) ?? null : null;
+        const selectedProduct = idea.productId ? (generatedAssets.affiliateLinks || []).find(l => l.id === idea.productId) ?? null : null;
 
         setLoaderContent({ title: "Generating Content Package...", steps: ["Crafting pillar content...", "Repurposing for other platforms...", "Generating image prompts...", "Assembling package..."] });
         try {
             const generationTask = (model: string) => {
-                 if (model.startsWith('gemini-')) {
-                    return generateContentPackage(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options);
-                 } else {
-                    return generateContentPackageWithOpenRouter(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options);
-                 }
+                 return textGenerationService.generateContentPackage(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options, selectedProduct);
             };
             const newPackage = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             dispatchAssets({ type: 'ADD_CONTENT_PACKAGE', payload: newPackage });
@@ -1348,16 +1334,7 @@ const App: React.FC = () => {
         try {
             const generationTask = (model: string) => {
                 console.log("Attempting to generate ideas with model:", model);
-                console.log("Model starts with 'gemini-':", model.startsWith('gemini-'));
-                // Models that start with 'gemini-' but don't contain 'free' should use the Gemini service
-                // Models that contain 'free' or don't start with 'gemini-' should use OpenRouter
-                if (model.startsWith('gemini-') && !model.includes('free')) {
-                    console.log("Using Gemini service for model:", model);
-                    return generateIdeasFromProduct(product, settings.language, model);
-                } else {
-                    console.log("Using OpenRouter service for model:", model);
-                    return generateIdeasFromProductWithOpenRouter(product, settings.language, model);
-                }
+                return textGenerationService.generateIdeasFromProduct(product, settings.language, model);
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
@@ -1886,7 +1863,7 @@ const App: React.FC = () => {
             if (!personaId) {
                 throw new Error("No persona assigned to this media plan. Cannot schedule post.");
             }
-            await socialApiSchedulePost(personaId, post, scheduledAt); // Use the renamed import and pass personaId
+            await socialApiSchedulePost(personaId, post.platform, post, scheduledAt); // Use the renamed import and pass personaId
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
             if (airtableBrandId) {
@@ -2156,7 +2133,7 @@ const App: React.FC = () => {
         setIsGeneratingFacebookTrends(true);
         setError(null);
         try {
-            const newTrendData = await generateFacebookTrends(industry, settings.language, settings.textGenerationModel);
+            const newTrendData = await textGenerationService.generateFacebookTrends(industry, settings.language, settings.textGenerationModel);
             const newTrends: FacebookTrend[] = newTrendData.map(t => ({ ...t, id: crypto.randomUUID(), brandId: airtableBrandId || '' }));
             dispatchAssets({ type: 'SET_FACEBOOK_TRENDS', payload: newTrends });
         } catch (err) {
@@ -2171,7 +2148,7 @@ const App: React.FC = () => {
         setIsGeneratingFacebookPostIdeas(true);
         setError(null);
         try {
-            const newIdeaData = await generatePostsForFacebookTrend(trend, settings.language, settings.textGenerationModel);
+            const newIdeaData = await textGenerationService.generatePostsForFacebookTrend(trend, settings.language, settings.textGenerationModel);
             const newIdeas: FacebookPostIdea[] = newIdeaData.map(i => ({ ...i, id: crypto.randomUUID(), trendId: trend.id }));
             dispatchAssets({ type: 'ADD_FACEBOOK_POST_IDEAS', payload: newIdeas });
         } catch (err) {

@@ -582,10 +582,24 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, publicImageUrls:
     }
     const planRecordId = planRecord.id;
 
-    // 2. Upsert Posts
+    // 2. Fetch Product Record IDs
+    const allPromotedProductIds = [...new Set(group.plan.flatMap(week => week.posts.flatMap(p => p.promotedProductIds || [])))];
+    console.log("All promoted product IDs from posts:", allPromotedProductIds);
+    let productRecordIdMap = new Map<string, string>();
+    if (allPromotedProductIds.length > 0) {
+        const formula = `OR(${allPromotedProductIds.map(id => `{link_id} = "${id}"`).join(',')})`;
+        console.log("Formula for fetching product records:", formula);
+        const productRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, formula, ['link_id']);
+        console.log("Fetched product records from Airtable:", productRecords);
+        productRecords.forEach(r => productRecordIdMap.set(r.fields.link_id, r.id));
+        console.log("Product ID to Airtable Record ID map:", productRecordIdMap);
+    }
+
+    // 3. Upsert Posts
     const postPayloads = group.plan.flatMap(week =>
         week.posts.map(post => {
-            const fields = mapPostToAirtableFields(post, brandRecordId, planRecordId);
+            const promotedProductRecordIds = (post.promotedProductIds || []).map(id => productRecordIdMap.get(id)).filter(Boolean) as string[];
+            const fields = mapPostToAirtableFields(post, brandRecordId, planRecordId, promotedProductRecordIds);
             // Manually add week and theme from the parent week object
             (fields as any).week = week.week;
             (fields as any).theme = week.theme;
@@ -595,7 +609,7 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, publicImageUrls:
     const createdPostRecords = await sendToAirtable(postPayloads, POSTS_TABLE_NAME);
     const createdPostRecordIds = createdPostRecords.map(r => r.id);
 
-    // 3. Link Posts back to the Plan record
+    // 4. Link Posts back to the Plan record
     if (createdPostRecordIds.length > 0) {
         await patchAirtableRecords(MEDIA_PLANS_TABLE_NAME, [{
             id: planRecordId,
@@ -605,7 +619,7 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, publicImageUrls:
         }]);
     }
 
-    // 4. Link the new Plan and its Posts back to the Brand record
+    // 5. Link the new Plan and its Posts back to the Brand record
     const existingPlanRecordIds = brandRecord.fields.media_plans || [];
     const existingPostRecordIds = brandRecord.fields.posts || [];
     const fieldsToUpdate: { media_plans?: string[]; posts?: string[] } = {};
@@ -798,6 +812,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{
         title: r.fields.title,
         description: r.fields.description,
         targetAudience: r.fields.target_audience,
+        productId: r.fields.product_id, // Include the product ID if it exists
     }));
     
     const fullAssets: GeneratedAssets = {

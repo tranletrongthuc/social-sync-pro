@@ -13,7 +13,8 @@ const openrouterFetch = async (body: object, retries = 3, initialDelay = 1000) =
     
     let lastError: Error | null = null;
     let delay = initialDelay;
-    let rateLimitRetries = 3; // Max 3 rate limit waits
+    let rateLimitRetries = 5; // Increase to 5 rate limit waits
+    const baseWaitSeconds = 61; // Base wait time
 
     for (let i = 0; i < retries; i++) {
         try {
@@ -48,19 +49,20 @@ const openrouterFetch = async (body: object, retries = 3, initialDelay = 1000) =
             if (response.status === 429) {
                 if (rateLimitRetries > 0) {
                     rateLimitRetries--;
-                    const waitSeconds = 61; // Wait 61 seconds to be safe
+                    // Add some randomization to avoid consistent rate limiting
+                    const waitSeconds = baseWaitSeconds + Math.floor(Math.random() * 30); // 61-90 seconds
                     lastError = new Error(`OpenRouter rate limit hit (1 req/min).`);
                     console.warn(`${lastError.message} Waiting ${waitSeconds}s before retrying. (${rateLimitRetries} waits remaining)`);
                     
                     window.dispatchEvent(new CustomEvent('rateLimitWait', { 
-                        detail: { service: 'OpenRouter', seconds: waitSeconds, attempt: (3 - rateLimitRetries), total: 3 } 
+                        detail: { service: 'OpenRouter', seconds: waitSeconds, attempt: (5 - rateLimitRetries), total: 5 } 
                     }));
 
                     await new Promise(res => setTimeout(res, waitSeconds * 1000));
                     i--; // This was a rate limit wait, not a failure retry, so don't increment i.
                     continue;
                 } else {
-                    lastError = new Error('OpenRouter rate limit persisted for over 3 minutes.');
+                    lastError = new Error('OpenRouter rate limit persisted for over 5 minutes.');
                     break; // Exit the loop if we've been rate-limited too many times.
                 }
             }
@@ -421,6 +423,7 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
                     ...restOfPost,
                     id: crypto.randomUUID(),
                     status: 'draft',
+                    promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
                 } as MediaPlanPost;
             }),
         }));
@@ -608,6 +611,9 @@ export const generateViralIdeasWithOpenRouter = async (
     language: string,
     model: string
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
+    if (!model || typeof model !== 'string' || model.trim() === '') {
+        throw new Error("Cannot generate viral ideas with OpenRouter: No valid model was provided.");
+    }
     const prompt = `You are a viral marketing expert and a world-class creative strategist.
 Your task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.
 The ideas must be in ${language}.
@@ -635,7 +641,11 @@ You MUST respond with a single, valid JSON array, containing 5 idea objects. Do 
     }
 
     try {
-        const parsedJson = sanitizeAndParseJson(jsonText);
+        let fixedJsonText = jsonText.trim();
+        if (fixedJsonText.startsWith('{')) {
+            fixedJsonText = `[${fixedJsonText}]`;
+        }
+        const parsedJson = sanitizeAndParseJson(fixedJsonText);
         const validatedIdeas = normalizeArrayResponse<Omit<Idea, 'id'|'trendId'>>(parsedJson, 'idea');
         
         if (validatedIdeas.length === 0) {
@@ -659,7 +669,8 @@ export const generateContentPackageWithOpenRouter = async (
     model: string,
     persona: Persona | null,
     pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; }
+    options: { tone: string; style: string; length: string; },
+    selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
 
     const personaInstruction = persona ? `
@@ -673,6 +684,13 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 - **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
 ` : '';
 
+    const productInstruction = selectedProduct ? `
+**Affiliate Product to Feature (Crucial):**
+- **Product Name:** ${selectedProduct.productName}
+- **Product ID:** ${selectedProduct.id}
+- **Instruction:** This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id}".
+` : '';
+
     const customizationInstruction = `
 **Content Customization Instructions:**
 - **Tone of Voice**: Generate all content with a '${options.tone}' tone.
@@ -683,6 +701,7 @@ All content MUST be generated from the perspective of the following KOL/KOC.
     // 1. Generate Pillar Content
     const pillarPrompt = `
     ${personaInstruction}
+    ${productInstruction}
     ${customizationInstruction}
     Based on the idea "${idea.title}", create a comprehensive, long-form 'pillar' content piece for ${pillarPlatform}.
     This should be a detailed, authoritative piece that provides significant value to the target audience: ${idea.targetAudience}.
@@ -709,6 +728,7 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 
     const repurposedPrompt = `
     ${personaInstruction}
+    ${productInstruction}
     ${customizationInstruction}
     **Context:** The following is a large "pillar" content piece about "${idea.title}" created for ${pillarPlatform}.
     Pillar Content: "${pillarPost.content}"
@@ -806,6 +826,7 @@ All content MUST be generated from the perspective of the following KOL/KOC.
         ...p,
         id: crypto.randomUUID(),
         status: 'draft',
+        promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
     } as MediaPlanPost));
 
 
@@ -832,6 +853,9 @@ export const generateIdeasFromProductWithOpenRouter = async (
     language: string,
     model: string
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
+    if (!model || typeof model !== 'string' || model.trim() === '') {
+        throw new Error("Cannot generate ideas from product with OpenRouter: No valid model was provided.");
+    }
     
     // Build a detailed product description
     const productDetails = [

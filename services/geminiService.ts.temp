@@ -1,3 +1,7 @@
+
+
+
+
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../types';
 
@@ -15,7 +19,7 @@ export const sanitizeAndParseJson = (jsonText: string) => {
 
     // 2. Fix for observed error: `... ,"=value" ...` which should be `... ,"value" ...`
     // This regex looks for a comma or opening bracket, optional whitespace,
-    // then the erroneous `="` followed by a string, and a closing "`.
+    // then the erroneous `="` followed by a string, and a closing `"`.
     // It reconstructs it as a valid JSON string.
     sanitized = sanitized.replace(/([,\[])\s*=\s*"([^"]*)"/g, '$1"$2"');
 
@@ -28,7 +32,7 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     sanitized = sanitized.replace(/([\[,]\s*)#([^"]+)(")/g, '$1"#$2$3');
 
     // 5. Removed risky unescaped quote sanitizer. Relying on responseMimeType: "application/json".
-    // sanitized = sanitized.replace(/(?<![\[{\s:,])"(?![\s,}\]:])/g, '\"');
+    // sanitized = sanitized.replace(/(?<![\[\{\s:,])"(?![\s,}\]:])/g, '\\"');
 
     // 6. Remove trailing commas, which are valid in JS but not in strict JSON.
     // e.g., `{"key":"value",}` or `["item1",]`
@@ -37,57 +41,29 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     try {
         return JSON.parse(sanitized);
     } catch (e) {
-        console.error("Failed to parse AI JSON response for product-based ideas:", jsonText);
-        throw new Error("The AI returned a malformed or unexpected response. This may be a temporary issue with the model. Please try again later or configure a different model in Settings.");
+        console.error("Failed to parse sanitized AI JSON response:", sanitized);
+        console.error("Original text was:", jsonText);
+        throw e; // rethrow the original error after logging
     }
 };
 
 export const normalizeMediaPlanGroupResponse = (data: any): { name: string; plan: MediaPlan } => {
     if (!data) throw new Error("Invalid or empty data provided to normalizeMediaPlanGroupResponse.");
 
-    let effectiveData = data;
-    let name = '';
-    let plan: MediaPlan = [];
+    let name = data.name;
+    let plan = data.plan;
 
-    // Handle wrapped responses (e.g., from OpenRouter models)
-    if (data.result && typeof data.result === 'object') {
-        effectiveData = data.result;
-    }
-
-    // Extract name if present at the root level
-    if (effectiveData.name && typeof effectiveData.name === 'string') {
-        name = effectiveData.name;
-    }
-
-    // Try to find the plan array in various possible locations
-    if (Array.isArray(effectiveData)) {
-        // If the root is an array, assume it's the plan
-        plan = effectiveData;
-    } else if (typeof effectiveData === 'object') {
-        // Check for common keys that might contain the plan
-        const possiblePlanKeys = ['plan', 'weeks', 'mediaPlan'];
-        for (const key of possiblePlanKeys) {
-            if (effectiveData[key] && Array.isArray(effectiveData[key])) {
-                plan = effectiveData[key];
-                break;
-            }
-        }
-
-        // Also check for nested structures
-        if (effectiveData.plan && typeof effectiveData.plan === 'object' && !Array.isArray(effectiveData.plan)) {
-            if (effectiveData.plan.name) name = effectiveData.plan.name;
-            const possibleNestedKeys = ['weeks', 'mediaPlan'];
-            for (const key of possibleNestedKeys) {
-                if (effectiveData.plan[key] && Array.isArray(effectiveData.plan[key])) {
-                    plan = effectiveData.plan[key];
-                    break;
-                }
-            }
+    // Handle nested structures like { "plan": { "name": "...", "weeks": [...] } }
+    if (data.plan && typeof data.plan === 'object' && !Array.isArray(data.plan)) {
+        if (data.plan.name) name = data.plan.name;
+        if (data.plan.weeks && Array.isArray(data.plan.weeks)) {
+            plan = data.plan.weeks;
         }
     }
 
     if (!Array.isArray(plan)) {
-        console.warn("Could not find a valid 'plan' or 'weeks' array in the AI response.", data); // Log original data for debugging
+        console.warn("Could not find a valid 'plan' or 'weeks' array in the AI response.", data);
+        plan = [];
     }
     
     return { name: name || 'Untitled Plan', plan };
@@ -306,12 +282,11 @@ const brandKitResponseSchema = {
 };
 
 export const refinePostContentWithGemini = async (postText: string, model: string): Promise<string> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `You are a world-class social media copywriter. Refine the following post content to maximize engagement and impact, while preserving its core message. The output should ONLY be the refined text, without any introductory phrases, explanations, or quotes.\n\nOriginal content:\n"""${postText}"""`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    const prompt = `You are a world-class social media copywriter. Refine the following post content to maximize engagement and impact, while preserving its core message. The output should ONLY be the refined text, without any introductory phrases, explanations, or quotes.
+
+Original content:
+"""${postText}"""`;
 
     const response = await ai.models.generateContent({
         model: model,
@@ -321,12 +296,19 @@ export const refinePostContentWithGemini = async (postText: string, model: strin
 };
 
 export const generateBrandProfile = async (idea: string, language: string, model: string): Promise<BrandInfo> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `\nYou are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.\nBusiness Idea:\n"${idea}"\n\nGenerate a JSON object with the following fields in ${language}:\n- name: A creative and fitting brand name.\n- mission: A powerful, one-sentence mission statement.\n- values: A comma-separated string of 4-5 core brand values.\n- audience: A brief description of the target audience.\n- personality: 3-4 keywords describing the brand's personality.\n`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    const prompt = `
+You are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.
+Business Idea:
+"${idea}"
+
+Generate a JSON object with the following fields in ${language}:
+- name: A creative and fitting brand name.
+- mission: A powerful, one-sentence mission statement.
+- values: A comma-separated string of 4-5 core brand values.
+- audience: A brief description of the target audience.
+- personality: 3-4 keywords describing the brand's personality.
+`;
     const response = await geminiFetchWithRetry(() =>
         ai.models.generateContent({
             model: model,
@@ -340,12 +322,23 @@ export const generateBrandProfile = async (idea: string, language: string, model
 };
 
 export const generateBrandKit = async (brandInfo: BrandInfo, language: string, model: string): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-     const prompt = `\nYou are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.\n\nBrand Input (in ${language}):\n- Brand Name: ${brandInfo.name}\n- Brand Mission: ${brandInfo.mission}\n- Brand Values: ${brandInfo.values}\n- Target Audience: ${brandInfo.audience}\n- Brand Personality: ${brandInfo.personality}\n\nGenerate the following assets IN ${language}:\n1.  **Brand Foundation**\n: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.\n2.  **Core Media Assets**\n: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.\n3.  **Unified Profile Assets**\n: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.\n4.  **Initial 1-Month Media Plan**\n: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. Ensure every post includes a detailed, English image prompt.\n`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+     const prompt = `
+You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.
+
+Brand Input (in ${language}):
+- Brand Name: ${brandInfo.name}
+- Brand Mission: ${brandInfo.mission}
+- Brand Values: ${brandInfo.values}
+- Target Audience: ${brandInfo.audience}
+- Brand Personality: ${brandInfo.personality}
+
+Generate the following assets IN ${language}:
+1.  **Brand Foundation**: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.
+2.  **Core Media Assets**: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.
+3.  **Unified Profile Assets**: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.
+4.  **Initial 1-Month Media Plan**: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. Ensure every post includes a detailed, English image prompt.
+`;
     const response = await geminiFetchWithRetry(() =>
         ai.models.generateContent({
             model: model,
@@ -426,18 +419,61 @@ export const generateMediaPlanGroup = async (
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     affiliateContentKitSystemInstruction: string,
     model: string,
-    persona: Persona | null,
-    selectedProduct: AffiliateLink | null
+    persona: Persona | null
 ): Promise<MediaPlanGroup> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
-    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description (for image generation):** ${persona.outfitDescription}\n- **Tone:** The content's tone must perfectly match this persona's style.\n- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".\n` : '';
+    const personaInstruction = persona ? `
+**KOL/KOC Persona (Crucial):**
+All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
+- **Nickname:** ${persona.nickName}
+- **Main Style:** ${persona.mainStyle}
+- **Field of Activity:** ${persona.activityField}
+- **Detailed Description (for image generation):** ${persona.outfitDescription}
+- **Tone:** The content's tone must perfectly match this persona's style.
+- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
+` : '';
 
-    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.\nThe output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.\n\n**Brand Foundation (Use this as your guide):**\n- Brand Name: ${brandFoundation.brandName}\n- Mission: ${brandFoundation.mission}\n- USP: ${brandFoundation.usp}\n- Values: ${(brandFoundation.values || []).join(', ')}\n- Target Audience: ${brandFoundation.targetAudience}\n- Personality: ${brandFoundation.personality}\n\n${personaInstruction}\n\n**User's Goal for the Plan:**\n"${userPrompt}"\n\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.\n- **Emojis**\n: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}\n\nBased on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.\n- **Name**\n: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").\n- **Plan Structure**\n: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").\n- **Content**\n: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.\n- **Post Details**\n: Each post object must be complete and ready-to-use, containing:\n    -   platform: The target platform. It MUST be one of the selected platforms: ${selectedPlatforms.map(p => `'${p}'`).join(', ')}.\n    -   contentType: e.g., "Image Post", "Video Idea", "Story", "Carousel Post".\n    -   title: An SEO-friendly title or headline.\n    -   content: The full caption, description, or script. This must be engaging and reflect the brand personality and customization instructions.\n    -   hashtags: An array of relevant and trending hashtags.\n    -   cta: A clear call-to-action (e.g., "Shop Now", "Learn More", "Comment below").\n    -   imagePrompt: A detailed, English-language prompt for an image generation model.\n- **Important Content Formatting Rules**\n:\n    - The 'content' field for any post must be the final, user-facing text (e.g., a caption, script, or description).\n    - For Instagram 'Carousel Post' types, the 'content' field should be a single, cohesive caption for the entire carousel. It must NOT include markers like "Slide 1:", "Slide 2:", etc. The caption should introduce the carousel and encourage users to swipe.\n    - The 'content' field must be clean and ready for publishing. It must NOT contain any extraneous data, especially numerical arrays or references like "[3, 6, 8]".\n- **Consistency**\n: The entire media plan must be thematically consistent with the Brand Foundation.\n`;
+    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.
+The output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.
+
+**Brand Foundation (Use this as your guide):**
+- Brand Name: ${brandFoundation.brandName}
+- Mission: ${brandFoundation.mission}
+- USP: ${brandFoundation.usp}
+- Values: ${(brandFoundation.values || []).join(', ')}
+- Target Audience: ${brandFoundation.targetAudience}
+- Personality: ${brandFoundation.personality}
+
+${personaInstruction}
+
+**User's Goal for the Plan:**
+"${userPrompt}"
+
+**Content Customization Instructions:**
+- **Tone of Voice**: Generate all content with a '${options.tone}' tone.
+- **Writing Style**: The primary style should be '${options.style}'.
+- **Post Length**: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.
+- **Emojis**: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}
+
+Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
+- **Name**: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").
+- **Plan Structure**: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
+- **Content**: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.
+- **Post Details**: Each post object must be complete and ready-to-use, containing:
+    -   platform: The target platform. It MUST be one of the selected platforms: ${selectedPlatforms.map(p => `'${p}'`).join(', ')}.
+    -   contentType: e.g., "Image Post", "Video Idea", "Story", "Carousel Post".
+    -   title: An SEO-friendly title or headline.
+    -   content: The full caption, description, or script. This must be engaging and reflect the brand personality and customization instructions.
+    -   hashtags: An array of relevant and trending hashtags.
+    -   cta: A clear call-to-action (e.g., "Shop Now", "Learn More", "Comment below").
+    -   imagePrompt: A detailed, English-language prompt for an image generation model.
+- **Important Content Formatting Rules**:
+    - The 'content' field for any post must be the final, user-facing text (e.g., a caption, script, or description).
+    - For Instagram 'Carousel Post' types, the 'content' field should be a single, cohesive caption for the entire carousel. It must NOT include markers like "Slide 1:", "Slide 2:", etc. The caption should introduce the carousel and encourage users to swipe.
+    - The 'content' field must be clean and ready for publishing. It must NOT contain any extraneous data, especially numerical arrays or references like "[3, 6, 8]".
+- **Consistency**: The entire media plan must be thematically consistent with the Brand Foundation.
+`;
 
     const config: any = {
         systemInstruction: affiliateContentKitSystemInstruction,
@@ -496,7 +532,6 @@ export const generateMediaPlanGroup = async (
                 ...restOfPost,
                 id: crypto.randomUUID(),
                 status: 'draft',
-                promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
             } as MediaPlanPost;
         }),
     }));
@@ -519,11 +554,7 @@ export const generateImage = async (
     aspectRatio: "1:1" | "16:9" = "1:1",
     productImages: File[] = []
 ): Promise<string> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     const fullPrompt = `${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}`;
     
     const response = await ai.models.generateImages({
@@ -547,15 +578,30 @@ export const generateImagePromptForPost = async (
     model: string,
     persona: Persona | null
 ): Promise<string> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
-    const personaInstruction = persona ? `\nThe image MUST feature the following persona:\n- Nickname: ${persona.nickName}\n- Main Style: ${persona.mainStyle}\n- Field of Activity: ${persona.activityField}\n- Detailed Description: ${persona.outfitDescription}\n\nIMPORTANT: The prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]".\n` : '';
+    const personaInstruction = persona ? `
+The image MUST feature the following persona:
+- Nickname: ${persona.nickName}
+- Main Style: ${persona.mainStyle}
+- Field of Activity: ${persona.activityField}
+- Detailed Description: ${persona.outfitDescription}
 
-    const prompt = `\nYou are a creative visual director for the brand "${brandFoundation.brandName}".\nThe brand's personality is: ${brandFoundation.personality}.\n${personaInstruction}\nBased on the following social media post content (in ${language}), generate a single, detailed, and compelling image generation prompt.\nThe prompt MUST BE IN ENGLISH.\nThe prompt should be a single paragraph describing a visual scene that captures the essence of the post.\nDo not add any explanations, labels, or extra text. Output ONLY the prompt.\n\nPost Title: "${postContent.title}"\nPost Content: "${postContent.content}"\n`;
+IMPORTANT: The prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]".
+` : '';
+
+    const prompt = `
+You are a creative visual director for the brand "${brandFoundation.brandName}".
+The brand's personality is: ${brandFoundation.personality}.
+${personaInstruction}
+Based on the following social media post content (in ${language}), generate a single, detailed, and compelling image generation prompt.
+The prompt MUST BE IN ENGLISH.
+The prompt should be a single paragraph describing a visual scene that captures the essence of the post.
+Do not add any explanations, labels, or extra text. Output ONLY the prompt.
+
+Post Title: "${postContent.title}"
+Post Content: "${postContent.content}"
+`;
     const response = await ai.models.generateContent({
         model: model,
         contents: prompt,
@@ -578,12 +624,34 @@ export const generateAffiliateComment = async (
         `- Product Name: ${p.productName}\n  - Price: ${p.price}\n  - Promotion Link: ${p.promotionLink || p.productLink}`
     ).join('\n');
 
-    const prompt = `\nYou are the social media manager for the brand "${brandFoundation.brandName}", which has a "${brandFoundation.personality}" personality. Your task is to write a comment for a social media post, from the perspective of the page admin.\n\n**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to the post. The comment must encourage clicks on the affiliate link.\n\n**Rules:**\n1.  **Natural Tone:** The comment must sound like a real person, not an ad. It should match the tone of the original post. Avoid overly salesy language.\n2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:\n    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect the original post's topic with the product(s) being promoted. It should add value, share a personal tip, or ask a question to spark conversation and make people curious about the link.\n    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.\n3.  **Language:** The entire comment MUST be in ${language}.\n\n**Original Post Content:**\n- Title: ${post.title}\n- Content: ${post.content}\n\n**Affiliate Product(s) to Promote:**\n${productDetails}\n\n**Example Output:**\nMình thấy nhiều bạn hỏi về [related_topic], em này đúng là chân ái luôn, giải quyết được đúng vấn đề đó. Dùng cực thích!\n\nhttps://your-affiliate-link.com\n\n---\nNow, generate the comment based on the provided post and product details. Output ONLY the comment text.\n`;
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `
+You are the social media manager for the brand "${brandFoundation.brandName}", which has a "${brandFoundation.personality}" personality. Your task is to write a comment for a social media post, from the perspective of the page admin.
+
+**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to the post. The comment must encourage clicks on the affiliate link.
+
+**Rules:**
+1.  **Natural Tone:** The comment must sound like a real person, not an ad. It should match the tone of the original post. Avoid overly salesy language.
+2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:
+    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect the original post's topic with the product(s) being promoted. It should add value, share a personal tip, or ask a question to spark conversation and make people curious about the link.
+    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.
+3.  **Language:** The entire comment MUST be in ${language}.
+
+**Original Post Content:**
+- Title: ${post.title}
+- Content: ${post.content}
+
+**Affiliate Product(s) to Promote:**
+${productDetails}
+
+**Example Output:**
+Mình thấy nhiều bạn hỏi về [related_topic], em này đúng là chân ái luôn, giải quyết được đúng vấn đề đó. Dùng cực thích!
+
+https://your-affiliate-link.com
+
+---
+Now, generate the comment based on the provided post and product details. Output ONLY the comment text.
+`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
     const response = await ai.models.generateContent({
         model: model,
         contents: prompt,
@@ -597,12 +665,18 @@ export const generateViralIdeas = async (
     useSearch: boolean,
     model: string
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    let prompt = `You are a viral marketing expert and a world-class creative strategist.\nYour task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.\nThe ideas must be in ${language}.\nEach idea must have:\n1.  A catchy, curiosity-driven 'title'.\n2.  A short but comprehensive 'description' of the idea.\n3.  A specific 'targetAudience' that this idea would appeal to.\n\nTopic: "${trend.topic}"\nKeywords: ${trend.keywords.join(', ')}\n`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    let prompt = `You are a viral marketing expert and a world-class creative strategist.
+Your task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.
+The ideas must be in ${language}.
+Each idea must have:
+1.  A catchy, curiosity-driven 'title'.
+2.  A short but comprehensive 'description' of the idea.
+3.  A specific 'targetAudience' that this idea would appeal to.
+
+Topic: "${trend.topic}"
+Keywords: ${trend.keywords.join(', ')}
+`;
     const ideasSchema = {
         type: Type.ARRAY,
         items: {
@@ -661,13 +735,7 @@ export const generateViralIdeas = async (
         jsonText = extractedJson;
     }
     
-    // Fix malformed JSON responses that are missing array brackets
-    let fixedJsonText = jsonText.trim();
-    if (fixedJsonText.startsWith('{')) {
-        fixedJsonText = `[${fixedJsonText}]`;
-    }
-
-    return sanitizeAndParseJson(fixedJsonText);
+    return sanitizeAndParseJson(jsonText);
 };
 
 export const generateContentPackage = async (
@@ -678,14 +746,9 @@ export const generateContentPackage = async (
     model: string,
     persona: Persona | null,
     pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; },
-    selectedProduct: AffiliateLink | null
+    options: { tone: string; style: string; length: string; }
 ): Promise<MediaPlanGroup> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
 
     const personaInstruction = persona ? `
 **KOL/KOC Persona (Crucial):**
@@ -693,24 +756,19 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 - **Nickname:** ${persona.nickName}
 - **Main Style:** ${persona.mainStyle}
 - **Field of Activity:** ${persona.activityField}
-- **Detailed Description (for image generation):** ${persona.outfitDescription}
 - **Tone:** The content's tone must perfectly match this persona's style.
-- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
 ` : '';
 
-    const productInstruction = selectedProduct ? `
-**Affiliate Product to Feature (Crucial):**
-- **Product Name:** ${selectedProduct.productName}
-- **Product ID:** ${selectedProduct.id}
-- **Instruction:** This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id}".
-` : '';
-
-    const customizationInstruction = `\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length.\n`;
+    const customizationInstruction = `
+**Content Customization Instructions:**
+- **Tone of Voice**: Generate all content with a '${options.tone}' tone.
+- **Writing Style**: The primary style should be '${options.style}'.
+- **Post Length**: Adhere to a '${options.length}' post length.
+`;
 
     // 1. Generate Pillar Content
     const pillarPrompt = `
     ${personaInstruction}
-    ${productInstruction}
     ${customizationInstruction}
     Based on the idea "${idea.title}", create a comprehensive, 'pillar' content piece for ${pillarPlatform}.
     This should be a detailed, authoritative piece that provides significant value to the target audience: ${idea.targetAudience}.
@@ -736,7 +794,6 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 
     const repurposedPrompt = `
     ${personaInstruction}
-    ${productInstruction}
     ${customizationInstruction}
     **Context:** The following is a large "pillar" content piece about "${idea.title}" created for ${pillarPlatform}.
     Pillar Content: "${pillarPost.content}"
@@ -808,7 +865,6 @@ All content MUST be generated from the perspective of the following KOL/KOC.
         ...p,
         id: crypto.randomUUID(),
         status: 'draft',
-        promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
     } as MediaPlanPost));
 
 
@@ -835,12 +891,15 @@ export const generateFacebookTrends = async (
     language: string,
     model: string
 ): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `You are a Facebook marketing expert. Analyze Google Search results for the query "trending topics and content formats in ${industry} on Facebook for ${language}".\nIdentify 3-5 distinct, current trends. For each trend, provide:\n1.  A concise 'topic'.\n2.  An array of relevant 'keywords'.\n3.  A brief 'analysis' explaining why it's trending for the target audience on Facebook and what content formats (e.g., Reels, Carousels, Long-form posts) are performing best.\n4.  The top 3 most relevant 'links' from the search results that support your analysis. Each link must be an object with "uri" and "title" keys.\n\nYour response must be a single, valid JSON array of objects. Each object should have the keys: "topic", "keywords", "analysis", and "links". Do not add any text or explanation before or after the JSON array.`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    const prompt = `You are a Facebook marketing expert. Analyze Google Search results for the query "trending topics and content formats in ${industry} on Facebook for ${language}".
+Identify 3-5 distinct, current trends. For each trend, provide:
+1.  A concise 'topic'.
+2.  An array of relevant 'keywords'.
+3.  A brief 'analysis' explaining why it's trending for the target audience on Facebook and what content formats (e.g., Reels, Carousels, Long-form posts) are performing best.
+4.  The top 3 most relevant 'links' from the search results that support your analysis. Each link must be an object with "uri" and "title" keys.
+
+Your response must be a single, valid JSON array of objects. Each object should have the keys: "topic", "keywords", "analysis", and "links". Do not add any text or explanation before or after the JSON array.`;
 
     const response = await geminiFetchWithRetry(() =>
         ai.models.generateContent({
@@ -891,12 +950,18 @@ export const generatePostsForFacebookTrend = async (
     language: string,
     model: string
 ): Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]> => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
-    }
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `You are a creative Facebook content strategist. Based on the following trend, generate 5 engaging Facebook post ideas in ${language}.\nFor each idea, provide:\n1.  A catchy 'title'.\n2.  The main 'content' for the post, optimized for Facebook's platform.\n3.  A detailed English 'imagePrompt' for an accompanying visual.\n4.  A strong 'cta' (call to action).\n\nTrend Topic: "${trend.topic}"\nTrend Keywords: ${trend.keywords.join(', ')}\nTrend Analysis: ${trend.analysis}\n`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+    const prompt = `You are a creative Facebook content strategist. Based on the following trend, generate 5 engaging Facebook post ideas in ${language}.
+For each idea, provide:
+1.  A catchy 'title'.
+2.  The main 'content' for the post, optimized for Facebook's platform.
+3.  A detailed English 'imagePrompt' for an accompanying visual.
+4.  A strong 'cta' (call to action).
+
+Trend Topic: "${trend.topic}"
+Trend Keywords: ${trend.keywords.join(', ')}
+Trend Analysis: ${trend.analysis}
+`;
     const postsSchema = {
         type: Type.ARRAY,
         items: {
@@ -924,122 +989,4 @@ export const generatePostsForFacebookTrend = async (
     const jsonText = response.text;
     if (!jsonText) throw new Error("Received empty response from AI for Facebook post ideas.");
     return sanitizeAndParseJson(jsonText);
-};
-
-// --- NEW FUNCTION FOR GENERATING CONTENT IDEAS FROM A PRODUCT ---
-
-export const generateIdeasFromProduct = async (
-    product: AffiliateLink,
-    language: string,
-    model: string
-): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    // Check if API key is set before creating the GoogleGenAI instance
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    console.log("Gemini API Key from env:", apiKey ? "Key exists (length: " + apiKey.length + ")" : "Key is undefined/null");
-    
-    if (!apiKey) {
-        throw new Error("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
-    }
-    
-    // Additional validation to ensure the API key is a valid string
-    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        throw new Error("Gemini API key is invalid or empty. Please check your configuration in the Integrations panel.");
-    }
-    
-    const ai = new GoogleGenAI({ apiKey });
-    
-    // Build a detailed product description
-    const productDetails = [
-        `Product Name: ${product.productName}`,
-        `Product ID: ${product.productId}`,
-        `Price: ${product.price}`,
-        `Provider: ${product.providerName}`,
-        `Commission Rate: ${product.commissionRate}%`,
-        `Commission Value: ${product.commissionValue}`,
-        product.product_description ? `Description: ${product.product_description}` : '',
-        product.features && product.features.length > 0 ? `Features: ${product.features.join(', ')}` : '',
-        product.use_cases && product.use_cases.length > 0 ? `Use Cases: ${product.use_cases.join(', ')}` : '',
-        product.customer_reviews ? `Customer Reviews: ${product.customer_reviews}` : '',
-        product.product_rating ? `Product Rating: ${product.product_rating}/5` : ''
-    ].filter(Boolean).join('\n');
-    
-    const prompt = `You are a creative marketing strategist. Based on the following affiliate product details, generate 5 unique and engaging content ideas in ${language} that can be used to promote this product effectively.\n\nFor each idea, provide:\n1.  A catchy 'title' that would grab attention.\n2.  A detailed 'description' explaining the concept and how it would showcase the product.\n3.  A specific 'targetAudience' that this idea would appeal to.\n\nProduct Details:\n${productDetails}\n\nMake sure each idea is distinct and highlights different aspects of the product. Consider various content formats like tutorials, reviews, comparisons, lifestyle content, unboxings, etc.\n`;
-
-    const ideasSchema = {
-        type: Type.ARRAY,
-        items: {
-            type: Type.OBJECT,
-            properties: {
-                title: { type: Type.STRING },
-                description: { type: Type.STRING },
-                targetAudience: { type: Type.STRING },
-            },
-            required: ['title', 'description', 'targetAudience'],
-        },
-    };
-
-    const response = await geminiFetchWithRetry(() =>
-        ai.models.generateContent({
-            model: model,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: ideasSchema,
-            }
-        })
-    );
-    const jsonText = response.text;
-    if (!jsonText) throw new Error("Received empty response from AI for product-based ideas.");
-    
-    // Log the raw response for debugging
-    console.log("Raw AI response for product ideas:", jsonText);
-    
-    // Fix malformed JSON responses that are missing array brackets
-    let fixedJsonText = jsonText.trim();
-    if (fixedJsonText.startsWith('{') && fixedJsonText.includes('title') && fixedJsonText.includes('description') && fixedJsonText.includes('targetAudience')) {
-        // This looks like individual idea objects separated by commas
-        // Wrap them in an array
-        fixedJsonText = '[' + fixedJsonText + ']';
-    } else if (fixedJsonText.startsWith('"') && fixedJsonText.endsWith('"')) {
-        // This might be a JSON string that needs to be parsed twice
-        try {
-            fixedJsonText = JSON.parse(fixedJsonText);
-        } catch (e) {
-            // If parsing fails, continue with original text
-        }
-    }
-    
-    let ideas = sanitizeAndParseJson(fixedJsonText);
-    
-    // Handle case where ideas might be wrapped in an object with an "ideas" property
-    if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.ideas) {
-        ideas = ideas.ideas;
-    }
-    
-    // Special handling for malformed responses that are missing the opening bracket
-    if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.title) {
-        // This looks like a single idea object instead of an array
-        ideas = [ideas];
-    }
-    
-    // Ensure we have an array of ideas
-    if (!Array.isArray(ideas)) {
-        console.error("Invalid ideas format received:", ideas);
-        throw new Error("Expected an array of ideas, but received: " + JSON.stringify(ideas));
-    }
-    
-    // Validate each idea has the required fields
-    for (let i = 0; i < ideas.length; i++) {
-        const idea = ideas[i];
-        if (!idea.title || !idea.description || !idea.targetAudience) {
-            console.error("Invalid idea structure at index", i, ":", idea);
-            throw new Error(`Idea at index ${i} is missing required fields. Title: ${!!idea.title}, Description: ${!!idea.description}, TargetAudience: ${!!idea.targetAudience}`);
-        }
-    }
-    
-    // Add the productId to each idea
-    return ideas.map((idea: any) => ({
-        ...idea,
-        productId: product.id
-    }));
 };

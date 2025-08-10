@@ -64,7 +64,7 @@ interface TrendHubDisplayProps {
     onSaveTrend: (trend: Trend) => void;
     onDeleteTrend: (trendId: string) => void;
     onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
-    onCreatePlanFromIdea: (prompt: string) => void;
+    onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
     onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null) => void;
     isGeneratingIdeas: boolean;
 }
@@ -230,7 +230,7 @@ const TrendHubDisplay: React.FC<TrendHubDisplayProps> = (props) => {
                                         <p className="text-sm text-gray-600 mt-1">{idea.description}</p>
                                         <p className="text-xs text-gray-400 mt-2">Target: {idea.targetAudience}</p>
                                         <div className="flex justify-end gap-2 mt-3">
-                                            <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description)} className="text-xs py-1 px-2">{texts.createPlan}</Button>
+                                            <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} className="text-xs py-1 px-2">{texts.createPlan}</Button>
                                             <Button variant="primary" onClick={() => setWizardIdea(idea)} className="text-xs py-1 px-2">{texts.createPackage}</Button>
                                         </div>
                                     </div>

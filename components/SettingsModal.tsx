@@ -179,10 +179,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
-                            <option value="gemini-2.5-flash">Google: gemini-2.5-flash (Recommended)</option>
+                            <option value="gemini-2.5-pro">Google: gemini-2.5-pro (Recommended)</option>
                             <option value="deepseek/deepseek-r1-0528:free">OpenRouter: DeepSeek R1 (Free)</option>
                             <option value="google/gemini-2.0-flash-exp:free">OpenRouter: Gemini 2.0 Flash (Free)</option>
-                            <option value="qwen/qwen3-235b-a22b:free">OpenRouter: Qwen 3.5B (Free)</option>
+                            <option value="qwen/qwen3-235b-a22b:free">OpenRouter: Qwen3 235B A22B (Free)</option>
                         </Select>
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.textGenerationModel_desc}</p>
                     </div>

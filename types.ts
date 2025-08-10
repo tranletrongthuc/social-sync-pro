@@ -191,6 +191,8 @@ export interface GeneratedAssets {
   personas?: Persona[];
   trends?: Trend[];
   ideas?: Idea[];
+  facebookTrends?: FacebookTrend[];
+  facebookPostIdeas?: FacebookPostIdea[];
 }
 
 
@@ -216,4 +218,24 @@ export interface FacebookPage {
 export interface FacebookLoginResponse {
     userAccessToken: string;
     pages: FacebookPage[];
+}
+
+export interface FacebookTrend {
+  id: string;
+  brandId: string;
+  industry: string;
+  topic: string;
+  keywords: string[];
+  links: { uri: string; title: string }[];
+  analysis: string;
+  createdAt: string;
+}
+
+export interface FacebookPostIdea {
+  id: string;
+  trendId: string;
+  title: string;
+  content: string;
+  imagePrompt: string;
+  cta: string;
 }
