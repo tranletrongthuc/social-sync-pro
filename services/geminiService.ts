@@ -639,6 +639,10 @@ Post Content: "${postContent.content}"
 };
 
 
+// NgoSiLien - Enhanced Affiliate Comment Generation
+// This function generates engaging comments for social media posts that promote affiliate products.
+// It dynamically includes available product information like ratings, sales volume, and customer reviews
+// to make the comments more appealing and encourage clicks on the affiliate links.
 export const generateAffiliateComment = async (
     post: MediaPlanPost,
     products: AffiliateLink[],
@@ -650,11 +654,38 @@ export const generateAffiliateComment = async (
         throw new Error("Cannot generate a comment without at least one affiliate product.");
     }
     
-    const productDetails = products.map(p => 
-        `- Product Name: ${p.productName}\n  - Price: ${p.price}\n  - Product Link: ${p.productLink}`
-    ).join('\n');
+    const formatProductDetails = (p: AffiliateLink) => {
+        const details = [`- Product Name: ${p.productName}`];
+        
+        // Add price
+        details.push(`  - Price: ${p.price}`);
+        
+        // Add product rating if available
+        if (p.product_rating !== undefined && p.product_rating !== null) {
+            details.push(`  - Rating: ${p.product_rating}/5`);
+        }
+        
+        // Add sales volume if available
+        if (p.salesVolume > 0) {
+            details.push(`  - Sales Volume: ${p.salesVolume}`);
+        }
+        
+        // Add customer reviews if available
+        if (p.customer_reviews && p.customer_reviews.trim() !== '') {
+            // If customer_reviews contains multiple reviews, we'll extract the best one
+            // For now, we'll just use the provided reviews as is
+            details.push(`  - Customer Reviews: ${p.customer_reviews}`);
+        }
+        
+        // Always add the promotion link (or product link as fallback)
+        details.push(`  - Product Link: ${p.promotionLink || p.productLink}`);
+        
+        return details.join('\n');
+    };
 
-    const prompt = `\nYou are the social media manager for the brand "${brandFoundation.brandName}", which has a "${brandFoundation.personality}" personality. Your task is to write a comment for a social media post, from the perspective of the page admin.\n\n**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to the post. The comment must encourage clicks on the affiliate link.\n\n**Rules:**\n1.  **Natural Tone:** The comment must sound like a real person, not an ad. It should match the tone of the original post. Avoid overly salesy language.\n2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:\n    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect the original post's topic with the product(s) being promoted. It should add value, share a personal tip, or ask a question to spark conversation and make people curious about the link.\n    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.\n3.  **Language:** The entire comment MUST be in ${language}.\n\n**Original Post Content:**\n- Title: ${post.title}\n- Content: ${post.content}\n\n**Affiliate Product(s) to Promote:**\n${productDetails}\n\n**Example Output:**\nMình thấy nhiều bạn hỏi về [related_topic], em này đúng là chân ái luôn, giải quyết được đúng vấn đề đó. Dùng cực thích!\n\nhttps://your-affiliate-link.com\n\n---\nNow, generate the comment based on the provided post and product details. Output ONLY the comment text.\n`;
+    const productDetails = products.map(formatProductDetails).join('\n');
+
+    const prompt = `\nYou are the creator who wrote the social media post. Your task is to write a follow-up comment on your own post, from your perspective as the post author. This simulates you posting content and then engaging with your own post to promote affiliate products.\n\n**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to your post. The comment must encourage clicks on the affiliate link while sounding like a genuine self-comment on your own post.\n\n**Rules:**\n1.  **Natural Tone:** The comment must sound like you're genuinely engaging with your own content. It should match the tone of the original post and sound like a real person talking to their audience. Avoid overly salesy language.\n2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:\n    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect your original post's topic with the product(s) being promoted. It should add value, share a personal tip about how you use the product, or ask a question to spark conversation and make people curious about the link. If product details like ratings, sales volume, or customer reviews are provided, you should naturally incorporate these details to make the product more appealing.\n    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.\n3.  **Language:** The entire comment MUST be in ${language}.\n\n**Original Post Content:**\n- Title: ${post.title}\n- Content: ${post.content}\n\n**Affiliate Product(s) to Promote:**\n${productDetails}\n\n**Example Output:**\nTôi vừa thử em này sau khi làm theo hướng dẫn trong bài và thấy hiệu quả bất ngờ! Bạn nào muốn thử thì xem link bên dưới nha.\n\nhttps://your-affiliate-link.com\n\n---\nNow, generate the comment based on the provided post and product details. Output ONLY the comment text.\n`;
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
         throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
