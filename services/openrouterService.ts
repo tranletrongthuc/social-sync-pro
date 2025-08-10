@@ -530,7 +530,7 @@ export const generateAffiliateCommentWithOpenRouter = async (
     const productDetails = products.map(p => 
         `- Product Name: ${p.productName}
   - Price: ${p.price}
-  - Promotion Link: ${p.promotionLink || p.productLink}`
+  - Product Link: ${p.productLink}`
     ).join('\n');
 
     const prompt = `

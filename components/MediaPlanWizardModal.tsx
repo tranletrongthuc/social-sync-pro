@@ -116,7 +116,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             noPersonasAvailable: "Chưa có KOL/KOC nào được định nghĩa. Bạn có thể thêm họ trong tab 'KOL/KOC'.",
             // Step 4 - Updated
             step4Title: "Chọn Sản phẩm để Quảng bá (Tùy chọn)",
-            step4Subtitle: "Chọn một sản phẩm từ Kho Affiliate của bạn để tự động liên kết với các bài đăng trong kế hoạch truyền thông này.",
+            step4Subtitle: "Chọn một sản phẩm từ Kho Affiliate của bạn để tự động liên kết với các bài đăng trong kế hoạch truyền thông này, hoặc bỏ qua bước này.",
             // Step 5
             step5Title: "Tinh chỉnh & Tạo",
             step5Subtitle: "Điều chỉnh các cài đặt cuối cùng trước khi AI của chúng tôi bắt đầu làm việc.",
@@ -156,7 +156,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             noPersonasAvailable: "No KOLs/KOCs have been defined yet. You can add them in the 'KOL/KOC' tab.",
             // Step 4 - Updated
             step4Title: "Select Product to Promote (Optional)",
-            step4Subtitle: "Choose a product from your Affiliate Vault to automatically link to posts in this media plan.",
+            step4Subtitle: "Choose a product from your Affiliate Vault to automatically link to posts in this media plan, or skip this step.",
             // Step 5
             step5Title: "Refine & Generate",
             step5Subtitle: "Adjust the final settings before our AI gets to work.",
@@ -189,10 +189,6 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const isNextDisabled = () => {
         if (step === 1 && !prompt.trim()) return true;
         if (step === 2 && selectedPlatforms.length === 0) return true;
-        // In step 4, if we have an initialProductId or selectedProductId, don't disable the next button
-        if (step === 4 && (initialProductId || selectedProductId)) return false;
-        // In step 4, if we don't have an initialProductId or selectedProductId, disable if no product is selected
-        if (step === 4 && !initialProductId && !selectedProductId) return true;
         return false;
     }
 

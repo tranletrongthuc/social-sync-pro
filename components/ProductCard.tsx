@@ -83,7 +83,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
 
     const handleSave = (e: React.MouseEvent) => {
         e.stopPropagation();
-        onSave(editedLink);
+        // For new links, generate a proper ID instead of using 'new'
+        const linkToSave = isNew && editedLink.id === 'new' 
+            ? { ...editedLink, id: crypto.randomUUID() } 
+            : editedLink;
+        onSave(linkToSave);
         setIsEditing(false);
     };
 
