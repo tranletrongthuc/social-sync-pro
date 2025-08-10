@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { Trend, Idea, Settings, Persona } from '../types';
-import { Button, Input, TextArea, Switch } from './ui';
+import { Button, Input, TextArea, Switch, HoverCopyWrapper } from './ui';
 import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, SearchIcon, TagIcon } from './icons';
 import ContentPackageWizardModal from './ContentPackageWizardModal';
 
@@ -274,7 +274,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                                         <h4 className="font-bold text-gray-900">{idea.title}</h4>
                                         <p className="text-sm text-gray-600 mt-1">{idea.description}</p>
                                         {idea.targetAudience && <p className="text-xs text-gray-400 mt-2">Target: {idea.targetAudience}</p>}
-                                        {idea.imagePrompt && <p className="text-xs text-gray-400 mt-1">Image Prompt: {idea.imagePrompt}</p>}
+                                        {idea.imagePrompt && <HoverCopyWrapper textToCopy={idea.imagePrompt}><p className="text-xs text-gray-400 mt-1">Image Prompt: {idea.imagePrompt}</p></HoverCopyWrapper>}
                                         {idea.cta && <p className="text-xs text-gray-400 mt-1">CTA: {idea.cta}</p>}
                                         <div className="flex justify-end gap-2 mt-3">
                                             <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} className="text-xs py-1 px-2">{texts.createPlan}</Button>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo } from '../types';
-import { Button, Input, TextArea } from './ui';
+import { Button, Input, TextArea, HoverCopyWrapper } from './ui';
 import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
 
@@ -149,8 +149,10 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
         if (!post.imagePrompt) return null;
         return (
             <div className="bg-white border border-gray-200 p-4 rounded-lg h-full flex flex-col">
-                <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
-                <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">"{post.imagePrompt}"</p>
+                <HoverCopyWrapper textToCopy={post.imagePrompt}>
+                    <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
+                    <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">"{post.imagePrompt}"</p>
+                </HoverCopyWrapper>
                 <div className="space-y-2 mt-auto">
                     <Button onClick={() => onGenerateImage(post.imagePrompt!, post.imageKey || post.id, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
                         <SparklesIcon /> {texts.generate}

@@ -221,25 +221,25 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({ prompt, imageKey, aspec
     }
 
     return (
-        <HoverCopyWrapper textToCopy={prompt}>
-            <div className="bg-white border border-gray-200 p-4 rounded-lg mt-2" onPaste={handlePaste} tabIndex={0}>
+        <div className="bg-white border border-gray-200 p-4 rounded-lg mt-2" onPaste={handlePaste} tabIndex={0}>
+            <HoverCopyWrapper textToCopy={prompt}>
                 <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
                 <p className="text-gray-500 italic mb-3 text-sm font-serif">"{prompt}"</p>
-                <div className="space-y-2">
-                    <Button onClick={() => onGenerateImage(prompt, imageKey, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
-                        <SparklesIcon /> {buttonText || texts.generate}
-                    </Button>
-                    <div 
-                        className="relative w-full text-center border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-green transition-colors cursor-pointer"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <UploadIcon className="mx-auto h-8 w-8 text-gray-400" />
-                        <p className="text-xs text-gray-500 mt-1">Click to upload or paste image</p>
-                    </div>
-                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+            </HoverCopyWrapper>
+            <div className="space-y-2">
+                <Button onClick={() => onGenerateImage(prompt, imageKey, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
+                    <SparklesIcon /> {buttonText || texts.generate}
+                </Button>
+                <div 
+                    className="relative w-full text-center border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-green transition-colors cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    <UploadIcon className="mx-auto h-8 w-8 text-gray-400" />
+                    <p className="text-xs text-gray-500 mt-1">Click to upload or paste image</p>
                 </div>
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
             </div>
-        </HoverCopyWrapper>
+        </div>
     );
 };
 
