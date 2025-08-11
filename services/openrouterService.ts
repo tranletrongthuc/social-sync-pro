@@ -192,7 +192,7 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
     try {
         return sanitizeAndParseJson(jsonText) as BrandInfo;
     } catch (e) {
-        console.error("Failed to parse AI JSON response:", jsonText);
+        console.error("Failed to parse AI JSON response:", jsonText || "Empty response");
         throw new Error("The AI returned a malformed or unexpected response. Please try again.");
     }
 };
@@ -232,13 +232,28 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
     try {
         const parsedJson = sanitizeAndParseJson(jsonText);
 
-        if (!parsedJson.brandFoundation || !parsedJson.coreMediaAssets || !parsedJson.unifiedProfileAssets || !parsedJson.mediaPlan) {
+        // Handle different possible response structures from AI
+        // Some models might return snake_case keys instead of camelCase
+        const brandFoundation = parsedJson.brandFoundation || parsedJson.brand_foundation;
+        const coreMediaAssets = parsedJson.coreMediaAssets || parsedJson.core_media_assets;
+        const unifiedProfileAssets = parsedJson.unifiedProfileAssets || parsedJson.unified_profile_assets;
+        const mediaPlan = parsedJson.mediaPlan || parsedJson.initial_1_month_media_plan || parsedJson.media_plan;
+
+        if (!brandFoundation || !coreMediaAssets || !unifiedProfileAssets || !mediaPlan) {
             console.error("AI response from OpenRouter is missing one or more root keys. Parsed JSON:", parsedJson);
             throw new Error("The AI returned a JSON object with a missing or incorrect structure. Please try again.");
         }
 
-        if (parsedJson.coreMediaAssets?.logoConcepts) {
-            parsedJson.coreMediaAssets.logoConcepts = parsedJson.coreMediaAssets.logoConcepts.map((logo: any) => {
+        // Create a normalized response object with the correct structure
+        const normalizedResponse = {
+            brandFoundation,
+            coreMediaAssets,
+            unifiedProfileAssets,
+            mediaPlan
+        };
+
+        if (normalizedResponse.coreMediaAssets?.logoConcepts) {
+            normalizedResponse.coreMediaAssets.logoConcepts = normalizedResponse.coreMediaAssets.logoConcepts.map((logo: any) => {
                 const logoId = crypto.randomUUID();
                 return {
                     ...logo,
@@ -247,19 +262,19 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
                 };
             });
         }
-        if(parsedJson.unifiedProfileAssets){
+        if(normalizedResponse.unifiedProfileAssets){
             const profilePictureId = crypto.randomUUID();
-            parsedJson.unifiedProfileAssets.profilePictureId = profilePictureId;
-            parsedJson.unifiedProfileAssets.profilePictureImageKey = `profile_${profilePictureId}`;
+            normalizedResponse.unifiedProfileAssets.profilePictureId = profilePictureId;
+            normalizedResponse.unifiedProfileAssets.profilePictureImageKey = `profile_${profilePictureId}`;
             
             const coverPhotoId = crypto.randomUUID();
-            parsedJson.unifiedProfileAssets.coverPhotoId = coverPhotoId;
-            parsedJson.unifiedProfileAssets.coverPhotoImageKey = `cover_${coverPhotoId}`;
+            normalizedResponse.unifiedProfileAssets.coverPhotoId = coverPhotoId;
+            normalizedResponse.unifiedProfileAssets.coverPhotoImageKey = `cover_${coverPhotoId}`;
         }
 
         let mediaPlanGroup: MediaPlanGroup | null = null;
-        if (parsedJson.mediaPlan) {
-            const planWithIds: MediaPlan = (parsedJson.mediaPlan as any[]).map(week => ({
+        if (normalizedResponse.mediaPlan) {
+            const planWithIds: MediaPlan = (normalizedResponse.mediaPlan as any[]).map(week => ({
                 ...week,
                 posts: (week.posts || []).map((post: any) => {
                     const postId = crypto.randomUUID();
@@ -282,14 +297,14 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
         }
         
         const assets: Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> = {
-            brandFoundation: parsedJson.brandFoundation,
-            coreMediaAssets: parsedJson.coreMediaAssets,
-            unifiedProfileAssets: parsedJson.unifiedProfileAssets,
+            brandFoundation: normalizedResponse.brandFoundation,
+            coreMediaAssets: normalizedResponse.coreMediaAssets,
+            unifiedProfileAssets: normalizedResponse.unifiedProfileAssets,
             mediaPlans: mediaPlanGroup ? [mediaPlanGroup] : [],
         };
         return assets;
     } catch (e) {
-        console.error("Failed to parse AI JSON response:", jsonText);
+        console.error("Failed to parse AI JSON response:", jsonText || "Empty response");
         throw new Error("The AI returned a malformed or unexpected response. Please try again.");
     }
 };
@@ -441,7 +456,7 @@ IMPORTANT: For image prompts, the prompt you generate MUST start with the exact 
         prompt: userPrompt,
         plan: planWithEnhancements,
         source: 'wizard',
-        sources: groundedContent?.map((c: any) => ({ uri: c.url, title: c.title })) || [],
+        sources: [], // groundedContent is not defined, using empty array
         personaId: persona?.id,
     };
 };

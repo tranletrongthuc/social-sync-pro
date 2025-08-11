@@ -4,6 +4,7 @@ import saveAs from 'file-saver';
 import IdeaProfiler from './components/IdeaProfiler';
 import BrandProfiler from './components/BrandProfiler';
 import MainDisplay from './components/MainDisplay';
+import AdminPage from './components/AdminPage';
 import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
 import AirtableLoadModal from './components/AirtableLoadModal';
@@ -425,6 +426,10 @@ const App: React.FC = () => {
         textGenerationModel: 'google/gemini-2.0-flash-exp:free',
         imageGenerationModel: 'imagen-4.0-ultra-generate-preview-06-06',
     });
+    
+    // Admin authentication state
+    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
+    const [adminPassword, setAdminPassword] = useState<string>('');
     
     // Integration States
     const [isAirtableLoadModalOpen, setIsAirtableLoadModalOpen] = useState<boolean>(false);
@@ -2192,6 +2197,48 @@ const App: React.FC = () => {
     }, []);
 
     // --- RENDER LOGIC ---
+    // Check if we're on the admin route
+    const isAdminRoute = window.location.pathname === '/admin';
+    
+    // If on admin route, show admin page if authenticated, otherwise show login
+    if (isAdminRoute) {
+        if (isAdminAuthenticated) {
+            return <AdminPage />;
+        } else {
+            return (
+                <div className="min-h-screen flex items-center justify-center bg-gray-50">
+                    <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+                        <h1 className="text-2xl font-bold mb-6 text-center">Admin Login</h1>
+                        <div className="space-y-4">
+                            <input
+                                type="password"
+                                placeholder="Enter admin password"
+                                value={adminPassword}
+                                onChange={(e) => setAdminPassword(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-green"
+                            />
+                            <Button 
+                                onClick={() => {
+                                    // Use environment variable for admin password, fallback to 'admin123'
+                                    const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123';
+                                    if (adminPassword === adminPass) {
+                                        setIsAdminAuthenticated(true);
+                                    } else {
+                                        setError('Invalid password');
+                                    }
+                                }}
+                                className="w-full"
+                            >
+                                Login
+                            </Button>
+                            {error && <p className="text-red-500 text-center">{error}</p>}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+    }
+    
     if (isLoading || isPerformingBulkAction) {
         const content = isLoading ? loaderContent : bulkActionStatus;
         return <Loader title={content!.title} steps={content!.steps} currentStep={(content as any).currentStep} />;

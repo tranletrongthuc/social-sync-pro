@@ -189,7 +189,7 @@ describe('PersonasDisplay Component', () => {
 
         // Upload an image
         const file = new File(['(⌐□_□)'], 'chuck.png', { type: 'image/png' });
-        const uploadButton = screen.getByRole('button', { name: /Upload \/ Paste/i });
+        const uploadButton = screen.getByRole('button', { name: /Upload \/ Paste for photo 1/i });
         fireEvent.paste(uploadButton, {
             clipboardData: { files: [file] },
         });

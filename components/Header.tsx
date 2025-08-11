@@ -130,6 +130,9 @@ export const Header: React.FC<HeaderProps> = (props) => {
                     <SettingsIcon className="h-5 w-5"/>
                     <span>{currentTexts.settings}</span>
                 </Button>
+                <Button onClick={() => window.location.href = '/admin'} variant="tertiary" className={`flex items-center gap-2 ${mobileClasses}`}>
+                    <span>Admin</span>
+                </Button>
                  <Button onClick={props.onStartOver} variant="tertiary" className={`text-red-600 hover:bg-red-50 ${mobileClasses}`}>
                     {currentTexts.startOver}
                 </Button>

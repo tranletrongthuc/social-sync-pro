@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, memo } from 'react';
+import React, { useState, useRef, useEffect, memo, useId } from 'react';
 import type { Persona, PersonaPhoto, SocialAccount } from '../types';
 import { Button, Input, TextArea } from './ui';
 import { PlusIcon, UsersIcon, SearchIcon, TrashIcon, UploadIcon, DotsVerticalIcon, PencilIcon, FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, PinterestIcon } from './icons';
@@ -43,18 +43,24 @@ const MenuDropDown: React.FC<{onEdit: () => void, onDelete: () => void, texts: a
     )
 };
 
-const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & {label: string}> = ({label, ...props}) => (
-    <div className="mb-2">
-        <label className="text-xs font-medium text-gray-500">{label}</label>
-        <Input {...props} className="mt-1 p-1 text-sm"/>
-    </div>
-);
-const TextAreaField: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & {label: string}> = ({label, ...props}) => (
-    <div className="mb-2">
-        <label className="text-xs font-medium text-gray-500">{label}</label>
-        <TextArea {...props} className="mt-1 p-1 text-sm"/>
-    </div>
-);
+const InputField: React.FC<React.InputHTMLAttributes<HTMLInputElement> & {label: string}> = ({label, ...props}) => {
+    const inputId = useId(); // Generate a unique ID
+    return (
+        <div className="mb-2">
+            <label htmlFor={inputId} className="text-xs font-medium text-gray-500">{label}</label>
+            <Input id={inputId} {...props} className="mt-1 p-1 text-sm"/>
+        </div>
+    );
+};
+const TextAreaField: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> & {label: string}> = ({label, ...props}) => {
+    const textareaId = useId(); // Generate a unique ID
+    return (
+        <div className="mb-2">
+            <label htmlFor={textareaId} className="text-xs font-medium text-gray-500">{label}</label>
+            <TextArea id={textareaId} {...props} className="mt-1 p-1 text-sm"/>
+        </div>
+    );
+};
 
 
 // PersonaCard component is now defined inside PersonasDisplay

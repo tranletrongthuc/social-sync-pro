@@ -4,22 +4,15 @@ import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals
 import App from '../App';
 import * as airtableService from '../services/airtableService';
 
-// Mock import.meta.env for testing purposes
-const mockProcessEnv = (airtablePat: string | undefined, airtableBaseId: string | undefined, cloudinaryCloudName: string | undefined, cloudinaryUploadPreset: string | undefined) => {
-  global.import_meta_env_mock.VITE_AIRTABLE_PAT = airtablePat;
-  global.import_meta_env_mock.VITE_AIRTABLE_BASE_ID = airtableBaseId;
-  global.import_meta_env_mock.VITE_CLOUDINARY_CLOUD_NAME = cloudinaryCloudName;
-  global.import_meta_env_mock.VITE_CLOUDINARY_UPLOAD_PRESET = cloudinaryUploadPreset;
-  // Add other VITE_ prefixed environment variables as needed for tests
-};
-
 describe('Credential Loading and Project Opening', () => {
-  let originalMetaEnv: any;
+  let importMetaEnvSpy: jest.SpyInstance;
 
   beforeEach(() => {
-    // Save the original import.meta.env
-    originalMetaEnv = { ...global.import_meta_env_mock };
     jest.clearAllMocks();
+
+    // Mock import.meta.env
+    importMetaEnvSpy = jest.spyOn(window.import.meta, 'env', 'get');
+
     // Mock listBrandsFromAirtable and loadProjectFromAirtable
     jest.spyOn(airtableService, 'listBrandsFromAirtable').mockResolvedValue([
       { id: 'brand1', name: 'Test Brand 1' },
@@ -61,12 +54,16 @@ describe('Credential Loading and Project Opening', () => {
   });
 
   afterEach(() => {
-    // Restore the original process.env
-    global.import_meta_env_mock = { ...originalMetaEnv };
+    jest.restoreAllMocks(); // Restores all mocks created with spyOn
   });
 
   it('should open AirtableLoadModal and load project directly if credentials are set', async () => {
-    mockProcessEnv('test_pat', 'test_base_id', 'test_cloud_name', 'test_upload_preset');
+    importMetaEnvSpy.mockReturnValue({
+      VITE_AIRTABLE_PAT: 'test_pat',
+      VITE_AIRTABLE_BASE_ID: 'test_base_id',
+      VITE_CLOUDINARY_CLOUD_NAME: 'test_cloud_name',
+      VITE_CLOUDINARY_UPLOAD_PRESET: 'test_upload_preset',
+    });
 
     render(<App />);
 
@@ -87,7 +84,12 @@ describe('Credential Loading and Project Opening', () => {
   });
 
   it('should display "Connect Database" button if credentials are not set', async () => {
-    mockProcessEnv(undefined, undefined, undefined, undefined);
+    importMetaEnvSpy.mockReturnValue({
+      VITE_AIRTABLE_PAT: undefined,
+      VITE_AIRTABLE_BASE_ID: undefined,
+      VITE_CLOUDINARY_CLOUD_NAME: undefined,
+      VITE_CLOUDINARY_UPLOAD_PRESET: undefined,
+    });
 
     render(<App />);
 
@@ -99,7 +101,12 @@ describe('Credential Loading and Project Opening', () => {
   });
 
   it('should open IntegrationModal when "Connect Database" is clicked and credentials are not set', async () => {
-    mockProcessEnv(undefined, undefined, undefined, undefined);
+    importMetaEnvSpy.mockReturnValue({
+      VITE_AIRTABLE_PAT: undefined,
+      VITE_AIRTABLE_BASE_ID: undefined,
+      VITE_CLOUDINARY_CLOUD_NAME: undefined,
+      VITE_CLOUDINARY_UPLOAD_PRESET: undefined,
+    });
 
     render(<App />);
 
@@ -109,4 +116,3 @@ describe('Credential Loading and Project Opening', () => {
     expect(await screen.findByText(/Integrations/i)).toBeInTheDocument();
   });
 });
-

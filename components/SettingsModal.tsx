@@ -3,6 +3,67 @@ import React, { useState, useEffect } from 'react';
 import type { Settings } from '../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon } from './icons';
+import { loadAIServices } from '../services/airtableService';
+
+// Helper function to get text generation models from AI services
+const getTextGenerationModels = (aiServices: any[]) => {
+  // Default models
+  const defaultModels = [
+    { value: 'gemini-2.5-pro', label: 'Google: gemini-2.5-pro (Recommended)' },
+    { value: 'deepseek/deepseek-r1-0528:free', label: 'OpenRouter: DeepSeek R1 (Free)' },
+    { value: 'google/gemini-2.0-flash-exp:free', label: 'OpenRouter: Gemini 2.0 Flash (Free)' },
+    { value: 'qwen/qwen3-235b-a22b:free', label: 'OpenRouter: Qwen3 235B A22B (Free)' }
+  ];
+
+  // Get text generation models from AI services
+  const textModels = aiServices
+    .flatMap((service: any) => service.models)
+    .filter((model: any) => model.capabilities.includes('text'))
+    .map((model: any) => ({
+      value: model.name,
+      label: `${model.provider}: ${model.name}`
+    }));
+  
+  // Combine default models with custom models, ensuring no duplicates
+  const allModels = [...defaultModels];
+  textModels.forEach(model => {
+    if (!allModels.some(m => m.value === model.value)) {
+      allModels.push(model);
+    }
+  });
+  
+  return allModels;
+};
+
+// Helper function to get image generation models from AI services
+const getImageGenerationModels = (aiServices: any[]) => {
+  // Default models
+  const defaultModels = [
+    { value: 'imagen-4.0-ultra-generate-preview-06-06', label: 'Google: imagen-4.0-ultra (Recommended)' },
+    { value: 'imagen-3.0-generate-002', label: 'Google: imagen-3.0-generate-002' },
+    { value: '@cf/stabilityai/stable-diffusion-xl-base-1.0', label: 'Cloudflare: Stable Diffusion XL (Txt2Img)' },
+    { value: '@cf/lykon/dreamshaper-8-lcm', label: 'Cloudflare: DreamShaper 8 LCM' }
+  ];
+
+  // Get image generation models from AI services
+  const imageModels = aiServices
+    .flatMap((service: any) => service.models)
+    .filter((model: any) => model.capabilities.includes('image'))
+    .map((model: any) => ({
+      value: model.name,
+      label: `${model.provider}: ${model.name}`
+    }));
+  
+  // Combine default models with custom models, ensuring no duplicates
+  const allModels = [...defaultModels];
+  imageModels.forEach(model => {
+    if (!allModels.some(m => m.value === model.value)) {
+      allModels.push(model);
+    }
+  });
+  
+  return allModels;
+};
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -59,10 +120,32 @@ const styleTemplates = [
 const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, isSaving, currentSettings }) => {
   const [settings, setSettings] = useState<Settings>(currentSettings);
   const [activeTab, setActiveTab] = useState<ActiveTab>('general');
+  const [aiServices, setAiServices] = useState<any[]>([]);
   
   useEffect(() => {
     setSettings(currentSettings);
   }, [currentSettings, isOpen]);
+  
+  // Load AI services from Airtable
+  useEffect(() => {
+    const loadServices = async () => {
+      try {
+        // In a real app, you would get the brandId from context or props
+        // For now, we'll use a placeholder
+        const brandId = 'placeholder-brand-id';
+        const loadedServices = await loadAIServices(brandId);
+        setAiServices(loadedServices);
+      } catch (err) {
+        console.error('Failed to load AI services:', err);
+        // Use empty array if loading fails
+        setAiServices([]);
+      }
+    };
+    
+    if (isOpen) {
+      loadServices();
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -179,10 +262,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
-                            <option value="gemini-2.5-pro">Google: gemini-2.5-pro (Recommended)</option>
-                            <option value="deepseek/deepseek-r1-0528:free">OpenRouter: DeepSeek R1 (Free)</option>
-                            <option value="google/gemini-2.0-flash-exp:free">OpenRouter: Gemini 2.0 Flash (Free)</option>
-                            <option value="qwen/qwen3-235b-a22b:free">OpenRouter: Qwen3 235B A22B (Free)</option>
+                            {/* Dynamically load text generation models from AI services */}
+                            {getTextGenerationModels(aiServices).map(model => (
+                                <option key={model.value} value={model.value}>{model.label}</option>
+                            ))}
                         </Select>
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.textGenerationModel_desc}</p>
                     </div>
@@ -195,10 +278,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
-                            <option value="imagen-4.0-ultra-generate-preview-06-06">Google: imagen-4.0-ultra (Recommended)</option>
-                            <option value="imagen-3.0-generate-002">Google: imagen-3.0-generate-002</option>
-                            <option value="@cf/stabilityai/stable-diffusion-xl-base-1.0">Cloudflare: Stable Diffusion XL (Txt2Img)</option>
-                            <option value="@cf/lykon/dreamshaper-8-lcm">Cloudflare: DreamShaper 8 LCM</option>
+                            {/* Dynamically load image generation models from AI services */}
+                            {getImageGenerationModels(aiServices).map(model => (
+                                <option key={model.value} value={model.value}>{model.label}</option>
+                            ))}
                         </Select>
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.imageGenerationModel_desc}</p>
                     </div>

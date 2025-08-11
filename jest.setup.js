@@ -25,4 +25,5 @@ if (typeof window.import.meta === 'undefined') {
 Object.defineProperty(window.import.meta, 'env', {
   value: process.env,
   writable: true,
+  configurable: true,
 });
