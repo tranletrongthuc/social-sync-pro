@@ -48,6 +48,14 @@ import { getPersonaSocialAccounts } from './services/socialAccountService';
 import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, BrandFoundation, FacebookTrend, FacebookPostIdea } from './types';
 import { AirtableIcon, KhongMinhIcon } from './components/icons';
 import { Button } from './components/ui';
+import { configService, AiModelConfig } from './services/configService';
+
+const isVisionModel = (modelName: string): boolean => {
+    // Cloudflare and OpenRouter models in this app are currently text-to-image or have different input methods
+    // that are handled by their respective service files. This check is primarily for Gemini/Google models.
+    // If future vision models are added from other providers, they should be included here.
+    return configService.getAiModelConfig().visionModels.includes(modelName);
+};
 
 // --- STATE MANAGEMENT REFACTOR (useReducer) ---
 
@@ -282,7 +290,9 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
 
             planToUpdate.personaId = personaId || undefined;
 
-                            week.posts.forEach((post: MediaPlanPost) => {
+            // Update image prompts for all posts in the plan
+            planToUpdate.plan.forEach((week: MediaPlanWeek) => {
+                week.posts.forEach((post: MediaPlanPost) => {
                     if (post.mediaPrompt) {
                         let prompt = Array.isArray(post.mediaPrompt) ? post.mediaPrompt[0] : post.mediaPrompt;
                         // 1. Remove old prefix if it exists
@@ -296,6 +306,7 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
                         post.mediaPrompt = prompt;
                     }
                 });
+            });
 
             return newState;
         }
@@ -356,49 +367,8 @@ const base64ToFile = (base64Data: string, filename: string, mimeType: string): F
     return new File([blob], filename, { type: mimeType });
 };
 
-const AFFILIATE_CONTENT_KIT_DEFAULT = `Bạn là một chuyên gia sáng tạo nội dung tuân thủ "Bộ quy tắc Sáng tạo Nội dung Affiliate". Nguyên tắc cốt lõi của bạn là: "Hãy hành động như một CHUYÊN GIA TƯ VẤN ĐÁNG TIN CẬY, không phải một người bán hàng." Mọi nội dung bạn tạo ra phải tuân thủ nghiêm ngặt các quy tắc sau:
 
-**1. Ngôn ngữ và Giọng văn (Cực kỳ quan trọng):**
-*   **Tư duy như một chuyên gia đánh giá và cố vấn.** Mục tiêu của bạn là giúp người dùng đưa ra quyết định sáng suốt.
-*   **NÊN DÙNG các động từ này:** đánh giá, trải nghiệm, trên tay, so sánh, phân tích, gợi ý, đề xuất, hướng dẫn, lựa chọn, tìm hiểu.
-*   **TUYỆT ĐỐI TRÁNH các động từ này:** bán, cung cấp, phân phối, ship, vận chuyển, thanh toán, đặt hàng, mua ngay.
-*   **NÊN DÙNG các đại từ xưng hô:** "Mình/Chúng tôi" (với tư cách người trải nghiệm), "bên mình" (khi nói về team review).
-*   **TUYỆT ĐỐI TRÁNH các từ này:** "shop", "cửa hàng", "công ty" (khi bán hàng).
-*   **NÊN DÙNG các cụm từ này:** "ưu/nhược điểm", "phù hợp với ai", "lưu ý khi sử dụng", "trải nghiệm thực tế của mình là...", "so với sản phẩm X...".
-*   **TUYỆT ĐỐI TRÁNH các cụm từ này:** "sản phẩm của chúng tôi", "hàng của shop", "giá bên em", "chính sách bảo hành", "cam kết chính hãng".
 
-**2. Kêu gọi hành động (CTA):**
-*   **CTA của bạn phải trao quyền cho người dùng tự nghiên cứu và quyết định.**
-*   **NÊN DÙNG các CTA này:** "Tham khảo giá tốt nhất tại [Tên Sàn]", "Xem chi tiết sản phẩm tại [Website Hãng]", "Tìm hiểu thêm và đặt mua tại [Link Affiliate]".
-*   **TUYỆT ĐỐI TRÁNH các CTA này:** "Mua ngay!", "Đặt hàng ngay!", "Inbox để được tư vấn giá", "Để lại SĐT để đặt hàng".
-
-**3. Cấu trúc và Triết lý Nội dung:**
-*   **Bắt đầu bằng Vấn đề của Người dùng:** Luôn đề cập đến một nỗi đau hoặc nhu cầu trước, sau đó mới giới thiệu sản phẩm như một giải pháp.
-*   **Khách quan - Nêu cả Ưu và Nhược điểm:** Mọi bài đánh giá phải cân bằng. Đề cập đến nhược điểm sẽ xây dựng sự tin cậy. Không có sản phẩm nào hoàn hảo.
-*   **Tập trung vào "Trải nghiệm" và "Hướng dẫn":** Tạo nội dung cho thấy sản phẩm đang được sử dụng, giải thích cách dùng, và chia sẻ kết quả hoặc kinh nghiệm thực tế. Tránh chỉ liệt kê thông số kỹ thuật của nhà sản xuất.
-
-**4. Prompt tạo Hình ảnh:**
-*   Khi tạo \`imagePrompt\`, hãy mô tả một cảnh thực tế, có bối cảnh. Thay vì "sản phẩm trên nền trắng", hãy mô tả "một người đang sử dụng sản phẩm trong một bối cảnh đời thực". Điều này phù hợp với quy tắc sử dụng hình ảnh chân thực, tự sản xuất.
-
-Bằng cách tuân thủ nghiêm ngặt các quy tắc này, bạn sẽ tạo ra nội dung có giá trị cao, đáng tin cậy, giúp ích cho người dùng, thay vì chỉ cố gắng bán hàng cho họ.`;
-
-const isVisionModel = (modelName: string): boolean => {
-    const visionModels = [
-        'imagen-4.0-ultra-generate-preview-06-06', 
-        'imagen-3.0-generate-002'
-    ];
-    // Cloudflare and OpenRouter models in this app are currently text-to-image or have different input methods
-    // that are handled by their respective service files. This check is primarily for Gemini/Google models.
-    // If future vision models are added from other providers, they should be included here.
-    return visionModels.includes(modelName);
-};
-
-const TEXT_MODEL_FALLBACK_ORDER = [
-    'qwen/qwen3-235b-a22b:free',
-    'deepseek/deepseek-r1-0528:free',
-    'google/gemini-2.0-flash-exp:free',
-    'gemini-2.5-pro'
-];
 
 
 const App: React.FC = () => {
@@ -419,13 +389,14 @@ const App: React.FC = () => {
     // Global product images removed, now managed per-plan.
     
     const [settings, setSettings] = useState<Settings>({
-        language: 'Việt Nam',
-        totalPostsPerMonth: 16,
-        mediaPromptSuffix: ', photorealistic, 8k, high quality, vietnamese style, vietnam',
-        affiliateContentKit: AFFILIATE_CONTENT_KIT_DEFAULT,
-        textGenerationModel: 'google/gemini-2.0-flash-exp:free',
-        imageGenerationModel: 'imagen-4.0-ultra-generate-preview-06-06',
+        language: 'English',
+        totalPostsPerMonth: 30,
+        mediaPromptSuffix: '',
+        affiliateContentKit: '',
+        textGenerationModel: 'gemini-1.5-flash',
+        imageGenerationModel: '@cf/stable-diffusion-xl-base-1.0'
     });
+    const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig | null>(null);
     
     // Admin authentication state
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
@@ -462,6 +433,13 @@ const App: React.FC = () => {
             console.log("Gemini API Key is not configured or not loaded properly");
         }
     }, []);
+
+    // Set brandId in configService when it changes
+    useEffect(() => {
+        if (airtableBrandId) {
+            configService.setBrandId(airtableBrandId);
+        }
+    }, [airtableBrandId]);
 
     // Media Plan On-Demand Loading State
     const [mediaPlanGroupsList, setMediaPlanGroupsList] = useState<{id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]>([]);
@@ -502,17 +480,29 @@ const App: React.FC = () => {
     const [areCredentialsSet, setAreCredentialsSet] = useState(false);
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
 
+    const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+
     useEffect(() => {
-        const checkCreds = async () => {
-            const areSet = await checkAirtableCredentials();
-            setAreCredentialsSet(areSet);
-            if (areSet) {
-                setToast({ message: 'Successfully connected to outer services.', type: 'success' });
-            } else {
-                setToast({ message: 'Failed to connect to outer services. Please check your credentials.', type: 'error' });
+        const loadInitialConfig = async () => {
+            try {
+                await configService.initializeConfig();
+                setSettings(configService.getAppSettings());
+                setAiModelConfig(configService.getAiModelConfig());
+                const areSet = await checkAirtableCredentials();
+                setAreCredentialsSet(areSet);
+                if (areSet) {
+                    setToast({ message: 'Successfully connected to outer services.', type: 'success' });
+                } else {
+                    setToast({ message: 'Failed to connect to outer services. Please check your credentials.', type: 'error' });
+                }
+            } catch (error) {
+                console.error("Failed to load initial configuration:", error);
+                setError("Failed to load initial configuration. Please check your Airtable setup.");
+            } finally {
+                setIsConfigLoaded(true);
             }
         };
-        checkCreds();
+        loadInitialConfig();
     }, []);
 
     const isLoading = !!loaderContent;
@@ -548,7 +538,7 @@ const App: React.FC = () => {
             return false;
         }
         return true;
-    }, []);
+    }, [personaToConnect, platformToConnect]);
 
     const ensureAirtableCredentials = useCallback(() => ensureCredentials(['airtable']), [ensureCredentials]);
 
@@ -569,25 +559,23 @@ const App: React.FC = () => {
         preferredModel: string
     ): Promise<T> => {
         console.log("Preferred model:", preferredModel);
-        // Log all environment variables for debugging
-        // console.log("Environment variables:", import.meta.env);
         
-        // Create a model list that prioritizes the user's configured model
+        const availableTextModels = aiModelConfig.allAvailableModels.filter(model => model.capabilities.includes('text'));
         const modelsToTry = [
-            preferredModel, // Always try the user's preferred model first
-            ...TEXT_MODEL_FALLBACK_ORDER.filter(m => m !== preferredModel)
+            preferredModel, 
+            ...(aiModelConfig.textModelFallbackOrder || []).filter((m: string) => m !== preferredModel),
+            ...(availableTextModels || []).map((m: any) => m.name).filter((m: string) => m !== preferredModel && !(aiModelConfig.textModelFallbackOrder || []).includes(m))
         ];
         console.log("Models to try:", modelsToTry);
 
         let lastError: Error | null = null;
         let rateLimitErrorCount = 0;
-        const RATE_LIMIT_THRESHOLD = 2; // Number of rate limit errors before giving up
+        const RATE_LIMIT_THRESHOLD = 2; 
 
         for (const model of modelsToTry) {
             try {
                 console.log(`Attempting text generation with model: ${model}`);
                 
-                // Skip Gemini models if API key is not configured
                 if (model.startsWith('gemini-') && !model.includes('free')) {
                     const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
                     console.log(`Checking Gemini API key for model ${model}:`, geminiApiKey ? "Key exists" : "Key is missing");
@@ -599,7 +587,6 @@ const App: React.FC = () => {
                 
                 const result = await generationTask(model);
                 
-                // Only update the settings if we had to fall back to a different model
                 if (model !== preferredModel) {
                     setSettings(prev => ({ ...prev, textGenerationModel: model }));
                     setSuccessMessage(`Switched to model ${model} after request failed.`);
@@ -608,33 +595,27 @@ const App: React.FC = () => {
             } catch (e: any) {
                 lastError = e;
                 
-                // Count rate limit errors
                 if (e.message && (e.message.includes('rate limit') || e.message.includes('Rate limit'))) {
                     rateLimitErrorCount++;
                 }
                 
-                // If we've hit too many rate limits, give up
                 if (rateLimitErrorCount >= RATE_LIMIT_THRESHOLD) {
                     console.warn(`Too many rate limit errors. Stopping fallback attempts.`);
                     throw new Error("Too many rate limit errors. Please try again later or configure a different model in Settings.");
                 }
                 
-                // Special handling for Gemini API browser errors
                 if (model.startsWith('gemini-') && e.message && e.message.includes('API Key must be set when running in a browser')) {
                     console.warn(`Model ${model} failed due to browser security restrictions. This is a known limitation. Trying next model...`);
-                    // Don't throw here, just continue to the next model
                 } else {
                     console.warn(`Model ${model} failed: ${e.message}. Trying next model...`);
                 }
             }
         }
         
-        // If we get here, all models failed
         if (lastError && lastError.message.includes('rate limit')) {
             throw new Error("All models are currently rate limited. Please try again later or configure a different model in Settings.");
         }
         
-        // Check if all failures were due to browser security restrictions with Gemini
         const allGeminiBrowserErrors = modelsToTry.every(model => 
             model.startsWith('gemini-') && 
             lastError && 
@@ -646,7 +627,7 @@ const App: React.FC = () => {
         }
         
         throw lastError || new Error("All text generation models failed.");
-    }, [setSettings, setSuccessMessage]);
+    }, [aiModelConfig, setSettings, setSuccessMessage]);
 
     const ensureAirtableProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
         const assets = assetsToSave || generatedAssets;
@@ -665,17 +646,16 @@ const App: React.FC = () => {
 
         const newBrandId = await createOrUpdateBrandRecord(
             assets,
-            settings,
             allImageUrls,
             null
         );
         
         setAirtableBrandId(newBrandId);
-        setGeneratedImages(allImageUrls); // Commit the public URLs to state
+        setGeneratedImages(allImageUrls); 
         console.log("New project record created with Brand ID:", newBrandId);
         updateAutoSaveStatus('saved');
         return newBrandId;
-    }, [airtableBrandId, generatedAssets, generatedImages, settings, updateAutoSaveStatus, ensureCredentials]);
+    }, [airtableBrandId, generatedAssets, generatedImages, updateAutoSaveStatus, ensureCredentials]);
 
     
     const handleSetProductImages = (files: File[]) => {
@@ -685,25 +665,17 @@ const App: React.FC = () => {
     };
 
     const handleUpdateSettings = async (newSettings: Settings) => {
-        setSettings(newSettings);
         setIsSettingsModalOpen(false); 
         
         setIsSavingSettings(true);
         updateAutoSaveStatus('saving');
         setError(null);
         try {
-            if (airtableBrandId) {
-                const success = await ensureCredentials(['airtable']);
-                if (!success) {
-                    setAutoSaveStatus('idle');
-                    setIsSavingSettings(false);
-                    return;
-                }
-                await saveSettingsToAirtable(newSettings, airtableBrandId);
-                updateAutoSaveStatus('saved');
-            }
+            await configService.updateAppSettings(newSettings);
+            setSettings(configService.getAppSettings()); // Reload settings to ensure UI is updated
+            updateAutoSaveStatus('saved');
         } catch (err) {
-            console.error("Failed to save settings to Airtable", err);
+            console.error("Failed to save settings", err);
             setError(err instanceof Error ? err.message : "Could not save settings.");
             updateAutoSaveStatus('error');
         } finally {
@@ -711,13 +683,14 @@ const App: React.FC = () => {
         }
     };
     
-    const setLanguage = (lang: string) => {
-        setSettings(prev => ({...prev, language: lang}));
+    const setLanguage = async (lang: string) => {
+        await configService.updateAppSettings({ ...settings, language: lang });
+        setSettings(configService.getAppSettings());
     }
 
     const handleGenerateProfile = useCallback(async (idea: string) => {
         setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "AI đang xây dựng hồ sơ..." : "AI is building your profile...",
+            title: settings?.language === 'Việt Nam' ? "AI đang xây dựng hồ sơ..." : "AI is building your profile...",
             steps: [
                 "Analyzing your business idea...",
                 "Generating a creative brand name...",
@@ -740,11 +713,11 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings.textGenerationModel, settings.language, executeTextGenerationWithFallback]);
+    }, [settings?.textGenerationModel, settings?.language, executeTextGenerationWithFallback]);
 
     const handleGenerateKit = useCallback(async (info: BrandInfo) => {
         setBrandInfo(info);
-        const kitSteps = settings.language === 'Việt Nam' ? [
+        const kitSteps = settings?.language === 'Việt Nam' ? [
             "Phân tích hồ sơ thương hiệu của bạn...",
             "Xây dựng nền tảng thương hiệu cốt lõi...",
             "Thiết kế các ý tưởng logo và bảng màu...",
@@ -760,7 +733,7 @@ const App: React.FC = () => {
             "Finalizing assets..."
         ];
         setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "AI đang xây dựng bộ thương hiệu của bạn..." : "AI is building your brand kit...",
+            title: settings?.language === 'Việt Nam' ? "AI đang xây dựng bộ thương hiệu của bạn..." : "AI is building your brand kit...",
             steps: kitSteps
         });
         setError(null);
@@ -785,7 +758,6 @@ const App: React.FC = () => {
             setCurrentStep('assets');
             setActiveTab('brandKit');
 
-            // Auto-create the Airtable project now to get a brand ID for subsequent auto-saving.
             ensureAirtableProject(fullAssets).catch(err => {
                 console.error("Failed to auto-create Airtable project:", err);
                 setError(err instanceof Error ? err.message : "Could not create initial Airtable project.");
@@ -796,7 +768,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings.language, settings.textGenerationModel, ensureAirtableProject, executeTextGenerationWithFallback]);
+    }, [settings?.language, settings?.textGenerationModel, ensureAirtableProject, executeTextGenerationWithFallback]);
 
     const handleGenerateMediaPlanGroup = useCallback(async (
         prompt: string, 
@@ -804,7 +776,7 @@ const App: React.FC = () => {
         totalPosts: number, 
         selectedPlatforms: string[],
         options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-        selectedProductId: string | null, // Changed this line
+        selectedProductId: string | null, 
         personaId: string | null
     ) => {
         if (!generatedAssets?.brandFoundation) {
@@ -812,7 +784,7 @@ const App: React.FC = () => {
             return;
         }
         
-        const planSteps = settings.language === 'Việt Nam' ? [
+        const planSteps = settings?.language === 'Việt Nam' ? [
             `Phân tích mục tiêu của bạn: "${prompt.substring(0, 50)}..."`,
             "Thiết lập chủ đề hàng tuần...",
             "Soạn thảo bài đăng cho Tuần 1...",
@@ -833,13 +805,13 @@ const App: React.FC = () => {
         ];
 
         setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "Đang tạo kế hoạch truyền thông..." : "Generating media plan...",
+            title: settings?.language === 'Việt Nam' ? "Đang tạo kế hoạch truyền thông..." : "Generating media plan...",
             steps: planSteps
         });
         setError(null);
         try {
             const persona = personaId ? generatedAssets.personas?.find(p => p.id === personaId) ?? null : null;
-            const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null; // Added this line
+            const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null;
             
             const generationTask = async (model: string) => {
                 return textGenerationService.generateMediaPlanGroup(
@@ -858,19 +830,17 @@ const App: React.FC = () => {
             };
             const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
-            // newGroup.productImages = serializedProductImages;
 
             dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: newGroup });
             setMediaPlanGroupsList(prev => [...prev, { id: newGroup.id, name: newGroup.name, prompt: newGroup.prompt, productImages: newGroup.productImages }]);
             setActivePlanId(newGroup.id);
-            setKhongMinhSuggestions({}); // Clear any old suggestions
+            setKhongMinhSuggestions({});
             
-            // Auto-save the new plan
             updateAutoSaveStatus('saving');
             const brandId = await ensureAirtableProject();
             if (!brandId) {
                 setAutoSaveStatus('idle');
-                setLoaderContent(null); // Ensure loader is off if credentials fail
+                setLoaderContent(null); 
                 setError("Airtable credentials not configured. Media plan not saved.");
                 return;
             }
@@ -879,19 +849,19 @@ const App: React.FC = () => {
             const allImageUrls = { ...generatedImages, ...newPublicUrls };
 
             await saveMediaPlanGroup(newGroup, allImageUrls, brandId);
-            setGeneratedImages(allImageUrls); // Commit any new image URLs
+            setGeneratedImages(allImageUrls); 
             updateAutoSaveStatus('saved');
-            setLoaderContent(null); // Turn off loader after successful save
+            setLoaderContent(null); 
 
         } catch (err) {
             console.error(err);
             setError(err instanceof Error ? err.message : "Failed to generate media plan.");
             updateAutoSaveStatus('error');
-            setLoaderContent(null); // Ensure loader is off on error
+            setLoaderContent(null); 
         }
     }, [generatedAssets, settings, ensureAirtableProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
-    const handleBackToIdea = () => {
+    const handleBackToIdea = useCallback(() => {
         setCurrentStep('idea');
         setActiveTab('brandKit');
         setBrandInfo(null);
@@ -902,14 +872,14 @@ const App: React.FC = () => {
         setActivePlanId(null);
         setError(null);
         setSuccessMessage(null);
-    };
+    }, []);
 
     const handleSetImage = useCallback(async (dataUrl: string, imageKey: string, postInfo?: PostInfo) => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
         let baseKey = imageKey;
         
         if (postInfo) {
-             baseKey = `media_plan_post_${postInfo.post.id}`;
+            baseKey = `media_plan_post_${postInfo.post.id}`;
         } else {
             const keyParts = imageKey.split('_');
             if (keyParts.length >= 2) {
@@ -937,11 +907,10 @@ const App: React.FC = () => {
 
                 if (publicUrl) {
                     if (postInfo) {
-                         const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
-                         const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
-                         await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
+                        const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
+                        const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
+                        await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
                     } else {
-                        // Fix for stale state: run the reducer ahead of time to get the updated state for the save operation.
                         const updatedAssets = assetsReducer(generatedAssets, action);
                         if (updatedAssets) {
                             await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
@@ -972,7 +941,6 @@ const App: React.FC = () => {
         
         dispatchAssets({ type: 'UPDATE_POST', payload: { planId: postInfo.planId, weekIndex: postInfo.weekIndex, postIndex: postInfo.postIndex, updates } });
 
-
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
             try {
@@ -999,7 +967,7 @@ const App: React.FC = () => {
         }
     }, [airtableBrandId, updateAutoSaveStatus, ensureCredentials, setError]);
 
-    const generateSingleImageCore = async (mediaPrompt: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
+    const generateSingleImageCore = useCallback(async (mediaPrompt: string, settings: Settings, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
         let imagesToUse: File[] = [];
         if (postInfo && 'planId' in postInfo && generatedAssets) {
             const planGroup = generatedAssets.mediaPlans.find(p => p.id === postInfo.planId);
@@ -1017,14 +985,18 @@ const App: React.FC = () => {
         } else {
             return generateImageWithOpenRouter(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse);
         }
-    };
+    }, [generatedAssets]);
 
     const handleGenerateImage = useCallback(async (mediaPrompt: string, imageKey: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo) => {
         setGeneratingImageKeys(prev => new Set(prev).add(imageKey));
         setError(null);
     
         try {
-            const dataUrl = await generateSingleImageCore(mediaPrompt, aspectRatio, postInfo);
+            if (!settings) {
+                setError("Application settings not loaded.");
+                return;
+            }
+            const dataUrl = await generateSingleImageCore(mediaPrompt, settings, aspectRatio, postInfo);
             
             const randomSuffix = Math.random().toString(36).substring(2, 10);
             let baseKey = imageKey;
@@ -1033,8 +1005,8 @@ const App: React.FC = () => {
                 baseKey = `media_plan_post_${postInfo.post.id}`;
             } else {
                 const keyParts = imageKey.split('_');
-                 if (keyParts.length >= 2) {
-                     baseKey = `${keyParts[0]}_${keyParts[1]}`;
+                if (keyParts.length >= 2) {
+                    baseKey = `${keyParts[0]}_${keyParts[1]}`;
                 }
             }
             const newImageKey = `${baseKey}_${randomSuffix}`;
@@ -1056,14 +1028,14 @@ const App: React.FC = () => {
 
                     if (publicUrl) {
                         if (postInfo) {
-                             const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
-                             const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
-                             await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
+                            const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
+                            const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
+                            await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
                         } else {
-                             const updatedAssets = assetsReducer(generatedAssets, action);
-                             if (updatedAssets) {
-                                 await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
-                             }
+                            const updatedAssets = assetsReducer(generatedAssets, action);
+                            if (updatedAssets) {
+                                await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
+                            }
                         }
                         setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
                         updateAutoSaveStatus('saved');
@@ -1087,7 +1059,7 @@ const App: React.FC = () => {
                 return newSet;
             });
         }
-    }, [settings.imageGenerationModel, settings.mediaPromptSuffix, airtableBrandId, generatedAssets, updateAutoSaveStatus, ensureCredentials]);
+    }, [settings, airtableBrandId, generatedAssets, updateAutoSaveStatus, ensureCredentials, generateSingleImageCore]);
     
     const handleGenerateMediaPrompt = useCallback(async (postInfo: PostInfo): Promise<MediaPlanPost | null> => {
         if (!('planId' in postInfo) || !generatedAssets?.brandFoundation) return null;
@@ -1102,7 +1074,6 @@ const App: React.FC = () => {
         
         try {
             const generationTask = (model: string) => {
-                // Define the common arguments for the media prompt generation
                 const commonArgs = [
                     { title: post.title, content: post.content, contentType: post.contentType },
                     generatedAssets.brandFoundation,
@@ -1152,9 +1123,9 @@ const App: React.FC = () => {
             const refinedText = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             return refinedText;
         } catch (err) {
-             console.error("Failed to refine post content:", err);
-             setError(err instanceof Error ? err.message : "Failed to refine post content.");
-             return text; // Return original text on failure
+            console.error("Failed to refine post content:", err);
+            setError(err instanceof Error ? err.message : "Failed to refine post content.");
+            return text; // Return original text on failure
         }
     }, [settings.textGenerationModel, executeTextGenerationWithFallback]);
 
@@ -1206,7 +1177,7 @@ const App: React.FC = () => {
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
 
             const updatedPost = { ...post, ...updates };
-             if (airtableBrandId) {
+            if (airtableBrandId) {
                 updateAutoSaveStatus('saving');
                 try {
                     await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId);
@@ -1255,7 +1226,7 @@ const App: React.FC = () => {
     const handleGenerateIdeas = useCallback(async (trend: Trend, useSearch: boolean) => {
         setLoaderContent({ title: "Generating Viral Ideas...", steps: ["Analyzing trend...", "Brainstorming concepts...", "Finalizing ideas..."] });
         try {
-             const generationTask = (model: string) => {
+            const generationTask = (model: string) => {
                 return textGenerationService.generateViralIdeas(trend, settings.language, useSearch, model);
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1295,12 +1266,11 @@ const App: React.FC = () => {
         setLoaderContent({ title: "Generating Content Package...", steps: ["Crafting pillar content...", "Repurposing for other platforms...", "Generating media prompts...", "Assembling package..."] });
         try {
             const generationTask = (model: string) => {
-                 return textGenerationService.generateContentPackage(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options, selectedProduct);
+                return textGenerationService.generateContentPackage(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options, selectedProduct);
             };
             const newPackage = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             dispatchAssets({ type: 'ADD_CONTENT_PACKAGE', payload: newPackage });
 
-            // Update UI immediately
             setMediaPlanGroupsList(prev => [...prev, { id: newPackage.id, name: newPackage.name, prompt: newPackage.prompt, source: newPackage.source, personaId: newPackage.personaId }]);
             setActivePlanId(newPackage.id);
             setActiveTab('mediaPlan');
@@ -1324,8 +1294,7 @@ const App: React.FC = () => {
         setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
         console.log("User configured model:", settings.textGenerationModel);
         
-        // Validate that we're using a model that doesn't require an API key
-        if (settings.textGenerationModel.startsWith('gemini-') && !settings.textGenerationModel.includes('free')) {
+        if ((settings.textGenerationModel).startsWith('gemini-') && !(settings.textGenerationModel).includes('free')) {
             const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
             if (!geminiApiKey) {
                 setError("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
@@ -1341,12 +1310,10 @@ const App: React.FC = () => {
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
-            // Validate that we received proper data
             if (!Array.isArray(newIdeaData) || newIdeaData.length === 0) {
                 throw new Error("Failed to generate ideas: No valid ideas returned from AI service.");
             }
             
-            // Validate each idea has required fields
             for (let i = 0; i < newIdeaData.length; i++) {
                 const idea = newIdeaData[i];
                 if (!idea.title || !idea.description || !idea.targetAudience) {
@@ -1358,13 +1325,12 @@ const App: React.FC = () => {
             const newIdeas: Idea[] = newIdeaData.map(idea => ({
                 ...idea,
                 id: crypto.randomUUID(),
-                trendId: 'product-' + product.id, // Using a special trendId for product-based ideas
-                productId: product.id, // Link the idea to the product
+                trendId: 'product-' + product.id, 
+                productId: product.id, 
             }));
             
             dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
             
-            // Create a special "trend" for this product if it doesn't exist
             const productTrendId = 'product-' + product.id;
             const existingTrends = generatedAssets?.trends || [];
             const productTrendExists = existingTrends.some(trend => trend.id === productTrendId);
@@ -1384,7 +1350,6 @@ const App: React.FC = () => {
                 };
                 dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
                 
-                // Also save to Airtable if connected
                 if (airtableBrandId) {
                     updateAutoSaveStatus('saving');
                     try {
@@ -1397,7 +1362,6 @@ const App: React.FC = () => {
                     }
                 }
             } else {
-                // Get the existing trend
                 productTrend = existingTrends.find(trend => trend.id === productTrendId)!;
             }
             
@@ -1413,11 +1377,9 @@ const App: React.FC = () => {
                 }
             }
             
-            // Show success message
             setSuccessMessage(`Generated ${newIdeas.length} ideas from ${product.productName}`);
             setTimeout(() => setSuccessMessage(null), 3000);
             
-            // Switch to the Strategy Hub tab and ensure the new product trend is selected
             setActiveTab('strategy');
             setProductTrendToSelect(productTrendId);
         } catch (err) {
@@ -1492,7 +1454,6 @@ const App: React.FC = () => {
             setGeneratedVideos(projectData.generatedVideos || {});
             setAirtableBrandId(projectData.airtableBrandId || null);
             
-            // Load social accounts for each persona
             if (projectData.assets.personas) {
                 projectData.assets.personas = projectData.assets.personas.map((p: Persona) => ({
                     ...p,
@@ -1502,8 +1463,8 @@ const App: React.FC = () => {
 
             const firstPlan = projectData.assets.mediaPlans?.[0];
             if (firstPlan) {
-                 setMediaPlanGroupsList(projectData.assets.mediaPlans.map((p: MediaPlanGroup) => ({ id: p.id, name: p.name, prompt: p.prompt, productImages: p.productImages || [] })));
-                 setActivePlanId(firstPlan.id);
+                setMediaPlanGroupsList(projectData.assets.mediaPlans.map((p: MediaPlanGroup) => ({ id: p.id, name: p.name, prompt: p.prompt, productImages: p.productImages || [] })));
+                setActivePlanId(firstPlan.id);
             } else {
                 setMediaPlanGroupsList([]);
                 setActivePlanId(null);
@@ -1527,7 +1488,6 @@ const App: React.FC = () => {
 
     const handleSelectPlan = useCallback(async (planId: string, assetsToUse?: GeneratedAssets) => {
         const currentAssets = assetsToUse || generatedAssets;
-    
         if (!currentAssets?.brandFoundation) {
             setError("Cannot load plan without brand foundation.");
             return;
@@ -1536,41 +1496,33 @@ const App: React.FC = () => {
         setLoaderContent({ title: `Loading Plan...`, steps: ["Fetching plan details..."] });
         try {
             const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId, bf, settings.language);
-            
             if (!currentAssets) {
                 throw new Error("Assets are not initialized.");
             }
-    
             const newAssets = JSON.parse(JSON.stringify(currentAssets));
             const existingPlanIndex = newAssets.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
-    
             if (existingPlanIndex !== -1) {
-                // Plan is already in memory, just update its posts
                 newAssets.mediaPlans[existingPlanIndex].plan = plan;
             } else {
-                // Plan is not loaded yet. Get its metadata from the list and create the full object.
                 const planMetadata = mediaPlanGroupsList.find(p => p.id === planId);
                 if (planMetadata) {
                     const newPlanGroup: MediaPlanGroup = {
                         ...planMetadata,
-                        plan: plan, // Add the loaded posts
+                        plan: plan,
                     };
                     newAssets.mediaPlans.push(newPlanGroup);
                 } else {
                     console.warn(`Could not find metadata for planId ${planId} in mediaPlanGroupsList.`);
-                    // Fallback if metadata isn't in the list for some reason
                     const newPlanGroup: MediaPlanGroup = {
                         id: planId,
                         name: 'Loaded Plan',
                         prompt: 'Loaded on demand',
                         plan: plan,
                     };
-                     newAssets.mediaPlans.push(newPlanGroup);
+                    newAssets.mediaPlans.push(newPlanGroup);
                 }
             }
-            
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: newAssets });
-    
             setGeneratedImages(prev => ({...prev, ...imageUrls}));
             setGeneratedVideos(prev => ({...prev, ...videoUrls}));
             setActivePlanId(planId);
@@ -1583,19 +1535,16 @@ const App: React.FC = () => {
     }, [generatedAssets, settings.language, mediaPlanGroupsList]);
 
     const handleLoadFromAirtable = useCallback(async (brandId: string) => {
-
         setLoaderContent({ title: "Loading from Airtable...", steps: ["Connecting...", "Fetching project data...", "Loading assets..."] });
         setError(null);
         try {
-            const { assets, settings: loadedSettings, generatedImages: loadedImages, generatedVideos: loadedVideos, brandId: loadedBrandId } = await loadProjectFromAirtable(brandId);
+            const { assets, generatedImages: loadedImages, generatedVideos: loadedVideos, brandId: loadedBrandId } = await loadProjectFromAirtable(brandId);
             
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: assets });
-            setSettings(prev => ({ ...prev, ...loadedSettings }));
             setGeneratedImages(loadedImages);
             setGeneratedVideos(loadedVideos);
             setAirtableBrandId(loadedBrandId);
             
-            // Load social accounts for each persona
             if (assets.personas) {
                 assets.personas = assets.personas.map((p: Persona) => ({
                     ...p,
@@ -1607,7 +1556,6 @@ const App: React.FC = () => {
             setMediaPlanGroupsList(loadedPlansList);
             if (loadedPlansList.length > 0) {
                 setActivePlanId(loadedPlansList[0].id);
-                // Pass the just-loaded assets to handleSelectPlan to ensure it has the correct brand foundation
                 await handleSelectPlan(loadedPlansList[0].id, assets);
             } else {
                 setActivePlanId(null);
@@ -1701,17 +1649,20 @@ const App: React.FC = () => {
             const postInfo = postsToGenerate[i];
             setBulkActionStatus(prev => prev ? { ...prev, currentStep: i } : null);
             try {
+                if (!settings) {
+                    setError("Application settings not loaded.");
+                    return;
+                }
                 await handleGenerateImage(postInfo.post.mediaPrompt as string, postInfo.post.imageKey || postInfo.post.id, '1:1', postInfo);
             } catch (error) {
                 console.error(`Failed to regenerate image for post ${postInfo.post.id}`, error);
-                // Continue to the next one
             }
         }
 
         setBulkActionStatus(null);
         setSuccessMessage("Finished regenerating week images.");
         setTimeout(() => setSuccessMessage(null), 3000);
-    }, [generatedAssets, handleGenerateImage]);
+    }, [generatedAssets, handleGenerateImage, settings]);
 
     const handleAssignPersonaToPlan = useCallback(async (planId: string, personaId: string | null) => {
         if (!generatedAssets) return;
@@ -1728,7 +1679,6 @@ const App: React.FC = () => {
                     setAutoSaveStatus('idle');
                     return;
                 }
-                // The reducer logic needs to be reapplied to get the updated posts to save.
                 const updatedState = assetsReducer(generatedAssets, { type: 'ASSIGN_PERSONA_TO_PLAN', payload: { planId, personaId } });
                 const updatedPlan = updatedState?.mediaPlans.find(p => p.id === planId);
                 if (updatedPlan) {
@@ -1745,7 +1695,7 @@ const App: React.FC = () => {
         }
     }, [generatedAssets, airtableBrandId, updateAutoSaveStatus, ensureCredentials]);
 
-    const handleSaveAffiliateLink = useCallback((link: AffiliateLink) => {
+        const handleSaveAffiliateLink = useCallback((link: AffiliateLink) => {
         dispatchAssets({ type: 'ADD_OR_UPDATE_AFFILIATE_LINK', payload: link });
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
@@ -1866,7 +1816,7 @@ const App: React.FC = () => {
             if (!personaId) {
                 throw new Error("No persona assigned to this media plan. Cannot schedule post.");
             }
-            await socialApiSchedulePost(personaId, post.platform, post, scheduledAt); // Use the renamed import and pass personaId
+            await socialApiSchedulePost(personaId, post.platform, post, scheduledAt);
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
             if (airtableBrandId) {
@@ -1886,7 +1836,7 @@ const App: React.FC = () => {
     const handlePublishPost = useCallback(async (postInfo: PostInfo) => {
         const { planId, weekIndex, postIndex, post } = postInfo;
         
-        setIsScheduling(true); // Use scheduling state for publishing too
+        setIsScheduling(true); 
         try {
             const currentPlan = generatedAssets?.mediaPlans.find(p => p.id === planId);
             const personaId = currentPlan?.personaId;
@@ -1904,7 +1854,7 @@ const App: React.FC = () => {
                 status: 'published' as PostStatus, 
                 publishedUrl: publishedUrl,
                 publishedAt: new Date().toISOString(),
-                scheduledAt: undefined, // Clear scheduledAt when published
+                scheduledAt: undefined, 
             };
 
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
@@ -1926,7 +1876,6 @@ const App: React.FC = () => {
                     setPlatformToConnect(err.platform);
                     setIsPersonaConnectModalOpen(true);
                     personaConnectSuccessCallback.current = () => {
-                        // After successful connection, re-attempt publishing the post
                         handlePublishPost(postInfo);
                         setPersonaToConnect(null);
                         setPlatformToConnect(null);
@@ -1943,7 +1892,6 @@ const App: React.FC = () => {
     }, [airtableBrandId, updateAutoSaveStatus, generatedAssets, generatedImages, generatedVideos, setViewingPost]);
 
     const handlePostDrop = useCallback((postInfo: SchedulingPost, newDate: Date) => {
-        // Set the time from the original date, or default to a sensible time like 10:00 AM
         const originalDate = postInfo.post.scheduledAt ? new Date(postInfo.post.scheduledAt) : new Date(newDate.setHours(10, 0, 0, 0));
         newDate.setHours(originalDate.getHours(), originalDate.getMinutes(), originalDate.getSeconds());
         handleSchedulePost(postInfo, newDate.toISOString());
@@ -1979,10 +1927,8 @@ const App: React.FC = () => {
             scheduleTime.setMinutes(scheduleTime.getMinutes() + intervalMinutes);
         }
     
-        // Dispatch all state updates at once (might not be possible with current reducer)
         updatesForState.forEach(u => dispatchAssets({ type: 'UPDATE_POST', payload: u }));
         
-        // A more performant way would be a new reducer action 'BULK_UPDATE_POSTS'
         dispatchAssets({ type: 'BULK_SCHEDULE_POSTS', payload: { updates: updatesForAirtable } });
     
         if (airtableBrandId) {
@@ -2258,9 +2204,17 @@ const App: React.FC = () => {
         );
     }
     
-    // ...
-    // The rest of the App component is quite long, so I'll omit it here, but I will include the export.
-    // ...
+    // Show loading screen while config is loading
+    if (!isConfigLoaded) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-brand-green border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    <p className="mt-4 text-gray-600">Loading application configuration...</p>
+                </div>
+            </div>
+        );
+    }
 
     switch (currentStep) {
         case 'idea':

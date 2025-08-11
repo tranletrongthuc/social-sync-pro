@@ -1,4 +1,4 @@
-import { generateTrends } from '../services/geminiService';
+import { generateFacebookTrends as generateTrends } from '../services/geminiService';
 
 describe('generateTrends', () => {
     it('should return an array of trends with keywords property', async () => {

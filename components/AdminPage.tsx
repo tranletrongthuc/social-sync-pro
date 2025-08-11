@@ -3,6 +3,8 @@ import { Button, Input } from './ui';
 import { TrashIcon, PencilIcon, PlusIcon } from './icons';
 import sampleAIServices from '../sampleAIServices';
 import { saveAIService, deleteAIService, saveAIModel, deleteAIModel, loadAIServices } from '../services/airtableService';
+import { configService, AiModelConfig } from '../services/configService';
+import type { Settings } from '../types';
 
 interface AIModel {
   id: string;
@@ -49,23 +51,35 @@ const AdminPage: React.FC = () => {
   
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Load data from Airtable on component mount
+  // New states for app settings and AI model config
+  const [appSettings, setAppSettings] = useState<Settings>(configService.getAppSettings());
+  const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig>(configService.getAiModelConfig());
+
+  // Load data from Airtable and configService on component mount
   useEffect(() => {
-    const loadServices = async () => {
+    const loadAllData = async () => {
       try {
         setLoading(true);
+        // Load AI services from Airtable (existing functionality)
         const loadedServices = await loadAIServices();
         setServices(loadedServices);
+
+        // Load app settings and AI model config from configService
+        const adminDefaults = await configService.getAdminDefaults();
+        setAppSettings(adminDefaults.settings);
+        setAiModelConfig(adminDefaults.aiModelConfig);
+
       } catch (err) {
-        setError('Failed to load AI services: ' + (err instanceof Error ? err.message : 'Unknown error'));
-        console.error('Error loading AI services:', err);
+        setError('Failed to load data: ' + (err instanceof Error ? err.message : 'Unknown error'));
+        console.error('Error loading data:', err);
       } finally {
         setLoading(false);
       }
     };
     
-    loadServices();
+    loadAllData();
   }, []);
 
   const handleAddService = async () => {
@@ -214,6 +228,28 @@ const AdminPage: React.FC = () => {
     window.location.href = '/';
   };
 
+  const handleSaveAppSettings = async () => {
+    try {
+      await configService.saveAdminDefaults(appSettings, aiModelConfig);
+      setSuccessMessage('Application settings saved successfully!');
+      setError(null);
+    } catch (err) {
+      setError('Failed to save application settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      setSuccessMessage(null);
+    }
+  };
+
+  const handleSaveAiModelConfig = async () => {
+    try {
+      await configService.saveAdminDefaults(appSettings, aiModelConfig);
+      setSuccessMessage('AI Model Configuration saved successfully!');
+      setError(null);
+    } catch (err) {
+      setError('Failed to save AI Model Configuration: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      setSuccessMessage(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -254,6 +290,154 @@ const AdminPage: React.FC = () => {
           </div>
         )}
         
+        {successMessage && (
+          <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-6">
+            <p className="text-green-700">{successMessage}</p>
+          </div>
+        )}
+        
+        {/* Application Settings */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4">Application Settings</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-gray-700">Language</span>
+              <Input
+                value={appSettings.language}
+                onChange={(e) => setAppSettings({ ...appSettings, language: e.target.value })}
+              />
+            </label>
+            <label className="block">
+              <span className="text-gray-700">Total Posts Per Month</span>
+              <Input
+                type="number"
+                value={appSettings.totalPostsPerMonth}
+                onChange={(e) => setAppSettings({ ...appSettings, totalPostsPerMonth: parseInt(e.target.value) })}
+              />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-gray-700">Media Prompt Suffix</span>
+              <Input
+                value={appSettings.mediaPromptSuffix}
+                onChange={(e) => setAppSettings({ ...appSettings, mediaPromptSuffix: e.target.value })}
+              />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-gray-700">Text Generation Model</span>
+              <Input
+                value={appSettings.textGenerationModel}
+                onChange={(e) => setAppSettings({ ...appSettings, textGenerationModel: e.target.value })}
+              />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-gray-700">Image Generation Model</span>
+              <Input
+                value={appSettings.imageGenerationModel}
+                onChange={(e) => setAppSettings({ ...appSettings, imageGenerationModel: e.target.value })}
+              />
+            </label>
+            <label className="block md:col-span-2">
+              <span className="text-gray-700">Affiliate Content Kit</span>
+              <textarea
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-blue focus:ring focus:ring-brand-blue focus:ring-opacity-50"
+                rows={10}
+                value={appSettings.affiliateContentKit}
+                onChange={(e) => setAppSettings({ ...appSettings, affiliateContentKit: e.target.value })}
+              ></textarea>
+            </label>
+          </div>
+          <Button 
+            className="mt-4 flex items-center gap-2"
+            onClick={handleSaveAppSettings}
+          >
+            Save Application Settings
+          </Button>
+        </div>
+
+        {/* AI Model Configuration */}
+        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-semibold mb-4">AI Model Configuration</h2>
+
+          {/* Text Model Fallback Order */}
+          <div className="mb-6">
+            <h3 className="text-lg font-medium mb-3">Text Model Fallback Order</h3>
+            <div className="space-y-2">
+              {aiModelConfig.textModelFallbackOrder.map((model, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Input
+                    value={model}
+                    onChange={(e) => {
+                      const newOrder = [...aiModelConfig.textModelFallbackOrder];
+                      newOrder[index] = e.target.value;
+                      setAiModelConfig({ ...aiModelConfig, textModelFallbackOrder: newOrder });
+                    }}
+                    className="flex-grow"
+                  />
+                  <Button
+                    variant="tertiary"
+                    onClick={() => {
+                      const newOrder = aiModelConfig.textModelFallbackOrder.filter((_, i) => i !== index);
+                      setAiModelConfig({ ...aiModelConfig, textModelFallbackOrder: newOrder });
+                    }}
+                  >
+                    <TrashIcon className="h-5 w-5 text-red-600" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button
+              className="mt-3 flex items-center gap-2"
+              onClick={() => setAiModelConfig({ ...aiModelConfig, textModelFallbackOrder: [...aiModelConfig.textModelFallbackOrder, ''] })}
+            >
+              <PlusIcon className="h-5 w-5" />
+              Add Text Model
+            </Button>
+          </div>
+
+          {/* Vision Models */}
+          <div>
+            <h3 className="text-lg font-medium mb-3">Vision Models</h3>
+            <div className="space-y-2">
+              {aiModelConfig.visionModels.map((model, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <Input
+                    value={model}
+                    onChange={(e) => {
+                      const newModels = [...aiModelConfig.visionModels];
+                      newModels[index] = e.target.value;
+                      setAiModelConfig({ ...aiModelConfig, visionModels: newModels });
+                    }}
+                    className="flex-grow"
+                  />
+                  <Button
+                    variant="tertiary"
+                    onClick={() => {
+                      const newModels = aiModelConfig.visionModels.filter((_, i) => i !== index);
+                      setAiModelConfig({ ...aiModelConfig, visionModels: newModels });
+                    }}
+                  >
+                    <TrashIcon className="h-5 w-5 text-red-600" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <Button
+              className="mt-3 flex items-center gap-2"
+              onClick={() => setAiModelConfig({ ...aiModelConfig, visionModels: [...aiModelConfig.visionModels, ''] })}
+            >
+              <PlusIcon className="h-5 w-5" />
+              Add Vision Model
+            </Button>
+          </div>
+
+          <Button 
+            className="mt-4 flex items-center gap-2"
+            onClick={handleSaveAiModelConfig}
+          >
+            Save AI Model Configuration
+          </Button>
+        </div>
+
         {/* Add New Service */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-8">
           <h2 className="text-xl font-semibold mb-4">Add New AI Service</h2>

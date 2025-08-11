@@ -184,15 +184,30 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
         response_format: { "type": "json_object" },
     });
     const jsonText = parseOpenRouterResponse(response);
+
+    // Fix malformed JSON responses that are missing array brackets
+    let fixedJsonText = jsonText.trim();
+    if (fixedJsonText.startsWith('{') && fixedJsonText.includes('title') && fixedJsonText.includes('description') && fixedJsonText.includes('targetAudience')) {
+        // This looks like individual idea objects separated by commas
+        // Wrap them in an array
+        fixedJsonText = '[' + fixedJsonText + ']';
+    } else if (fixedJsonText.startsWith('"') && fixedJsonText.endsWith('"')) {
+        // This might be a JSON string that needs to be parsed twice
+        try {
+            fixedJsonText = JSON.parse(fixedJsonText);
+        } catch (e) {
+            // If parsing fails, continue with original text
+        }
+    }
     
-    if (!jsonText) {
+    if (!fixedJsonText) {
         throw new Error("Received an empty response from the AI. This could be due to content filtering or an internal error. Please try adjusting your prompt.");
     }
 
     try {
-        return sanitizeAndParseJson(jsonText) as BrandInfo;
+        return sanitizeAndParseJson(fixedJsonText) as BrandInfo;
     } catch (e) {
-        console.error("Failed to parse AI JSON response:", jsonText || "Empty response");
+        console.error("Failed to parse AI JSON response:", fixedJsonText || "Empty response");
         throw new Error("The AI returned a malformed or unexpected response. Please try again.");
     }
 };
@@ -230,14 +245,32 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
     }
 
     try {
-        const parsedJson = sanitizeAndParseJson(jsonText);
+
+        // Fix malformed JSON responses that are missing array brackets
+        let fixedJsonText = jsonText.trim();
+        if (fixedJsonText.startsWith('{') && fixedJsonText.includes('title') && fixedJsonText.includes('description') && fixedJsonText.includes('targetAudience')) {
+            // This looks like individual idea objects separated by commas
+            // Wrap them in an array
+            fixedJsonText = '[' + fixedJsonText + ']';
+        } else if (fixedJsonText.startsWith('"') && fixedJsonText.endsWith('"')) {
+            // This might be a JSON string that needs to be parsed twice
+            try {
+                fixedJsonText = JSON.parse(fixedJsonText);
+            } catch (e) {
+                // If parsing fails, continue with original text
+            }
+        }
+
+        console.log("Fixed OpenRouter response for brand kit:", fixedJsonText);
+
+        const parsedJson = sanitizeAndParseJson(fixedJsonText);
 
         // Handle different possible response structures from AI
         // Some models might return snake_case keys instead of camelCase
         const brandFoundation = parsedJson.brandFoundation || parsedJson.brand_foundation;
         const coreMediaAssets = parsedJson.coreMediaAssets || parsedJson.core_media_assets;
         const unifiedProfileAssets = parsedJson.unifiedProfileAssets || parsedJson.unified_profile_assets;
-        const mediaPlan = parsedJson.mediaPlan || parsedJson.initial_1_month_media_plan || parsedJson.media_plan;
+        const mediaPlan = parsedJson.mediaPlan || parsedJson.initial_1_month_media_plan || parsedJson.media_plan || parsedJson.initial1MonthMediaPlan;
 
         if (!brandFoundation || !coreMediaAssets || !unifiedProfileAssets || !mediaPlan) {
             console.error("AI response from OpenRouter is missing one or more root keys. Parsed JSON:", parsedJson);
@@ -989,6 +1022,9 @@ You MUST respond with a single, valid JSON array containing 5 idea objects. Do n
             // If parsing fails, continue with original text
         }
     }
+
+    // Log the raw response for debugging
+    console.log("Fixed OpenRouter response for product ideas:", fixedJsonText);
     
     try {
         let ideas = sanitizeAndParseJson(fixedJsonText);

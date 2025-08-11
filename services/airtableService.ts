@@ -16,6 +16,8 @@ export const SOCIAL_ACCOUNTS_TABLE_NAME = 'Social_Accounts';
 export const AI_SERVICES_TABLE_NAME = 'AI_Services';
 export const AI_MODELS_TABLE_NAME = 'AI_Models';
 
+export const ADMIN_SETTINGS_TABLE_NAME = 'Admin_Settings';
+
 
 // --- SCHEMA DEFINITIONS ---
 
@@ -29,13 +31,6 @@ const BRANDS_SCHEMA = [
     { name: 'color_palette_json', type: 'multilineText' },
     { name: 'font_recs_json', type: 'multilineText' },
     { name: 'unified_profile_json', type: 'multilineText' },
-    // Settings fields are now part of the Brands table
-    { name: 'language', type: 'singleLineText' },
-    { name: 'total_posts_per_month', type: 'number', options: { precision: 0 } },
-    { name: 'media_prompt_suffix', type: 'multilineText' },
-    { name: 'affiliate_content_kit', type: 'multilineText' },
-    { name: 'text_generation_model', type: 'singleLineText' },
-    { name: 'image_generation_model', type: 'singleLineText' },
     // Linked Records (only those that don't scale with multiple instances)
     { name: 'logo_concepts', type: 'multipleRecordLinks', options: { linkedTableName: LOGO_CONCEPTS_TABLE_NAME, prefersSingleRecordLink: false } },
     { name: 'brand_values', type: 'multipleRecordLinks', options: { linkedTableName: BRAND_VALUES_TABLE_NAME, prefersSingleRecordLink: false } },
@@ -192,6 +187,18 @@ const AI_MODELS_SCHEMA = [
     { name: 'service', type: 'multipleRecordLinks', options: { linkedTableName: AI_SERVICES_TABLE_NAME, prefersSingleRecordLink: true } },
 ];
 
+const ADMIN_SETTINGS_SCHEMA = [
+    { name: 'setting_id', type: 'singleLineText' }, // Primary Key (will be a fixed ID like 'global_settings')
+    { name: 'language', type: 'singleLineText' },
+    { name: 'total_posts_per_month', type: 'number', options: { precision: 0 } },
+    { name: 'media_prompt_suffix', type: 'multilineText' },
+    { name: 'affiliate_content_kit', type: 'multilineText' },
+    { name: 'text_generation_model', type: 'singleLineText' },
+    { name: 'image_generation_model', type: 'singleLineText' },
+    { name: 'text_model_fallback_order_json', type: 'multilineText' },
+    { name: 'vision_models_json', type: 'multilineText' },
+];
+
 export const ALL_TABLE_SCHEMAS = {
     [BRANDS_TABLE_NAME]: BRANDS_SCHEMA,
     [LOGO_CONCEPTS_TABLE_NAME]: LOGO_CONCEPTS_SCHEMA,
@@ -207,6 +214,7 @@ export const ALL_TABLE_SCHEMAS = {
     [SOCIAL_ACCOUNTS_TABLE_NAME]: SOCIAL_ACCOUNTS_SCHEMA,
     [AI_SERVICES_TABLE_NAME]: AI_SERVICES_SCHEMA,
     [AI_MODELS_TABLE_NAME]: AI_MODELS_SCHEMA,
+    [ADMIN_SETTINGS_TABLE_NAME]: ADMIN_SETTINGS_SCHEMA,
 };
 
 let schemaEnsured = false;
@@ -243,6 +251,8 @@ export const ensureAllTablesExist = async (): Promise<void> => {
     
     try {
         const tablesResponse = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        let tablesResponse2 = tablesResponse; // Initialize with tablesResponse
+
         const existingTableNames = new Set(tablesResponse.tables.map((t: any) => t.name));
         
         console.log("Existing tables in Airtable:", Array.from(existingTableNames));
@@ -302,7 +312,7 @@ export const ensureAllTablesExist = async (): Promise<void> => {
             }
 
             // Re-fetch table list after creation attempts
-            const tablesResponse2 = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+            tablesResponse2 = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
             const existingTableNames2 = new Set(tablesResponse2.tables.map((t: any) => t.name));
             
             console.log("Tables after creation attempts:", Array.from(existingTableNames2));
@@ -314,10 +324,161 @@ export const ensureAllTablesExist = async (): Promise<void> => {
         } else {
             console.log("All required tables already exist.");
         }
+
+        // After ensuring tables, attempt to create all fields within existing tables
+        const allTables = [...tablesResponse.tables, ...tablesResponse2.tables];
+        const tableNameToIdMap = new Map(allTables.map((t: any) => [t.name, t.id]));
+
+        for (const tableName of Object.keys(ALL_TABLE_SCHEMAS)) {
+            const schema = ALL_TABLE_SCHEMAS[tableName];
+            const tableId = tableNameToIdMap.get(tableName);
+
+            if (tableId) {
+                for (const field of schema) {
+                    try {
+                        const { name, type, options, ...rest } = field;
+                        const airtableField: any = { 
+                            name, 
+                            type,
+                            ...rest
+                        };
+
+                        if (type === 'multipleRecordLinks' && options && options.linkedTableName) {
+                            const linkedTableId = tableNameToIdMap.get(options.linkedTableName);
+                            if (linkedTableId) {
+                                airtableField.options = {
+                                    linkedTableId: linkedTableId,
+                                    isReversed: options.isReversed || false, // Default to false if not specified
+                                    prefersSingleRecordLink: options.prefersSingleRecordLink || false,
+                                };
+                            } else {
+                                console.warn(`Linked table ${options.linkedTableName} not found for field ${name} in table ${tableName}. Skipping field creation.`);
+                                continue; // Skip creating this field if linked table is not found
+                            }
+                        } else if (options) {
+                            airtableField.options = options;
+                        }
+
+                        await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`, {
+                            method: 'POST',
+                            body: JSON.stringify(airtableField)
+                        });
+                        console.log(`Successfully created field ${name} in table ${tableName}`);
+                    } catch (fieldError: any) {
+                        // Check if the error is due to a duplicate field
+                        if (fieldError.message && fieldError.message.includes('422') && (fieldError.message.includes('DUPLICATE_FIELD_NAME') || fieldError.message.includes('DUPLICATE_OR_EMPTY_FIELD_NAME'))) {
+                            console.warn(`Field ${field.name} already exists in table ${tableName}. Skipping creation.`);
+                        } else {
+                            console.error(`Failed to create field ${field.name} in table ${tableName}:`, fieldError);
+                        }
+                    }
+                }
+            }
+        }
         
         schemaEnsured = true;
     } catch (error) {
         console.error("Failed to ensure Airtable schema:", error);
+        throw error;
+    }
+};
+
+export const ensureAdminSettingsTableAndFieldsExist = async (): Promise<void> => {
+    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
+    if (!baseId) throw new Error("Airtable Base ID is not configured in the environment.");
+    
+    const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
+    if (!personalAccessToken) throw new Error("Airtable Personal Access Token is not configured in the environment.");
+
+    try {
+        const tablesResponse = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        let tablesResponse2 = tablesResponse; // Initialize with tablesResponse
+
+        const existingTableNames = new Set(tablesResponse.tables.map((t: any) => t.name));
+
+        // Check if Admin_Settings table needs to be created
+        const adminSettingsTableExists = existingTableNames.has(ADMIN_SETTINGS_TABLE_NAME);
+
+        if (!adminSettingsTableExists) {
+            console.log(`Creating new table: ${ADMIN_SETTINGS_TABLE_NAME}`);
+            const schema = ALL_TABLE_SCHEMAS[ADMIN_SETTINGS_TABLE_NAME];
+            try {
+                await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        name: ADMIN_SETTINGS_TABLE_NAME,
+                        fields: schema.map(field => {
+                            const { name, type, options, ...rest } = field;
+                            const airtableField: any = {
+                                name,
+                                type,
+                                ...rest
+                            };
+                            if (options) {
+                                airtableField.options = options;
+                            }
+                            return airtableField;
+                        })
+                    })
+                });
+                console.log(`Successfully created table: ${ADMIN_SETTINGS_TABLE_NAME}`);
+                // Re-fetch table list after creation attempts
+                tablesResponse2 = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+            } catch (createError) {
+                console.error(`Failed to create table ${ADMIN_SETTINGS_TABLE_NAME}:`, createError);
+                throw createError; // Re-throw critical error
+            }
+        }
+
+        // Ensure fields within Admin_Settings table
+        const allTables = [...tablesResponse.tables, ...tablesResponse2.tables];
+        const tableNameToIdMap = new Map(allTables.map((t: any) => [t.name, t.id]));
+
+        const schema = ALL_TABLE_SCHEMAS[ADMIN_SETTINGS_TABLE_NAME];
+        const tableId = tableNameToIdMap.get(ADMIN_SETTINGS_TABLE_NAME);
+
+        if (tableId) {
+            for (const field of schema) {
+                try {
+                    const { name, type, options, ...rest } = field;
+                    const airtableField: any = {
+                        name,
+                        type,
+                        ...rest
+                    };
+
+                    if (type === 'multipleRecordLinks' && options && options.linkedTableName) {
+                        const linkedTableId = tableNameToIdMap.get(options.linkedTableName);
+                        if (linkedTableId) {
+                            airtableField.options = {
+                                linkedTableId: linkedTableId,
+                                isReversed: options.isReversed || false,
+                                prefersSingleRecordLink: options.prefersSingleRecordLink || false,
+                            };
+                        } else {
+                            console.warn(`Linked table ${options.linkedTableName} not found for field ${name} in table ${ADMIN_SETTINGS_TABLE_NAME}. Skipping field creation.`);
+                            continue;
+                        }
+                    } else if (options) {
+                        airtableField.options = options;
+                    }
+
+                    await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`, {
+                        method: 'POST',
+                        body: JSON.stringify(airtableField)
+                    });
+                    console.log(`Successfully created field ${name} in table ${ADMIN_SETTINGS_TABLE_NAME}`);
+                } catch (fieldError: any) {
+                    if (fieldError.message && fieldError.message.includes('422') && (fieldError.message.includes('DUPLICATE_FIELD_NAME') || fieldError.message.includes('DUPLICATE_OR_EMPTY_FIELD_NAME'))) {
+                        console.warn(`Field ${field.name} already exists in table ${ADMIN_SETTINGS_TABLE_NAME}. Skipping creation.`);
+                    } else {
+                        console.error(`Failed to create field ${field.name} in table ${ADMIN_SETTINGS_TABLE_NAME}:`, fieldError);
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.error("Failed to ensure Admin Settings schema:", error);
         throw error;
     }
 };
@@ -409,7 +570,6 @@ const deleteAirtableRecords = async (tableName: string, recordIds: string[]) => 
 // --- MAIN ASSET LOADING (Unchanged) ---
 export const createOrUpdateBrandRecord = async (
     assets: GeneratedAssets,
-    settings: Settings,
     imageUrls: Record<string, string>,
     brandId: string | null
 ): Promise<string> => {
@@ -439,12 +599,6 @@ export const createOrUpdateBrandRecord = async (
             color_palette_json: JSON.stringify(assets.coreMediaAssets.colorPalette),
             font_recs_json: JSON.stringify(assets.coreMediaAssets.fontRecommendations),
             unified_profile_json: JSON.stringify(assets.unifiedProfileAssets),
-            language: settings.language,
-            total_posts_per_month: settings.totalPostsPerMonth,
-            media_prompt_suffix: settings.mediaPromptSuffix,
-            affiliate_content_kit: settings.affiliateContentKit,
-            text_generation_model: settings.textGenerationModel,
-            image_generation_model: settings.imageGenerationModel,
         };
         
         await airtableFetch(`https://api.airtable.com/v0/${baseId}/${BRANDS_TABLE_NAME}`, {
@@ -454,6 +608,7 @@ export const createOrUpdateBrandRecord = async (
     } else {
         // Create new brand
         const newBrandId = crypto.randomUUID();
+        const { settings: defaultSettings, aiModelConfig: defaultAiModelConfig } = await fetchAdminDefaultsFromAirtable();
         const brandFields = {
             brand_id: newBrandId,
             name: assets.brandFoundation.brandName,
@@ -464,12 +619,14 @@ export const createOrUpdateBrandRecord = async (
             color_palette_json: JSON.stringify(assets.coreMediaAssets.colorPalette),
             font_recs_json: JSON.stringify(assets.coreMediaAssets.fontRecommendations),
             unified_profile_json: JSON.stringify(assets.unifiedProfileAssets),
-            language: settings.language,
-            total_posts_per_month: settings.totalPostsPerMonth,
-            media_prompt_suffix: settings.mediaPromptSuffix,
-            affiliate_content_kit: settings.affiliateContentKit,
-            text_generation_model: settings.textGenerationModel,
-            image_generation_model: settings.imageGenerationModel,
+            language: defaultSettings.language,
+            total_posts_per_month: defaultSettings.totalPostsPerMonth,
+            media_prompt_suffix: defaultSettings.mediaPromptSuffix,
+            affiliate_content_kit: defaultSettings.affiliateContentKit,
+            text_generation_model: defaultSettings.textGenerationModel,
+            image_generation_model: defaultSettings.imageGenerationModel,
+            text_model_fallback_order_json: JSON.stringify(defaultAiModelConfig.textModelFallbackOrder),
+            vision_models_json: JSON.stringify(defaultAiModelConfig.visionModels),
         };
         
         const response = await airtableFetch(`https://api.airtable.com/v0/${baseId}/${BRANDS_TABLE_NAME}`, {
@@ -559,8 +716,121 @@ export const fetchSettingsFromAirtable = async (brandId: string): Promise<Settin
     return settings;
 };
 
+// --- AI MODEL CONFIGURATION FUNCTIONS ---
+export const saveAiModelConfigToAirtable = async (aiModelConfig: any, brandId: string): Promise<void> => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) throw new Error(`Brand with ID ${brandId} not found for saving AI model configuration.`);
+    
+    const fieldsToUpdate = {
+        text_model_fallback_order_json: JSON.stringify(aiModelConfig.textModelFallbackOrder),
+        vision_models_json: JSON.stringify(aiModelConfig.visionModels),
+    };
+    
+    await patchAirtableRecords(BRANDS_TABLE_NAME, [{ id: brandRecord.id, fields: fieldsToUpdate }]);
+};
+
+export const fetchAiModelConfigFromAirtable = async (brandId: string): Promise<any | null> => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) return null;
+    
+    const fields = brandRecord.fields;
+    const aiModelConfig = {
+        textModelFallbackOrder: fields.text_model_fallback_order_json ? JSON.parse(fields.text_model_fallback_order_json) : [],
+        visionModels: fields.vision_models_json ? JSON.parse(fields.vision_models_json) : [],
+    };
+    
+    return aiModelConfig;
+};
+
+export const fetchAdminDefaultsFromAirtable = async (): Promise<{ settings: Settings; aiModelConfig: any }> => {
+    await ensureAdminSettingsTableAndFieldsExist(); // Ensure Admin_Settings table and fields are present
+
+    const ADMIN_SETTINGS_RECORD_ID = 'global_settings'; // Fixed ID for the single admin settings record
+    let adminRecord = await findRecordByField(ADMIN_SETTINGS_TABLE_NAME, 'setting_id', ADMIN_SETTINGS_RECORD_ID);
+
+    if (!adminRecord) {
+        // If admin defaults record doesn't exist, create it with sensible defaults
+        const defaultSettings: Settings = {
+            language: 'English',
+            totalPostsPerMonth: 30,
+            mediaPromptSuffix: '',
+            affiliateContentKit: '',
+            textGenerationModel: '',
+            imageGenerationModel: '',
+        };
+        const defaultAiModelConfig = {
+            textModelFallbackOrder: [],
+            visionModels: [],
+        };
+
+        const fieldsToCreate = {
+            setting_id: ADMIN_SETTINGS_RECORD_ID,
+            language: defaultSettings.language,
+            total_posts_per_month: defaultSettings.totalPostsPerMonth,
+            media_prompt_suffix: defaultSettings.mediaPromptSuffix,
+            affiliate_content_kit: defaultSettings.affiliateContentKit,
+            text_generation_model: defaultSettings.textGenerationModel,
+            image_generation_model: defaultSettings.imageGenerationModel,
+            text_model_fallback_order_json: JSON.stringify(defaultAiModelConfig.textModelFallbackOrder),
+            vision_models_json: JSON.stringify(defaultAiModelConfig.visionModels),
+        };
+
+        try {
+            const response = await sendToAirtable([{ fields: fieldsToCreate }], ADMIN_SETTINGS_TABLE_NAME);
+            adminRecord = response[0]; // Get the newly created record
+        } catch (error) {
+            console.error("Failed to create default Admin Settings record:", error);
+            // Fallback to hardcoded defaults if creation fails
+            return { settings: defaultSettings, aiModelConfig: defaultAiModelConfig };
+        }
+    }
+
+    const fields = adminRecord.fields;
+    const settings: Settings = {
+        language: fields.language || 'English',
+        totalPostsPerMonth: fields.total_posts_per_month || 30,
+        mediaPromptSuffix: fields.media_prompt_suffix || '',
+        affiliateContentKit: fields.affiliate_content_kit || '',
+        textGenerationModel: fields.text_generation_model || '',
+        imageGenerationModel: fields.image_generation_model || '',
+    };
+
+    const aiModelConfig = {
+        textModelFallbackOrder: fields.text_model_fallback_order_json ? JSON.parse(fields.text_model_fallback_order_json) : [],
+        visionModels: fields.vision_models_json ? JSON.parse(fields.vision_models_json) : [],
+    };
+
+    return { settings, aiModelConfig };
+};
+
+export const saveAdminDefaultsToAirtable = async (settings: Settings, aiModelConfig: any): Promise<void> => {
+    await ensureAdminSettingsTableAndFieldsExist(); // Ensure the Admin_Settings table exists
+
+    const ADMIN_SETTINGS_RECORD_ID = 'global_settings'; // Fixed ID for the single admin settings record
+    const adminRecord = await findRecordByField(ADMIN_SETTINGS_TABLE_NAME, 'setting_id', ADMIN_SETTINGS_RECORD_ID);
+    const fieldsToUpdate = {
+        setting_id: ADMIN_SETTINGS_RECORD_ID,
+        language: settings.language,
+        total_posts_per_month: settings.totalPostsPerMonth,
+        media_prompt_suffix: settings.mediaPromptSuffix,
+        affiliate_content_kit: settings.affiliateContentKit,
+        text_generation_model: settings.textGenerationModel,
+        image_generation_model: settings.imageGenerationModel,
+        text_model_fallback_order_json: JSON.stringify(aiModelConfig.textModelFallbackOrder),
+        vision_models_json: JSON.stringify(aiModelConfig.visionModels),
+    };
+
+    if (adminRecord) {
+        // Update existing admin defaults record
+        await patchAirtableRecords(ADMIN_SETTINGS_TABLE_NAME, [{ id: adminRecord.id, fields: fieldsToUpdate }]);
+    } else {
+        // Create new admin defaults record
+        await sendToAirtable([{ fields: fieldsToUpdate }], ADMIN_SETTINGS_TABLE_NAME);
+    }
+};
+
 // --- MAIN ASSET LOADING (Unchanged) ---
-export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets: GeneratedAssets; settings: Settings; generatedImages: Record<string, string>; generatedVideos: Record<string, string>; brandId: string; }> => {
+export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets: GeneratedAssets; generatedImages: Record<string, string>; generatedVideos: Record<string, string>; brandId: string; }> => {
     await ensureAllTablesExist();
     
     const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
@@ -664,15 +934,11 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets
         ideas,
     };
     
-    const settings = await fetchSettingsFromAirtable(brandId) || {};
-    
-    // For image URLs, we'll need to load them from the individual records
-    // Since we don't have a direct way to get all image URLs, we'll return empty objects
-    // and let the individual record loading handle image URLs
+    // Settings and AI Model Config are now handled by configService and not loaded with the project
     const generatedImages: Record<string, string> = {};
     const generatedVideos: Record<string, string> = {};
     
-    return { assets: fullAssets, settings, generatedImages, generatedVideos, brandId };
+    return { assets: fullAssets, generatedImages, generatedVideos, brandId };
 };
 
 const genericSaver = async <T extends { id: string }>(items: T[], brandId: string, tableName: string, idFieldName: string, mapToFields: (item: T, brandRecordId: string) => Record<string, any>) => {
@@ -1148,7 +1414,109 @@ export const deleteAIModel = async (modelId: string) => {
 
 export const loadAIServices = async (): Promise<{ id: string; name: string; description: string; models: { id: string; name: string; provider: string; capabilities: string[] }[] }[]> => {
     try {
-        await ensureAllTablesExist();
+        // Ensure AI Services and AI Models tables and their fields exist
+        const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
+        if (!baseId) throw new Error("Airtable Base ID is not configured in the environment.");
+        const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
+        if (!personalAccessToken) throw new Error("Airtable Personal Access Token is not configured in the environment.");
+
+        const tablesToEnsure = [AI_SERVICES_TABLE_NAME, AI_MODELS_TABLE_NAME];
+        const schemasToEnsure = {
+            [AI_SERVICES_TABLE_NAME]: ALL_TABLE_SCHEMAS[AI_SERVICES_TABLE_NAME],
+            [AI_MODELS_TABLE_NAME]: ALL_TABLE_SCHEMAS[AI_MODELS_TABLE_NAME],
+        };
+
+        const tablesResponse = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        let tablesResponse2 = tablesResponse; // Initialize with tablesResponse
+        const existingTableNames = new Set(tablesResponse.tables.map((t: any) => t.name));
+
+        const missingTables = tablesToEnsure.filter(name => !existingTableNames.has(name));
+
+        if (missingTables.length > 0) {
+            console.log(`Creating ${missingTables.length} new AI-related tables:`, missingTables.join(', '));
+            const sortedTables = [...missingTables].sort((a, b) => {
+                if (a === AI_SERVICES_TABLE_NAME && b === AI_MODELS_TABLE_NAME) return -1;
+                if (a === AI_MODELS_TABLE_NAME && b === AI_SERVICES_TABLE_NAME) return 1;
+                return 0;
+            });
+
+            for (const tableName of sortedTables) {
+                const schema = schemasToEnsure[tableName];
+                try {
+                    await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            name: tableName,
+                            fields: schema.map(field => {
+                                const { name, type, options, ...rest } = field;
+                                const airtableField: any = {
+                                    name,
+                                    type,
+                                    ...rest
+                                };
+                                if (options) {
+                                    airtableField.options = options;
+                                }
+                                return airtableField;
+                            })
+                        })
+                    });
+                    console.log(`Successfully created table: ${tableName}`);
+                } catch (createError) {
+                    console.error(`Failed to create table ${tableName}:`, createError);
+                }
+            }
+            tablesResponse2 = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        }
+
+        const allTables = [...tablesResponse.tables, ...tablesResponse2.tables];
+        const tableNameToIdMap = new Map(allTables.map((t: any) => [t.name, t.id]));
+
+        for (const tableName of tablesToEnsure) {
+            const schema = schemasToEnsure[tableName];
+            const tableId = tableNameToIdMap.get(tableName);
+
+            if (tableId) {
+                for (const field of schema) {
+                    try {
+                        const { name, type, options, ...rest } = field;
+                        const airtableField: any = {
+                            name,
+                            type,
+                            ...rest
+                        };
+
+                        if (type === 'multipleRecordLinks' && options && options.linkedTableName) {
+                            const linkedTableId = tableNameToIdMap.get(options.linkedTableName);
+                            if (linkedTableId) {
+                                airtableField.options = {
+                                    linkedTableId: linkedTableId,
+                                    isReversed: options.isReversed || false,
+                                    prefersSingleRecordLink: options.prefersSingleRecordLink || false,
+                                };
+                            } else {
+                                console.warn(`Linked table ${options.linkedTableName} not found for field ${name} in table ${tableName}. Skipping field creation.`);
+                                continue;
+                            }
+                        } else if (options) {
+                            airtableField.options = options;
+                        }
+
+                        await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`, {
+                            method: 'POST',
+                            body: JSON.stringify(airtableField)
+                        });
+                        console.log(`Successfully created field ${name} in table ${tableName}`);
+                    } catch (fieldError: any) {
+                        if (fieldError.message && fieldError.message.includes('422') && (fieldError.message.includes('DUPLICATE_FIELD_NAME') || fieldError.message.includes('DUPLICATE_OR_EMPTY_FIELD_NAME'))) {
+                            console.warn(`Field ${field.name} already exists in table ${tableName}. Skipping creation.`);
+                        } else {
+                            console.error(`Failed to create field ${field.name} in table ${tableName}:`, fieldError);
+                        }
+                    }
+                }
+            }
+        }
         
         // Load AI Services
         const serviceRecords = await fetchFullRecordsByFormula(AI_SERVICES_TABLE_NAME, '');

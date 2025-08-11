@@ -10,7 +10,7 @@ interface IdeaProfilerProps {
   onLoadProjectFromAirtable: (brandId: string) => void;
   onOpenIntegrations: () => void;
   language: string;
-  setLanguage: (lang: string) => void;
+  setLanguage: (lang: string) => Promise<void>;
   integrationsVersion: number;
   areCredentialsSet: boolean;
 }
@@ -98,7 +98,7 @@ const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoadin
                     <select
                         id="language"
                         value={language}
-                        onChange={(e) => setLanguage(e.target.value)}
+                        onChange={async (e) => await setLanguage(e.target.value)}
                         className="text-sm bg-transparent border-gray-300 rounded-md py-1.5 focus:ring-brand-green focus:border-brand-green"
                     >
                         <option value="Việt Nam">VI</option>

@@ -7,7 +7,20 @@ export const sanitizeAndParseJson = (jsonText: string) => {
         throw new Error("Received empty JSON string from AI.");
     }
 
-    let sanitized = jsonText;
+    let sanitized = jsonText.trim();
+
+    // First, try to parse the JSON as is - if it works, return it immediately
+    try {
+        return JSON.parse(sanitized);
+    } catch (e) {
+        // If it fails, continue with sanitization
+    }
+
+    // Remove any markdown code block markers if present
+    const markdownMatch = sanitized.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (markdownMatch && markdownMatch[1]) {
+        sanitized = markdownMatch[1];
+    }
 
     // The single-line comment removal was removed because it was corrupting
     // base64 strings in image generation which can contain "//".
@@ -159,6 +172,10 @@ export const geminiFetchWithRetry = async <T extends GenerateContentResponse>(ap
     for (let i = 0; i < retries; i++) {
         try {
             const result = await apiCall();
+            console.log("Raw Gemini API response (result object):", result);
+            if (result.candidates && result.candidates.length > 0) {
+                console.log("Gemini candidate content:", result.candidates[0].content);
+            }
             window.dispatchEvent(new CustomEvent('rateLimitWaitClear'));
             return result;
         } catch (e: any) {
@@ -333,12 +350,25 @@ export const generateBrandProfile = async (idea: string, language: string, model
         throw new Error("Gemini API key is not configured, invalid, or empty. Please check your configuration in the Integrations panel.");
     }
     const ai = new GoogleGenAI({ apiKey });
-    const prompt = `\nYou are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.\nBusiness Idea:\n"${idea}"\n\nGenerate a JSON object with the following fields in ${language}:\n- name: A creative and fitting brand name.\n- mission: A powerful, one-sentence mission statement.\n- values: A comma-separated string of 4-5 core brand values.\n- audience: A brief description of the target audience.\n- personality: 3-4 keywords describing the brand's personality.\n`;
+    const prompt = `
+You are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.
+Business Idea:
+"${idea}"
+
+Generate a JSON object with the following fields in ${language}:
+- name: A creative and fitting brand name.
+- mission: A powerful, one-sentence mission statement.
+- values: A comma-separated string of 4-5 core brand values.
+- audience: A brief description of the target audience.
+- personality: 3-4 keywords describing the brand's personality.
+`;
+    console.log("Prompt for generateBrandProfile:", prompt);
     const response = await geminiFetchWithRetry(() =>
         ai.models.generateContent({
             model: model,
             contents: prompt,
-            config: { responseMimeType: "application/json", responseSchema: brandInfoSchema }
+            // Temporarily remove config to debug empty response
+            // config: { responseMimeType: "application/json", responseSchema: brandInfoSchema }
         })
     );
     const jsonText = response.text;
@@ -383,7 +413,7 @@ Generate the following assets IN ${language}:
     if (!jsonText) throw new Error("Received empty response from AI.");
     const parsedJson = sanitizeAndParseJson(jsonText);
 
-    if (!parsedJson.brandFoundation || !parsedJson.coreMediaAssets || !parsedJson.unifiedProfileAssets || !parsedJson.mediaPlan) {
+    if (!parsedJson.brandFoundation || !parsedJson.coreMediaAssets || !parsedJson.unifiedProfileAssets || (!parsedJson.mediaPlan && !parsedJson.initial1MonthMediaPlan)) {
         console.error("AI response is missing one or more root keys. Parsed JSON:", parsedJson);
         throw new Error("The AI returned a JSON object with a missing or incorrect structure. Please try again.");
     }
@@ -555,7 +585,7 @@ export const generateImage = async (
     const fullPrompt = `${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}`;
     
     const response = await ai.models.generateImages({
-        model: 'imagen-3.0-generate-002',
+        model: model,
         prompt: fullPrompt,
         config: {
             numberOfImages: 1,

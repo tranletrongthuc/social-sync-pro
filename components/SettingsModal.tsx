@@ -7,14 +7,6 @@ import { loadAIServices } from '../services/airtableService';
 
 // Helper function to get text generation models from AI services
 const getTextGenerationModels = (aiServices: any[]) => {
-  // Default models
-  const defaultModels = [
-    { value: 'gemini-2.5-pro', label: 'Google: gemini-2.5-pro (Recommended)' },
-    { value: 'deepseek/deepseek-r1-0528:free', label: 'OpenRouter: DeepSeek R1 (Free)' },
-    { value: 'google/gemini-2.0-flash-exp:free', label: 'OpenRouter: Gemini 2.0 Flash (Free)' },
-    { value: 'qwen/qwen3-235b-a22b:free', label: 'OpenRouter: Qwen3 235B A22B (Free)' }
-  ];
-
   // Get text generation models from AI services
   const textModels = aiServices
     .flatMap((service: any) => service.models)
@@ -24,27 +16,11 @@ const getTextGenerationModels = (aiServices: any[]) => {
       label: `${model.provider}: ${model.name}`
     }));
   
-  // Combine default models with custom models, ensuring no duplicates
-  const allModels = [...defaultModels];
-  textModels.forEach(model => {
-    if (!allModels.some(m => m.value === model.value)) {
-      allModels.push(model);
-    }
-  });
-  
-  return allModels;
+  return textModels;
 };
 
 // Helper function to get image generation models from AI services
 const getImageGenerationModels = (aiServices: any[]) => {
-  // Default models
-  const defaultModels = [
-    { value: 'imagen-4.0-ultra-generate-preview-06-06', label: 'Google: imagen-4.0-ultra (Recommended)' },
-    { value: 'imagen-3.0-generate-002', label: 'Google: imagen-3.0-generate-002' },
-    { value: '@cf/stabilityai/stable-diffusion-xl-base-1.0', label: 'Cloudflare: Stable Diffusion XL (Txt2Img)' },
-    { value: '@cf/lykon/dreamshaper-8-lcm', label: 'Cloudflare: DreamShaper 8 LCM' }
-  ];
-
   // Get image generation models from AI services
   const imageModels = aiServices
     .flatMap((service: any) => service.models)
@@ -54,15 +30,7 @@ const getImageGenerationModels = (aiServices: any[]) => {
       label: `${model.provider}: ${model.name}`
     }));
   
-  // Combine default models with custom models, ensuring no duplicates
-  const allModels = [...defaultModels];
-  imageModels.forEach(model => {
-    if (!allModels.some(m => m.value === model.value)) {
-      allModels.push(model);
-    }
-  });
-  
-  return allModels;
+  return imageModels;
 };
 
 interface SettingsModalProps {
@@ -130,10 +98,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
   useEffect(() => {
     const loadServices = async () => {
       try {
-        // In a real app, you would get the brandId from context or props
-        // For now, we'll use a placeholder
-        const brandId = 'placeholder-brand-id';
-        const loadedServices = await loadAIServices(brandId);
+        const loadedServices = await loadAIServices();
         setAiServices(loadedServices);
       } catch (err) {
         console.error('Failed to load AI services:', err);
