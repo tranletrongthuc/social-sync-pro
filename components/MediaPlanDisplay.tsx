@@ -25,7 +25,7 @@ interface MediaPlanDisplayProps {
   isExporting: boolean;
   onRegenerateWeekImages: (planId: string, weekIndex: number) => void;
   planGroupsList: {id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[], personaId?: string;}[];
-  onSelectPlan: (planId: string) => void;
+  onSelectPlan: (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => void;
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
@@ -56,10 +56,11 @@ interface MediaPlanDisplayProps {
   onBulkSuggestPromotions: (posts: PostInfo[]) => void;
   onBulkGenerateComments: (posts: PostInfo[]) => void;
   onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
+  brandFoundation: GeneratedAssets['brandFoundation'];
 }
 
 const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
-    const { plans, personas, settings, onExport, isExporting, onOpenWizard, planGroupsList, onSelectPlan, activePlanId, isAnyAnalysisRunning, onUpdatePost, onOpenScheduleModal, onOpenBulkScheduleModal, onPostDrop, isPerformingBulkAction, onBulkGenerateImages, onBulkSuggestPromotions, onBulkGenerateComments, onAssignPersonaToPlan, onPublishPost } = props;
+    const { plans, personas, settings, onExport, isExporting, onOpenWizard, planGroupsList, onSelectPlan, activePlanId, isAnyAnalysisRunning, onUpdatePost, onOpenScheduleModal, onOpenBulkScheduleModal, onPostDrop, isPerformingBulkAction, onBulkGenerateImages, onBulkSuggestPromotions, onBulkGenerateComments, onAssignPersonaToPlan, onPublishPost, brandFoundation } = props;
     const { language } = settings;
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
     const [viewMode, setViewMode] = useState<'feed' | 'calendar'>('feed');

@@ -230,23 +230,29 @@ const AdminPage: React.FC = () => {
 
   const handleSaveAppSettings = async () => {
     try {
+      console.log("Saving admin app settings:", appSettings, aiModelConfig);
       await configService.saveAdminDefaults(appSettings, aiModelConfig);
       setSuccessMessage('Application settings saved successfully!');
       setError(null);
     } catch (err) {
-      setError('Failed to save application settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      const errorMessage = 'Failed to save application settings: ' + (err instanceof Error ? err.message : 'Unknown error');
+      setError(errorMessage);
       setSuccessMessage(null);
+      console.error(errorMessage, err);
     }
   };
 
   const handleSaveAiModelConfig = async () => {
     try {
+      console.log("Saving AI model config:", appSettings, aiModelConfig);
       await configService.saveAdminDefaults(appSettings, aiModelConfig);
       setSuccessMessage('AI Model Configuration saved successfully!');
       setError(null);
     } catch (err) {
-      setError('Failed to save AI Model Configuration: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      const errorMessage = 'Failed to save AI Model Configuration: ' + (err instanceof Error ? err.message : 'Unknown error');
+      setError(errorMessage);
       setSuccessMessage(null);
+      console.error(errorMessage, err);
     }
   };
 

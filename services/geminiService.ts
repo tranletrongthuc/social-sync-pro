@@ -362,7 +362,7 @@ Generate a JSON object with the following fields in ${language}:
 - audience: A brief description of the target audience.
 - personality: 3-4 keywords describing the brand's personality.
 `;
-    console.log("Prompt for generateBrandProfile:", prompt);
+    // console.log("Prompt for generateBrandProfile:", prompt);
     const response = await geminiFetchWithRetry(() =>
         ai.models.generateContent({
             model: model,

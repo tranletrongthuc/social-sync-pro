@@ -45,8 +45,8 @@ const DEFAULT_APP_SETTINGS: Settings = {
     totalPostsPerMonth: 16,
     mediaPromptSuffix: ', photorealistic, 8k, high quality, vietnamese style, vietnam',
     affiliateContentKit: DEFAULT_AFFILIATE_CONTENT_KIT,
-    textGenerationModel: 'google/gemini-2.0-flash-exp:free',
-    imageGenerationModel: 'imagen-4.0-ultra-generate-preview-06-06',
+    textGenerationModel: 'Gemini Pro',
+    imageGenerationModel: 'Gemini Ultra',
 };
 
 const DEFAULT_AI_MODEL_CONFIG: AiModelConfig = {
@@ -90,10 +90,10 @@ class ConfigService {
     }
 
     // Set the brand ID to enable database operations
-    setBrandId(brandId: string): void {
+    async setBrandId(brandId: string): Promise<void> {
         this.brandId = brandId;
         // Load config from database
-        this.loadConfigFromDatabase();
+        await this.loadConfigFromDatabase();
     }
 
     private async loadConfigFromDatabase(): Promise<void> {
@@ -175,6 +175,16 @@ class ConfigService {
             settings: { ...adminDefaults.settings },
             aiModelConfig: { ...adminDefaults.aiModelConfig }
         };
+    }
+    
+    // New method to get brand-specific settings without affecting the global config
+    async getBrandSettings(brandId: string): Promise<Settings | null> {
+        return await fetchSettingsFromAirtable(brandId);
+    }
+    
+    // New method to save brand-specific settings
+    async saveBrandSettings(brandId: string, settings: Settings): Promise<void> {
+        await saveSettingsToAirtable(settings, brandId);
     }
 }
 

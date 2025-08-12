@@ -39,7 +39,9 @@ interface MainDisplayProps {
   setActiveTab: (tab: ActiveTab) => void;
   // Media Plan props
   mediaPlanGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[];
-  onSelectPlan: (planId: string) => void;
+      onSelectPlan: (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => void;
+    // New prop to pass brandFoundation
+    brandFoundation: GeneratedAssets['brandFoundation'];
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo, updates: Partial<MediaPlanPost>) => void;
   onRefinePost: (postInfo: PostInfo, refinementPrompt: string) => void;
@@ -51,6 +53,37 @@ interface MainDisplayProps {
   onReloadLinks: () => void; // New prop for reloading links
   onGenerateIdeasFromProduct: (product: AffiliateLink) => void;
   productTrendToSelect: string | null; // New prop to specify which product trend to select
+  analyzingPostIds: Set<string>;
+  isAnyAnalysisRunning: boolean;
+  khongMinhSuggestions: Record<string, AffiliateLink[]>;
+  onAcceptSuggestion: (postInfo: PostInfo, productId: string) => void;
+  onRunKhongMinhForPost: (postInfo: PostInfo) => void;
+  generatingPromptKeys: Set<string>;
+  onGeneratePrompt: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
+  onGenerateAffiliateComment: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
+  generatingCommentPostIds: Set<string>;
+  selectedPostIds: Set<string>;
+  onTogglePostSelection: (postId: string) => void;
+  onSelectAllPosts: (posts: PostInfo[]) => void;
+  onClearSelection: () => void;
+  onOpenScheduleModal: (post: SchedulingPost | null) => void;
+  onOpenBulkScheduleModal: () => void;
+  onPostDrop: (postInfo: SchedulingPost, newDate: Date) => void;
+  isPerformingBulkAction: boolean;
+  onBulkGenerateImages: (posts: PostInfo[]) => void;
+  onBulkSuggestPromotions: (posts: PostInfo[]) => void;
+  onBulkGenerateComments: (posts: PostInfo[]) => void;
+  onPublishPost: (postInfo: PostInfo) => void;
+  onSavePersona: (persona: Persona) => void;
+  onDeletePersona: (personaId: string) => void;
+  onSetPersonaImage: (dataUrl: string, imageKey: string, personaId: string) => void;
+  onSaveTrend: (trend: Trend) => void;
+  onDeleteTrend: (trendId: string) => void;
+  onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
+  onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
+  onGenerateTrendsFromSearch: (industry: string) => void;
+  isGeneratingTrendsFromSearch: boolean;
+  onUpdatePersona: (persona: Persona) => void;
 }
 
 const MainDisplay: React.FC<MainDisplayProps> = (props) => {
@@ -90,6 +123,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
         onSaveAffiliateLink,
         onDeleteAffiliateLink,
         onImportAffiliateLinks,
+        productTrendToSelect,
+        brandFoundation,
         analyzingPostIds,
         isAnyAnalysisRunning,
         khongMinhSuggestions,
@@ -126,7 +161,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
         onGenerateTrendsFromSearch,
         isGeneratingTrendsFromSearch,
         onPublishPost,
-        productTrendToSelect, // Add the new prop
+        onUpdatePersona,
     } = props;
     
     const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -219,7 +254,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onBulkGenerateImages={onBulkGenerateImages}
                         onBulkSuggestPromotions={onBulkSuggestPromotions}
                         onBulkGenerateComments={onBulkGenerateComments}
-                    />
+                        brandFoundation={brandFoundation}
+                        />
                 )}
                 {activeTab === 'strategy' && (
                     <StrategyDisplay

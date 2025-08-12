@@ -38,6 +38,8 @@ export interface Settings {
     affiliateContentKit: string;
     textGenerationModel: string;
     imageGenerationModel: string;
+    textModelFallbackOrder: string[];
+    visionModels: string[];
 }
 
 export interface UnifiedProfileAssets {

@@ -63,6 +63,7 @@ type AssetsAction =
   | { type: 'INITIALIZE_ASSETS'; payload: GeneratedAssets }
   | { type: 'ADD_MEDIA_PLAN'; payload: MediaPlanGroup }
   | { type: 'UPDATE_POST'; payload: { planId: string; weekIndex: number; postIndex: number; updates: Partial<MediaPlanPost> } }
+  | { type: 'UPDATE_PLAN'; payload: { planId: string; plan: MediaPlan } }
   | { type: 'UPDATE_ASSET_IMAGE'; payload: { oldImageKey: string; newImageKey: string; postInfo?: PostInfo } }
   | { type: 'ADD_OR_UPDATE_AFFILIATE_LINK'; payload: AffiliateLink }
   | { type: 'DELETE_AFFILIATE_LINK'; payload: string }
@@ -103,6 +104,18 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
                 if (postToUpdate) {
                     newState.mediaPlans[planIndex].plan[weekIndex].posts[postIndex] = { ...postToUpdate, ...updates };
                 }
+            }
+            return newState;
+        }
+        
+        case 'UPDATE_PLAN': {
+            if (!state) return state;
+            const { planId, plan } = action.payload;
+            const newState = JSON.parse(JSON.stringify(state));
+            const planIndex = newState.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
+            
+            if (planIndex !== -1) {
+                newState.mediaPlans[planIndex].plan = plan;
             }
             return newState;
         }
@@ -437,7 +450,18 @@ const App: React.FC = () => {
     // Set brandId in configService when it changes
     useEffect(() => {
         if (airtableBrandId) {
-            configService.setBrandId(airtableBrandId);
+            configService.setBrandId(airtableBrandId).then(() => {
+                // Update the settings state after the brand config is loaded
+                const updatedSettings = configService.getAppSettings();
+                setSettings(updatedSettings);
+                setAiModelConfig(configService.getAiModelConfig());
+            }).catch(error => {
+                console.error("Failed to set brand ID:", error);
+            });
+        } else {
+            // Reset to default settings when no brand is selected
+            setSettings(configService.getAppSettings());
+            setAiModelConfig(configService.getAiModelConfig());
         }
     }, [airtableBrandId]);
 
@@ -652,6 +676,19 @@ const App: React.FC = () => {
         
         setAirtableBrandId(newBrandId);
         setGeneratedImages(allImageUrls); 
+
+        if (assets.mediaPlans && assets.mediaPlans.length > 0) {
+            console.log(`Saving initial media plan...`);
+            try {
+                await saveMediaPlanGroup(assets.mediaPlans[0], allImageUrls, newBrandId);
+                console.log(`Initial media plan saved successfully.`);
+            } catch (error) {
+                console.error(`Failed to save initial media plan:`, error);
+                setError(error instanceof Error ? error.message : "Could not save the initial media plan.");
+                // Decide if you want to throw the error, or just log it and continue
+            }
+        }
+
         console.log("New project record created with Brand ID:", newBrandId);
         updateAutoSaveStatus('saved');
         return newBrandId;
@@ -672,7 +709,9 @@ const App: React.FC = () => {
         setError(null);
         try {
             await configService.updateAppSettings(newSettings);
-            setSettings(configService.getAppSettings()); // Reload settings to ensure UI is updated
+            // Reload settings to ensure UI is updated
+            const updatedSettings = configService.getAppSettings();
+            setSettings(updatedSettings);
             updateAutoSaveStatus('saved');
         } catch (err) {
             console.error("Failed to save settings", err);
@@ -756,7 +795,7 @@ const App: React.FC = () => {
             }
 
             setCurrentStep('assets');
-            setActiveTab('brandKit');
+            setActiveTab(firstPlan ? 'mediaPlan' : 'brandKit');
 
             ensureAirtableProject(fullAssets).catch(err => {
                 console.error("Failed to auto-create Airtable project:", err);
@@ -787,19 +826,13 @@ const App: React.FC = () => {
         const planSteps = settings?.language === 'Việt Nam' ? [
             `Phân tích mục tiêu của bạn: "${prompt.substring(0, 50)}..."`,
             "Thiết lập chủ đề hàng tuần...",
-            "Soạn thảo bài đăng cho Tuần 1...",
-            "Soạn thảo bài đăng cho Tuần 2...",
-            "Soạn thảo bài đăng cho Tuần 3...",
-            "Soạn thảo bài đăng cho Tuần 4...",
+            "Soạn thảo bài đăng...",
             "Tạo các hashtag hấp dẫn và CTA...",
             "Hoàn thiện kế hoạch..."
         ] : [
             `Analyzing your goal: "${prompt.substring(0, 50)}..."`,
             "Establishing weekly themes...",
-            "Drafting posts for Week 1...",
-            "Drafting posts for Week 2...",
-            "Drafting posts for Week 3...",
-            "Drafting posts for Week 4...",
+            "Drafting posts...",
             "Generating engaging hashtags and CTAs...",
             "Finalizing plan..."
         ];
@@ -1289,6 +1322,52 @@ const App: React.FC = () => {
         }
     }, [generatedAssets, settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedImages]);
 
+    const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
+        if (!airtableBrandId) {
+            setError("Please save your project to Airtable before generating trends.");
+            return;
+        }
+        setIsGeneratingFacebookTrends(true);
+        setError(null);
+        try {
+            const generationTask = (model: string) => {
+                return textGenerationService.generateFacebookTrends(industry, settings.language, model);
+            };
+            const newTrendsData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
+
+            const newTrends: Trend[] = newTrendsData.map(trend => ({
+                ...trend,
+                id: crypto.randomUUID(),
+                brandId: airtableBrandId,
+            }));
+
+            for (const trend of newTrends) {
+                dispatchAssets({ type: 'SAVE_TREND', payload: trend });
+            }
+            
+            // Save all new trends to Airtable in one batch
+            if (airtableBrandId) {
+                updateAutoSaveStatus('saving');
+                Promise.all(newTrends.map(trend => saveTrend(trend, airtableBrandId)))
+                    .then(() => {
+                        updateAutoSaveStatus('saved');
+                        setSuccessMessage(`Successfully found and saved ${newTrends.length} new trends.`);
+                        setTimeout(() => setSuccessMessage(null), 4000);
+                    })
+                    .catch(e => {
+                        setError(e.message);
+                        updateAutoSaveStatus('error');
+                    });
+            }
+
+        } catch (err) {
+            console.error("Failed to generate Facebook trends:", err);
+            setError(err instanceof Error ? err.message : "Failed to generate Facebook trends.");
+        } finally {
+            setIsGeneratingFacebookTrends(false);
+        }
+    }, [settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+
     // New function for generating ideas from a product
     const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
         setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
@@ -1465,6 +1544,8 @@ const App: React.FC = () => {
             if (firstPlan) {
                 setMediaPlanGroupsList(projectData.assets.mediaPlans.map((p: MediaPlanGroup) => ({ id: p.id, name: p.name, prompt: p.prompt, productImages: p.productImages || [] })));
                 setActivePlanId(firstPlan.id);
+                await handleSelectPlan(firstPlan.id, projectData.assets); // Call handleSelectPlan to load full plan data
+                console.log("Loaded project with first plan:", firstPlan.id);
             } else {
                 setMediaPlanGroupsList([]);
                 setActivePlanId(null);
@@ -1472,12 +1553,11 @@ const App: React.FC = () => {
             const bf = projectData.assets.brandFoundation;
             setBrandInfo({ name: bf.brandName, mission: bf.mission, values: (bf.values || []).join(', '), audience: bf.targetAudience, personality: bf.personality });
             setCurrentStep('assets');
-            setActiveTab('brandKit');
+            setActiveTab(firstPlan ? 'mediaPlan' : 'brandKit');
 
         } catch (err) {
             console.error("Failed to load project file:", err);
             setError(err instanceof Error ? err.message : "Could not read or parse project file.");
-            setCurrentStep('idea');
         } finally {
             setLoaderContent(null);
             if (event.target) {
@@ -1486,7 +1566,8 @@ const App: React.FC = () => {
         }
     }, []);
 
-    const handleSelectPlan = useCallback(async (planId: string, assetsToUse?: GeneratedAssets) => {
+    const handleSelectPlan = useCallback(async (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => {
+        // Use provided assets or fall back to current generatedAssets
         const currentAssets = assetsToUse || generatedAssets;
         if (!currentAssets?.brandFoundation) {
             setError("Cannot load plan without brand foundation.");
@@ -1495,34 +1576,45 @@ const App: React.FC = () => {
         const bf = currentAssets.brandFoundation;
         setLoaderContent({ title: `Loading Plan...`, steps: ["Fetching plan details..."] });
         try {
-            const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId, bf, settings.language);
+            const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId, currentAssets.brandFoundation, settings.language);
             if (!currentAssets) {
                 throw new Error("Assets are not initialized.");
             }
-            const newAssets = JSON.parse(JSON.stringify(currentAssets));
-            const existingPlanIndex = newAssets.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
+            
+            // Always update the plan with the loaded data
+            // Check if the plan already exists in the assets
+            const existingPlanIndex = currentAssets.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
+
+            console.log(`Handling plan ID selection for ${planId}`);
+            console.log("Current plan:", plan);
+            
             if (existingPlanIndex !== -1) {
-                newAssets.mediaPlans[existingPlanIndex].plan = plan;
+                // If plan exists, update it with the loaded data
+                dispatchAssets({ type: 'UPDATE_PLAN', payload: { planId, plan } });
             } else {
-                const planMetadata = mediaPlanGroupsList.find(p => p.id === planId);
+                // If plan doesn't exist, create it with the loaded data
+                // Try to find plan metadata in plansList or mediaPlanGroupsList
+                const planMetadata = (plansList || mediaPlanGroupsList).find(p => p.id === planId);
+                let newPlanGroup: MediaPlanGroup;
+                
                 if (planMetadata) {
-                    const newPlanGroup: MediaPlanGroup = {
+                    newPlanGroup = {
                         ...planMetadata,
                         plan: plan,
                     };
-                    newAssets.mediaPlans.push(newPlanGroup);
                 } else {
-                    console.warn(`Could not find metadata for planId ${planId} in mediaPlanGroupsList.`);
-                    const newPlanGroup: MediaPlanGroup = {
+                    console.warn(`Could not find metadata for planId ${planId} in plans list.`);
+                    newPlanGroup = {
                         id: planId,
                         name: 'Loaded Plan',
                         prompt: 'Loaded on demand',
                         plan: plan,
                     };
-                    newAssets.mediaPlans.push(newPlanGroup);
                 }
+                
+                dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: newPlanGroup });
             }
-            dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: newAssets });
+            
             setGeneratedImages(prev => ({...prev, ...imageUrls}));
             setGeneratedVideos(prev => ({...prev, ...videoUrls}));
             setActivePlanId(planId);
@@ -1544,6 +1636,7 @@ const App: React.FC = () => {
             setGeneratedImages(loadedImages);
             setGeneratedVideos(loadedVideos);
             setAirtableBrandId(loadedBrandId);
+            setCurrentStep('assets'); // Add this line to transition to the assets view
             
             if (assets.personas) {
                 assets.personas = assets.personas.map((p: Persona) => ({
@@ -1556,14 +1649,13 @@ const App: React.FC = () => {
             setMediaPlanGroupsList(loadedPlansList);
             if (loadedPlansList.length > 0) {
                 setActivePlanId(loadedPlansList[0].id);
-                await handleSelectPlan(loadedPlansList[0].id, assets);
+                // Pass the loaded plans list directly to avoid closure issues
+                await handleSelectPlan(loadedPlansList[0].id, assets, loadedPlansList);
+                setActiveTab('mediaPlan'); // Set to mediaPlan tab if there are plans
             } else {
                 setActivePlanId(null);
+                setActiveTab('brandKit'); // Set to brandKit tab if no plans
             }
-            const bf = assets.brandFoundation;
-            setBrandInfo({ name: bf.brandName, mission: bf.mission, values: (bf.values || []).join(', '), audience: bf.targetAudience, personality: bf.personality });
-            setCurrentStep('assets');
-            setActiveTab('brandKit');
             setIsAirtableLoadModalOpen(false);
 
         } catch (err) {
@@ -1897,6 +1989,11 @@ const App: React.FC = () => {
         handleSchedulePost(postInfo, newDate.toISOString());
     }, [handleSchedulePost]);
 
+    
+
+    
+            
+
     const handleBulkSchedule = useCallback(async (startDate: string, intervalDays: number, intervalHours: number, intervalMinutes: number) => {
         if (selectedPostIds.size === 0 || !generatedAssets) return;
     
@@ -2077,21 +2174,6 @@ const App: React.FC = () => {
     }, [dispatchAssets]);
     
     // --- NEW FACEBOOK STRATEGY HANDLERS ---
-    const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
-        if (!industry) return;
-        setIsGeneratingFacebookTrends(true);
-        setError(null);
-        try {
-            const newTrendData = await textGenerationService.generateFacebookTrends(industry, settings.language, settings.textGenerationModel);
-            const newTrends: FacebookTrend[] = newTrendData.map(t => ({ ...t, id: crypto.randomUUID(), brandId: airtableBrandId || '' }));
-            dispatchAssets({ type: 'SET_FACEBOOK_TRENDS', payload: newTrends });
-        } catch (err) {
-            console.error("Failed to generate Facebook trends:", err);
-            setError(err instanceof Error ? err.message : "Failed to generate Facebook trends.");
-        } finally {
-            setIsGeneratingFacebookTrends(false);
-        }
-    }, [settings, airtableBrandId]);
 
     const handleGenerateFacebookPostIdeas = useCallback(async (trend: FacebookTrend) => {
         setIsGeneratingFacebookPostIdeas(true);
@@ -2269,6 +2351,9 @@ const App: React.FC = () => {
                             onGeneratePlan={handleGenerateMediaPlanGroup}
                             isGeneratingPlan={!!loaderContent}
                             onRegenerateWeekImages={handleRegenerateWeekImages}
+                            onBulkGenerateImages={handleBulkGenerateImages}
+                            onBulkSuggestPromotions={handleBulkSuggestPromotions}
+                            onBulkGenerateComments={handleBulkGenerateComments}
                             productImages={[]}
                             onSetProductImages={handleSetProductImages}
                             onSaveProject={handleSaveProjectToFile}
@@ -2318,11 +2403,7 @@ const App: React.FC = () => {
                             isBulkScheduleModalOpen={isBulkScheduleModalOpen}
                             onCloseBulkScheduleModal={() => setIsBulkScheduleModalOpen(false)}
                             onBulkSchedule={handleBulkSchedule}
-                             // Bulk Actions
-                            isPerformingBulkAction={isPerformingBulkAction}
-                            onBulkGenerateImages={handleBulkGenerateImages}
-                            onBulkSuggestPromotions={handleBulkSuggestPromotions}
-                            onBulkGenerateComments={handleBulkGenerateComments}
+                             
                             // Personas
                             onSavePersona={handleSavePersona}
                             onDeletePersona={handleDeletePersona}
@@ -2335,14 +2416,15 @@ const App: React.FC = () => {
                             onGenerateContentPackage={handleGenerateContentPackage}
                             onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
                             productTrendToSelect={productTrendToSelect}
+                    brandFoundation={generatedAssets?.brandFoundation}
+                            onGenerateFacebookTrends={handleGenerateFacebookTrends}
+                            isGeneratingTrendsFromSearch={isGeneratingFacebookTrends}
                             // Video
                             generatedVideos={generatedVideos}
                             onSetVideo={handleSetVideo}
                              // New Facebook Strategy Props
-                            onGenerateFacebookTrends={handleGenerateFacebookTrends}
                             onGenerateFacebookPostIdeas={handleGenerateFacebookPostIdeas}
                             onAddFacebookPostIdeaToPlan={handleAddFacebookPostIdeaToPlan}
-                            isGeneratingFacebookTrends={isGeneratingFacebookTrends}
                             isGeneratingFacebookPostIdeas={isGeneratingFacebookPostIdeas}
                         />
                          {successMessage && (
@@ -2366,9 +2448,7 @@ const App: React.FC = () => {
                         <SettingsModal
                             isOpen={isSettingsModalOpen}
                             onClose={() => setIsSettingsModalOpen(false)}
-                            onSave={handleUpdateSettings}
-                            isSaving={isSavingSettings}
-                            currentSettings={settings}
+                            brandId={airtableBrandId || ''}
                         />
                         <IntegrationModal
                             isOpen={isIntegrationModalOpen && !isPersonaConnectModalOpen}

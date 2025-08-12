@@ -172,7 +172,22 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
     };
 
     const ideasForSelectedTrend = useMemo(() => {
-        return selectedTrend ? ideas.filter(i => i.trendId === selectedTrend.id) : [];
+        if (!selectedTrend) {
+            console.log("DEBUG: No trend selected, returning empty ideas array");
+            return [];
+        }
+        
+        console.log("DEBUG: Filtering ideas for trend ID:", selectedTrend.id);
+        console.log("DEBUG: Total ideas available:", ideas.length);
+        
+        const filtered = ideas.filter(i => {
+            const match = i.trendId === selectedTrend.id;
+            console.log("DEBUG: Checking idea ID:", i.id, "Idea trendId:", i.trendId, "Selected trend ID:", selectedTrend.id, "Match:", match);
+            return match;
+        });
+        
+        console.log("DEBUG: Filtered ideas count:", filtered.length);
+        return filtered;
     }, [ideas, selectedTrend]);
 
     return (
@@ -207,7 +222,11 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                             return (
                                 <button 
                                     key={trend.id} 
-                                    onClick={() => { setSelectedTrend(trend); setEditingTrend(null); }} 
+                                    onClick={() => { 
+                                        console.log("DEBUG: Trend clicked, setting selected trend to:", trend);
+                                        setSelectedTrend(trend); 
+                                        setEditingTrend(null); 
+                                    }} 
                                     className={`w-full text-left p-3 rounded-md transition-colors ${selectedTrend?.id === trend.id && !editingTrend ? 'bg-green-100' : 'hover:bg-gray-100'}`}
                                 >
                                     <div className="flex items-start gap-2">

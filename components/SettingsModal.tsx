@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import type { Settings } from '../types';
 import { Button, Input, TextArea, Select } from './ui';
-import { SettingsIcon } from './icons';
-import { loadAIServices } from '../services/airtableService';
+import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
+import { fetchSettingsFromAirtable, saveSettingsToAirtable, fetchAiModelConfigFromAirtable, saveAiModelConfigToAirtable, loadAIServices } from '../services/airtableService';
 
 // Helper function to get text generation models from AI services
 const getTextGenerationModels = (aiServices: any[]) => {
@@ -36,9 +36,7 @@ const getImageGenerationModels = (aiServices: any[]) => {
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (newSettings: Settings) => void;
-  isSaving: boolean;
-  currentSettings: Settings;
+  brandId: string;
 }
 
 type ActiveTab = 'general' | 'generation' | 'affiliate';
@@ -85,37 +83,217 @@ const styleTemplates = [
 ];
 
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, isSaving, currentSettings }) => {
-  const [settings, setSettings] = useState<Settings>(currentSettings);
+// Define texts before using it
+const T = {
+  'Việt Nam': {
+    title: 'Cài đặt',
+    subtitle: 'Tùy chỉnh hành vi của ứng dụng.',
+    tab_general: 'Chung',
+    tab_generation: 'Tạo nội dung',
+    tab_affiliate: 'Affiliate',
+    save: 'Lưu thay đổi',
+    saving: 'Đang lưu...',
+    cancel: 'Hủy',
+    language: 'Ngôn ngữ mặc định',
+    language_desc: 'Ngôn ngữ cho tất cả nội dung do AI tạo ra.',
+    total_posts_per_month: 'Tổng số bài đăng mỗi kế hoạch',
+    total_posts_per_month_desc: 'Tổng số bài đăng AI sẽ tạo cho một kế hoạch truyền thông mới.',
+    image_prompt_suffix: 'Hậu tố Prompt ảnh',
+    image_prompt_suffix_desc: 'Văn bản này sẽ được thêm vào cuối mỗi prompt tạo ảnh để đảm bảo phong cách nhất quán.',
+    visual_style_templates: 'Mẫu Phong cách Trực quan',
+    affiliate_kit_rules: 'Quy tắc Affiliate Content-Kit',
+    affiliate_kit_rules_desc: 'Các quy tắc này (dưới dạng system instruction) sẽ được cung cấp cho AI khi tạo kế hoạch truyền thông để đảm bảo tuân thủ.',
+    textGenerationModel: 'Mô hình Tạo văn bản',
+    textGenerationModel_desc: 'Mô hình AI được sử dụng cho tất cả các tính năng tạo văn bản.',
+    imageGenerationModel: 'Mô hình Tạo ảnh',
+    imageGenerationModel_desc: 'Mô hình AI được sử dụng cho tất cả các tính năng tạo ảnh.',
+  },
+  'English': {
+    title: 'Settings',
+    subtitle: 'Customize the behavior of the application.',
+    tab_general: 'General',
+    tab_generation: 'Generation',
+    tab_affiliate: 'Affiliate',
+    save: 'Save Changes',
+    saving: 'Saving...',
+    cancel: 'Cancel',
+    language: 'Default Language',
+    language_desc: 'The language for all AI-generated content.',
+    total_posts_per_month: 'Total Posts per Plan',
+    total_posts_per_month_desc: 'The total number of posts the AI will generate for a new media plan.',
+    image_prompt_suffix: 'Image Prompt Suffix',
+    image_prompt_suffix_desc: 'This text will be added to the end of every image generation prompt to ensure consistent styling.',
+    visual_style_templates: 'Visual Style Templates',
+    affiliate_kit_rules: 'Affiliate Content-Kit Rules',
+    affiliate_kit_rules_desc: 'These rules (as a system instruction) are fed to the AI when generating media plans to ensure compliance.',
+    textGenerationModel: 'Text Generation Model',
+    textGenerationModel_desc: 'The AI model to use for all text generation features.',
+    imageGenerationModel: 'Image Generation Model',
+    imageGenerationModel_desc: 'The AI model to use for all image generation features.',
+  }
+};
+
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId }) => {
+  const [settings, setSettings] = useState<Settings | null>(null); // Initialize with null
   const [activeTab, setActiveTab] = useState<ActiveTab>('general');
   const [aiServices, setAiServices] = useState<any[]>([]);
-  
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false); // New state for saving
+
+  // Load AI services from Airtable and brand-specific settings
   useEffect(() => {
-    setSettings(currentSettings);
-  }, [currentSettings, isOpen]);
-  
-  // Load AI services from Airtable
-  useEffect(() => {
-    const loadServices = async () => {
+    const loadAllData = async () => {
+      if (!isOpen) {
+        setSettings(null); // Reset settings when modal is closed
+        return;
+      }
+      
+      if (!brandId) {
+        setError('No brand selected');
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setError(null);
+      
       try {
+        // Fetch brand-specific settings
+        const fetchedSettings = await fetchSettingsFromAirtable(brandId);
+        const fetchedAiModelConfig = await fetchAiModelConfigFromAirtable(brandId);
+
+        if (fetchedSettings && fetchedAiModelConfig) {
+          setSettings({
+            ...fetchedSettings,
+            textModelFallbackOrder: fetchedAiModelConfig.textModelFallbackOrder,
+            visionModels: fetchedAiModelConfig.visionModels,
+          });
+        } else {
+          // If no settings found for the brand, initialize with sensible defaults
+          // This might happen for a brand created before this feature was implemented
+          console.warn(`No settings found for brand ${brandId}. Initializing with defaults.`);
+          setSettings({
+            language: 'English',
+            totalPostsPerMonth: 30,
+            mediaPromptSuffix: '',
+            affiliateContentKit: '',
+            textGenerationModel: '',
+            imageGenerationModel: '',
+            textModelFallbackOrder: [],
+            visionModels: [],
+          });
+        }
+
+        // Load AI services (for dropdowns)
         const loadedServices = await loadAIServices();
         setAiServices(loadedServices);
+
       } catch (err) {
-        console.error('Failed to load AI services:', err);
-        // Use empty array if loading fails
-        setAiServices([]);
+        console.error('Failed to load data for settings modal:', err);
+        setError('Failed to load settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
+        setSettings(null); // Set to null on error
+      } finally {
+        setLoading(false);
       }
     };
-    
-    if (isOpen) {
-      loadServices();
+
+    loadAllData();
+  }, [isOpen, brandId]); // Depend on isOpen and brandId
+
+  const texts = (T as any)[settings?.language || 'English'] || T['English'];
+
+  if (!isOpen) {
+    console.log('SettingsModal: Not open, returning null');
+    return null;
+  }
+  
+  // Check if settings are properly loaded
+  if (!brandId) {
+    return (
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 border border-gray-200 m-4 transform transition-all">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <SettingsIcon className="h-8 w-8 text-brand-green" />
+                {texts.title}
+              </h2>
+              <p className="text-red-500 mt-1 font-serif">Error: No brand selected</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (!settings || loading) {
+    return (
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 border border-gray-200 m-4 transform transition-all">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <SettingsIcon className="h-8 w-8 text-brand-green" />
+                {texts.title}
+              </h2>
+              <p className="text-gray-500 mt-1 font-serif">Loading settings...</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
+          </div>
+          <div className="mt-6 flex justify-center">
+            <div className="w-8 h-8 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 border border-gray-200 m-4 transform transition-all">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <SettingsIcon className="h-8 w-8 text-brand-green" />
+                {texts.title}
+              </h2>
+              <p className="text-red-500 mt-1 font-serif">Error: {error}</p>
+            </div>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const textGenerationModels = getTextGenerationModels(aiServices);
+  const imageGenerationModels = getImageGenerationModels(aiServices);
+
+  const handleSave = async () => {
+    if (!settings || !brandId) return;
+
+    setIsSaving(true);
+    setError(null);
+    try {
+      // Save general settings
+      await saveSettingsToAirtable(settings, brandId);
+
+      // Save AI model configuration
+      await saveAiModelConfigToAirtable({
+        textModelFallbackOrder: settings.textModelFallbackOrder,
+        visionModels: settings.visionModels,
+      }, brandId);
+
+      onClose(); // Close modal on successful save
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+      setError('Failed to save settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
+    } finally {
+      setIsSaving(false);
     }
-  }, [isOpen]);
-
-  if (!isOpen) return null;
-
-  const handleSave = () => {
-    onSave(settings);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -125,57 +303,6 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
         [name]: type === 'number' ? parseInt(value, 10) || 0 : value
     }));
   };
-
-  const T = {
-    'Việt Nam': {
-      title: 'Cài đặt',
-      subtitle: 'Tùy chỉnh hành vi của ứng dụng.',
-      tab_general: 'Chung',
-      tab_generation: 'Tạo nội dung',
-      tab_affiliate: 'Affiliate',
-      save: 'Lưu thay đổi',
-      saving: 'Đang lưu...',
-      cancel: 'Hủy',
-      language: 'Ngôn ngữ mặc định',
-      language_desc: 'Ngôn ngữ cho tất cả nội dung do AI tạo ra.',
-      total_posts_per_month: 'Tổng số bài đăng mỗi kế hoạch',
-      total_posts_per_month_desc: 'Tổng số bài đăng AI sẽ tạo cho một kế hoạch truyền thông mới.',
-      image_prompt_suffix: 'Hậu tố Prompt ảnh',
-      image_prompt_suffix_desc: 'Văn bản này sẽ được thêm vào cuối mỗi prompt tạo ảnh để đảm bảo phong cách nhất quán.',
-      visual_style_templates: 'Mẫu Phong cách Trực quan',
-      affiliate_kit_rules: 'Quy tắc Affiliate Content-Kit',
-      affiliate_kit_rules_desc: 'Các quy tắc này (dưới dạng system instruction) sẽ được cung cấp cho AI khi tạo kế hoạch truyền thông để đảm bảo tuân thủ.',
-      textGenerationModel: 'Mô hình Tạo văn bản',
-      textGenerationModel_desc: 'Mô hình AI được sử dụng cho tất cả các tính năng tạo văn bản.',
-      imageGenerationModel: 'Mô hình Tạo ảnh',
-      imageGenerationModel_desc: 'Mô hình AI được sử dụng cho tất cả các tính năng tạo ảnh.',
-    },
-    'English': {
-      title: 'Settings',
-      subtitle: 'Customize the behavior of the application.',
-      tab_general: 'General',
-      tab_generation: 'Generation',
-      tab_affiliate: 'Affiliate',
-      save: 'Save Changes',
-      saving: 'Saving...',
-      cancel: 'Cancel',
-      language: 'Default Language',
-      language_desc: 'The language for all AI-generated content.',
-      total_posts_per_month: 'Total Posts per Plan',
-      total_posts_per_month_desc: 'The total number of posts the AI will generate for a new media plan.',
-      image_prompt_suffix: 'Image Prompt Suffix',
-      image_prompt_suffix_desc: 'This text will be added to the end of every image generation prompt to ensure consistent styling.',
-      visual_style_templates: 'Visual Style Templates',
-      affiliate_kit_rules: 'Affiliate Content-Kit Rules',
-      affiliate_kit_rules_desc: 'These rules (as a system instruction) are fed to the AI when generating media plans to ensure compliance.',
-      textGenerationModel: 'Text Generation Model',
-      textGenerationModel_desc: 'The AI model to use for all text generation features.',
-      imageGenerationModel: 'Image Generation Model',
-      imageGenerationModel_desc: 'The AI model to use for all image generation features.',
-    }
-  };
-  const texts = (T as any)[currentSettings.language] || T['English'];
-
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
@@ -227,12 +354,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
+                            {/* Show loading state */}
+                            {loading && <option>Loading AI models...</option>}
+                            
+                            {/* Show error message if failed to load */}
+                            {error && <option>Error loading models</option>}
+                            
                             {/* Dynamically load text generation models from AI services */}
-                            {getTextGenerationModels(aiServices).map(model => (
+                            {textGenerationModels.map(model => (
                                 <option key={model.value} value={model.value}>{model.label}</option>
                             ))}
+                            
+                            {/* Fallback option if the current value is not in the list */}
+                            {!loading && !error && !textGenerationModels.some(model => model.value === settings.textGenerationModel) && settings.textGenerationModel && (
+                                <option value={settings.textGenerationModel}>{settings.textGenerationModel} (Custom)</option>
+                            )}
+                            
+                            {/* Default option if no models and no current value */}
+                            {!loading && !error && textGenerationModels.length === 0 && !settings.textGenerationModel && (
+                                <option value="">No models available</option>
+                            )}
                         </Select>
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.textGenerationModel_desc}</p>
+                        {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
                     </div>
                      <div>
                         <label htmlFor="imageGenerationModel" className="block text-lg font-medium text-gray-800">{texts.imageGenerationModel}</label>
@@ -243,12 +387,29 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
+                            {/* Show loading state */}
+                            {loading && <option>Loading AI models...</option>}
+                            
+                            {/* Show error message if failed to load */}
+                            {error && <option>Error loading models</option>}
+                            
                             {/* Dynamically load image generation models from AI services */}
-                            {getImageGenerationModels(aiServices).map(model => (
+                            {imageGenerationModels.map(model => (
                                 <option key={model.value} value={model.value}>{model.label}</option>
                             ))}
+                            
+                            {/* Fallback option if the current value is not in the list */}
+                            {!loading && !error && !imageGenerationModels.some(model => model.value === settings.imageGenerationModel) && settings.imageGenerationModel && (
+                                <option value={settings.imageGenerationModel}>{settings.imageGenerationModel} (Custom)</option>
+                            )}
+                            
+                            {/* Default option if no models and no current value */}
+                            {!loading && !error && imageGenerationModels.length === 0 && !settings.imageGenerationModel && (
+                                <option value="">No models available</option>
+                            )}
                         </Select>
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.imageGenerationModel_desc}</p>
+                        {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
                     </div>
                     <div>
                         <label htmlFor="totalPostsPerMonth" className="block text-lg font-medium text-gray-800">{texts.total_posts_per_month}</label>
@@ -293,6 +454,78 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, onSave, 
                             className="mt-1 font-mono text-sm"
                         />
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.image_prompt_suffix_desc}</p>
+                    </div>
+
+                    {/* Text Model Fallback Order */}
+                    <div className="mb-6">
+                        <label className="block text-lg font-medium text-gray-800">Text Model Fallback Order</label>
+                        <div className="space-y-2">
+                            {settings!.textModelFallbackOrder.map((model, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                    <Input
+                                        value={model}
+                                        onChange={(e) => {
+                                            const newOrder = [...settings!.textModelFallbackOrder];
+                                            newOrder[index] = e.target.value;
+                                            setSettings({ ...settings!, textModelFallbackOrder: newOrder });
+                                        }}
+                                        className="flex-grow"
+                                    />
+                                    <Button
+                                        variant="tertiary"
+                                        onClick={() => {
+                                            const newOrder = settings!.textModelFallbackOrder.filter((_, i) => i !== index);
+                                            setSettings({ ...settings!, textModelFallbackOrder: newOrder });
+                                        }}
+                                    >
+                                        <TrashIcon className="h-5 w-5 text-red-600" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                        <Button
+                            className="mt-3 flex items-center gap-2"
+                            onClick={() => setSettings({ ...settings!, textModelFallbackOrder: [...settings!.textModelFallbackOrder, ''] })}
+                        >
+                            <PlusIcon className="h-5 w-5" />
+                            Add Text Model
+                        </Button>
+                    </div>
+
+                    {/* Vision Models */}
+                    <div>
+                        <label className="block text-lg font-medium text-gray-800">Vision Models</label>
+                        <div className="space-y-2">
+                            {settings!.visionModels.map((model, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                    <Input
+                                        value={model}
+                                        onChange={(e) => {
+                                            const newModels = [...settings!.visionModels];
+                                            newModels[index] = e.target.value;
+                                            setSettings({ ...settings!, visionModels: newModels });
+                                        }}
+                                        className="flex-grow"
+                                    />
+                                    <Button
+                                        variant="tertiary"
+                                        onClick={() => {
+                                            const newModels = settings!.visionModels.filter((_, i) => i !== index);
+                                            setSettings({ ...settings!, visionModels: newModels });
+                                        }}
+                                    >
+                                        <TrashIcon className="h-5 w-5 text-red-600" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                        <Button
+                            className="mt-3 flex items-center gap-2"
+                            onClick={() => setSettings({ ...settings!, visionModels: [...settings!.visionModels, ''] })}
+                        >
+                            <PlusIcon className="h-5 w-5" />
+                            Add Vision Model
+                        </Button>
                     </div>
                 </div>
             )}

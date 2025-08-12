@@ -1,4 +1,6 @@
 import { getSocialAccountForPersona } from './socialAccountService';
+import { loadMediaPlan } from './airtableService';
+import type { MediaPlanPost } from '../types';
 
 export class SocialAccountNotConnectedError extends Error {
     platform: string;
@@ -67,4 +69,9 @@ export const schedulePost = async (
     await new Promise(resolve => setTimeout(resolve, 2000));
     // In a real scenario, this would interact with the platform's scheduling API or an internal scheduler.
     console.log(`Post successfully scheduled for ${platform}.`);
+};
+
+export const getPostsByMediaPlan = async (planId: string, brandFoundation: any, language: string): Promise<MediaPlanPost[]> => {
+    const { plan } = await loadMediaPlan(planId, brandFoundation, language);
+    return plan.flatMap(week => week.posts);
 };
