@@ -5,20 +5,8 @@ import sampleAIServices from '../sampleAIServices';
 import { saveAIService, deleteAIService, saveAIModel, deleteAIModel, loadAIServices } from '../services/airtableService';
 import { configService, AiModelConfig } from '../services/configService';
 import type { Settings } from '../types';
+import type { AIService, AIModel } from '../types';
 
-interface AIModel {
-  id: string;
-  name: string;
-  provider: string;
-  capabilities: string[];
-}
-
-interface AIService {
-  id: string;
-  name: string;
-  description: string;
-  models: AIModel[];
-}
 
 // Define our own simple types instead of using Pick
 interface NewService {
@@ -87,12 +75,14 @@ const AdminPage: React.FC = () => {
     
     try {
       const service: Omit<AIService, 'models'> = {
-        id: Date.now().toString(),
+        id: 'service-' + Date.now(),
         name: newService.name,
         description: newService.description,
       };
       
-      await saveAIService(service);
+      const savedService = await saveAIService(service);
+      // Add a small delay to ensure the service is properly saved in Airtable
+      await new Promise(resolve => setTimeout(resolve, 500));
       setServices([...services, { ...service, models: [] }]);
       setNewService({ name: '', description: '', models: [] });
     } catch (err) {
@@ -129,7 +119,7 @@ const AdminPage: React.FC = () => {
     
     try {
       const model: AIModel = {
-        id: Date.now().toString(),
+        id: 'model-' + Date.now(),
         name: newModel.name,
         provider: newModel.provider,
         capabilities: newModel.capabilities,
@@ -202,14 +192,29 @@ const AdminPage: React.FC = () => {
     }
     
     try {
+      // Create new services with simpler IDs
+      const servicesWithIds = sampleAIServices.map((service, index) => ({
+        ...service,
+        id: `service-${Date.now()}-${index}`
+      }));
+      
       // Save sample services to Airtable
-      for (const service of sampleAIServices) {
+      for (const service of servicesWithIds) {
         await saveAIService(
           { id: service.id, name: service.name, description: service.description }
         );
+      }
+      
+      // Save models for each service
+      for (const service of servicesWithIds) {
+        // Create models with simpler IDs
+        const modelsWithIds = service.models.map((model, index) => ({
+          ...model,
+          id: `model-${Date.now()}-${index}`
+        }));
         
         // Save models for this service
-        for (const model of service.models) {
+        for (const model of modelsWithIds) {
           await saveAIModel(model, service.id);
         }
       }
@@ -543,18 +548,34 @@ const AdminPage: React.FC = () => {
                       value={newModel.provider}
                       onChange={(e) => setNewModel({...newModel, provider: e.target.value})}
                     />
-                    <Input
-                      placeholder="Capabilities (comma separated)"
-                      value={newModel.capabilities.join(', ')}
-                      onChange={(e) => setNewModel({
-                        ...newModel, 
-                        capabilities: e.target.value
-                          .split(',')
-                          .map(c => c.trim())
-                          .filter(c => c)
-                          .filter(c => ['text', 'image', 'audio', 'video', 'code'].includes(c))
-                      })}
-                    />
+                    <div className="relative">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Capabilities</label>
+                      <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md">
+                        {['text', 'image', 'audio', 'video', 'code'].map((capability) => (
+                          <label key={capability} className="inline-flex items-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-brand-blue focus:ring-brand-blue"
+                              checked={newModel.capabilities.includes(capability)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNewModel({
+                                    ...newModel,
+                                    capabilities: [...newModel.capabilities, capability]
+                                  });
+                                } else {
+                                  setNewModel({
+                                    ...newModel,
+                                    capabilities: newModel.capabilities.filter(c => c !== capability)
+                                  });
+                                }
+                              }}
+                            />
+                            <span className="ml-1 text-sm text-gray-700">{capability}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                   <Button 
                     className="mt-3 flex items-center gap-2"
@@ -594,19 +615,35 @@ const AdminPage: React.FC = () => {
                                     value={editingModel.provider}
                                     onChange={(e) => setEditingModel({...editingModel, provider: e.target.value})}
                                   />
-                                  <Input
-                                    placeholder="Capabilities"
-                                    value={editingModel.capabilities.join(', ')}
-                                    onChange={(e) => setEditingModel({
-                                      ...editingModel, 
-                                      capabilities: e.target.value
-                                        .split(',')
-                                        .map(c => c.trim())
-                                        .filter(c => c)
-                                        .filter(c => ['text', 'image', 'audio', 'video', 'code'].includes(c))
-                                    })}
-                                  />
-                                  <div className="flex gap-2">
+                                  <div className="relative">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Capabilities</label>
+                                    <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md">
+                                      {['text', 'image', 'audio', 'video', 'code'].map((capability) => (
+                                        <label key={capability} className="inline-flex items-center">
+                                          <input
+                                            type="checkbox"
+                                            className="rounded border-gray-300 text-brand-blue focus:ring-brand-blue"
+                                            checked={editingModel.capabilities.includes(capability)}
+                                            onChange={(e) => {
+                                              if (e.target.checked) {
+                                                setEditingModel({
+                                                  ...editingModel,
+                                                  capabilities: [...editingModel.capabilities, capability]
+                                                });
+                                              } else {
+                                                setEditingModel({
+                                                  ...editingModel,
+                                                  capabilities: editingModel.capabilities.filter(c => c !== capability)
+                                                });
+                                              }
+                                            }}
+                                          />
+                                          <span className="ml-1 text-sm text-gray-700">{capability}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2 mt-6">
                                     <Button onClick={() => handleUpdateModel(service.id)}>Save</Button>
                                     <Button variant="tertiary" onClick={() => setEditingModel(null)}>Cancel</Button>
                                   </div>

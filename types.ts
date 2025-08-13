@@ -1,4 +1,3 @@
-
 export interface PersonaPhoto {
     id: string;
     imageKey: string;
@@ -241,4 +240,18 @@ export interface FacebookPostIdea {
   content: string;
   mediaPrompt: string;
   cta: string;
+}
+
+export interface AIModel {
+  id: string;
+  name: string;
+  provider: string;
+  capabilities: string[];
+}
+
+export interface AIService {
+  id: string;
+  name: string;
+  description: string;
+  models: AIModel[];
 }

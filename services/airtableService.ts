@@ -1,4 +1,4 @@
-import type { GeneratedAssets, Settings, MediaPlan, CoreMediaAssets, UnifiedProfileAssets, MediaPlanGroup, BrandFoundation, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, ColorPalette, FontRecommendations, LogoConcept, PersonaPhoto } from '../types';
+import type { GeneratedAssets, Settings, MediaPlan, CoreMediaAssets, UnifiedProfileAssets, MediaPlanGroup, BrandFoundation, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, ColorPalette, FontRecommendations, LogoConcept, PersonaPhoto, AIService } from '../types';
 
 // --- NORMALIZED SCHEMA TABLE NAMES ---
 export const BRANDS_TABLE_NAME = 'Brands';
@@ -253,8 +253,6 @@ export const airtableFetch = async (url: string, options: RequestInit) => {
         'Content-Type': 'application/json',
         ...options.headers
     };
-    // console.log("Airtable Fetch URL:", url);
-    // console.log("Airtable Fetch Options:", options);
     const response = await fetch(url, { ...options, headers });
     if (!response.ok) {
         const errorText = await response.text();
@@ -489,7 +487,21 @@ const findRecordByField = async (tableName: string, fieldName: string, value: st
     const encodedValue = encodeURIComponent(value);
     const url = `https://api.airtable.com/v0/${baseId}/${tableName}?filterByFormula={${fieldName}}='${encodedValue}'`;
     const response = await airtableFetch(url, {});
-    return response.records && response.records.length > 0 ? response.records[0] : null;
+    
+    // Validate that we got a valid response
+    if (!response || !Array.isArray(response.records)) {
+        return null;
+    }
+    
+    // Return the first record if found, otherwise null
+    const record = response.records && response.records.length > 0 ? response.records[0] : null;
+    
+    // Validate that the record has a valid ID
+    if (record && (!record.id || typeof record.id !== 'string')) {
+        return null;
+    }
+    
+    return record;
 };
 
 const fetchFullRecordsByFormula = async (tableName: string, formula: string, fields?: string[]) => {
@@ -718,10 +730,9 @@ export const saveSettingsToAirtable = async (settings: Settings, brandId: string
     if (!brandRecord) {
         throw new Error(`Brand with ID ${brandId} not found for saving settings.`);
     }
-    const brandAirtableRecordId = brandRecord.id;
 
     // Find the settings record linked to this brand
-    const settingsRecord = await findRecordByField(BRAND_SETTINGS_TABLE_NAME, 'brand', brandAirtableRecordId);
+    const settingsRecord = await findRecordByField(BRAND_SETTINGS_TABLE_NAME, 'brand', brandRecord.fields.brand_id);
     if (!settingsRecord) {
         throw new Error(`Settings record for brand ID ${brandId} not found.`);
     }
@@ -747,10 +758,10 @@ export const fetchSettingsFromAirtable = async (brandId: string): Promise<Settin
     if (!brandRecord) {
         return null;
     }
-    const brandAirtableRecordId = brandRecord.id;
+
 
     // Find the settings record linked to this brand
-    const settingsRecord = await findRecordByField(BRAND_SETTINGS_TABLE_NAME, 'brand', brandAirtableRecordId);
+    const settingsRecord = await findRecordByField(BRAND_SETTINGS_TABLE_NAME, 'brand', brandRecord.fields.brand_id);
     if (!settingsRecord) {
         return null;
     }
@@ -1527,17 +1538,23 @@ export const saveAIModel = async (model: { id: string; name: string; provider: s
         throw new Error(`Service with ID ${serviceId} not found for saving AI model.`);
     }
     
-    // Validate capabilities against the predefined choices
-    const validCapabilities = ['text', 'image', 'audio', 'video', 'code'];
-    const filteredCapabilities = model.capabilities.filter(cap => validCapabilities.includes(cap));
+    // Verify that serviceRecord.id looks like a valid Airtable record ID
+    if (!serviceRecord.id || typeof serviceRecord.id !== 'string' || !serviceRecord.id.startsWith('rec') || serviceRecord.id.length !== 17) {
+        throw new Error(`Invalid service record ID: ${serviceRecord.id}`);
+    }
+    
+    // console.log("Saving AI model for service:", model);
     
     const modelFields = {
         model_id: model.id,
         name: model.name,
         provider: model.provider,
-        capabilities: filteredCapabilities.length > 0 ? filteredCapabilities : null, // Send null if no capabilities
-        service: [serviceRecord.id]  // Link the model to the service (should be an array of record IDs)
+        capabilities: model.capabilities.join(","), // Join capabilities as a comma-separated string
+        service: serviceRecord.id  // Link the model to the service (should be an array of record IDs)
     };
+    
+    // Log the fields we're sending to Airtable for debugging
+    // console.log("Saving AI model with fields:", modelFields);
     
     let modelAirtableRecord;
     try {
@@ -1550,6 +1567,7 @@ export const saveAIModel = async (model: { id: string; name: string; provider: s
         }
     } catch (error) {
         console.error("Failed to save AI model:", error);
+        console.error("Model fields that failed to save:", modelFields);
         throw new Error(`Failed to save AI model: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
     
@@ -1565,7 +1583,7 @@ export const deleteAIModel = async (modelId: string) => {
     }
 };
 
-export const loadAIServices = async (): Promise<{ id: string; name: string; description: string; models: { id: string; name: string; provider: string; capabilities: string[] }[] }> => {
+export const loadAIServices = async (): Promise<AIService[]> => {
     try {
         // Ensure AI Services and AI Models tables and their fields exist
         await ensureSpecificTablesAndFieldsExist([AI_SERVICES_TABLE_NAME, AI_MODELS_TABLE_NAME]);
@@ -1576,25 +1594,28 @@ export const loadAIServices = async (): Promise<{ id: string; name: string; desc
         // Fetch all AI models
         const modelRecords = await fetchFullRecords(AI_MODELS_TABLE_NAME);
         
-        // Create a map of service ID to models for easier lookup
-        const serviceIdToModelsMap = new Map<string, any[]>();
+        // Create a map of service record ID to models for easier lookup
+        const serviceRecordIdToModelsMap = new Map<string, any[]>();
         modelRecords.forEach((modelRecord: any) => {
-            const serviceId = modelRecord.fields.service && modelRecord.fields.service.length > 0 
-                ? modelRecord.fields.service 
-                : null;
-            
-            if (serviceId) {
-                if (!serviceIdToModelsMap.has(serviceId)) {
-                    serviceIdToModelsMap.set(serviceId, []);
+            // modelRecord.fields.service is an array of linked record IDs
+
+            const serviceRecordId = modelRecord.fields.service;
+
+            if (serviceRecordId && serviceRecordId.length > 0) {
+                
+                if (!serviceRecordIdToModelsMap.has(serviceRecordId)) {
+                    serviceRecordIdToModelsMap.set(serviceRecordId, []);
                 }
-                serviceIdToModelsMap.get(serviceId)?.push(modelRecord);
+                serviceRecordIdToModelsMap.get(serviceRecordId)?.push(modelRecord);
             }
         });
         
+        // console.log("Service record ID to models map:", Object.fromEntries(serviceRecordIdToModelsMap));
+
         // Map services to the expected format
-        const services = serviceRecords.map((serviceRecord: any) => {
-            const serviceId = serviceRecord.id;
-            const models = serviceIdToModelsMap.get(serviceId) || [];
+        const services: AIService[] = serviceRecords.map((serviceRecord: any) => {
+            const serviceRecordId = serviceRecord.id;
+            const models = serviceRecordIdToModelsMap.get(serviceRecordId) || [];
             
             return {
                 id: serviceRecord.fields.service_id,
@@ -1609,7 +1630,7 @@ export const loadAIServices = async (): Promise<{ id: string; name: string; desc
             };
         });
         
-        console.log("Final services object:", services);
+        // console.log("Final services object:", services);
         return services;
     } catch (error) {
         console.error("Failed to load AI services:", error);
