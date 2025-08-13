@@ -3,34 +3,19 @@ import React, { useState, useEffect } from 'react';
 import type { Settings } from '../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
-import { fetchSettingsFromAirtable, saveSettingsToAirtable, fetchAiModelConfigFromAirtable, saveAiModelConfigToAirtable, loadAIServices } from '../services/airtableService';
+import { fetchAdminDefaultsFromAirtable, fetchSettingsFromAirtable, saveSettingsToAirtable, loadAIServices } from '../services/airtableService';
+import { configService } from '../services/configService';
 
-// Helper function to get text generation models from AI services
-const getTextGenerationModels = (aiServices: any[]) => {
-  // Get text generation models from AI services
-  const textModels = aiServices
+
+// Helper function to get models by capability from AI services
+const getModelsByCapability = (aiServices: any[], capability: 'text' | 'image') => {
+  return aiServices
     .flatMap((service: any) => service.models)
-    .filter((model: any) => model.capabilities.includes('text'))
+    .filter((model: any) => model.capabilities.includes(capability))
     .map((model: any) => ({
       value: model.name,
       label: `${model.provider}: ${model.name}`
     }));
-  
-  return textModels;
-};
-
-// Helper function to get image generation models from AI services
-const getImageGenerationModels = (aiServices: any[]) => {
-  // Get image generation models from AI services
-  const imageModels = aiServices
-    .flatMap((service: any) => service.models)
-    .filter((model: any) => model.capabilities.includes('image'))
-    .map((model: any) => ({
-      value: model.name,
-      label: `${model.provider}: ${model.name}`
-    }));
-  
-  return imageModels;
 };
 
 interface SettingsModalProps {
@@ -98,8 +83,8 @@ const T = {
     language_desc: 'Ngôn ngữ cho tất cả nội dung do AI tạo ra.',
     total_posts_per_month: 'Tổng số bài đăng mỗi kế hoạch',
     total_posts_per_month_desc: 'Tổng số bài đăng AI sẽ tạo cho một kế hoạch truyền thông mới.',
-    image_prompt_suffix: 'Hậu tố Prompt ảnh',
-    image_prompt_suffix_desc: 'Văn bản này sẽ được thêm vào cuối mỗi prompt tạo ảnh để đảm bảo phong cách nhất quán.',
+    media_prompt_suffix: 'Hậu tố Prompt ảnh',
+    media_prompt_suffix_desc: 'Văn bản này sẽ được thêm vào cuối mỗi prompt tạo ảnh để đảm bảo phong cách nhất quán.',
     visual_style_templates: 'Mẫu Phong cách Trực quan',
     affiliate_kit_rules: 'Quy tắc Affiliate Content-Kit',
     affiliate_kit_rules_desc: 'Các quy tắc này (dưới dạng system instruction) sẽ được cung cấp cho AI khi tạo kế hoạch truyền thông để đảm bảo tuân thủ.',
@@ -121,8 +106,8 @@ const T = {
     language_desc: 'The language for all AI-generated content.',
     total_posts_per_month: 'Total Posts per Plan',
     total_posts_per_month_desc: 'The total number of posts the AI will generate for a new media plan.',
-    image_prompt_suffix: 'Image Prompt Suffix',
-    image_prompt_suffix_desc: 'This text will be added to the end of every image generation prompt to ensure consistent styling.',
+    media_prompt_suffix: 'Image Prompt Suffix',
+    media_prompt_suffix_desc: 'This text will be added to the end of every image generation prompt to ensure consistent styling.',
     visual_style_templates: 'Visual Style Templates',
     affiliate_kit_rules: 'Affiliate Content-Kit Rules',
     affiliate_kit_rules_desc: 'These rules (as a system instruction) are fed to the AI when generating media plans to ensure compliance.',
@@ -161,27 +146,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
       try {
         // Fetch brand-specific settings
         const fetchedSettings = await fetchSettingsFromAirtable(brandId);
-        const fetchedAiModelConfig = await fetchAiModelConfigFromAirtable(brandId);
 
-        if (fetchedSettings && fetchedAiModelConfig) {
+        if (fetchedSettings) {
           setSettings({
             ...fetchedSettings,
-            textModelFallbackOrder: fetchedAiModelConfig.textModelFallbackOrder,
-            visionModels: fetchedAiModelConfig.visionModels,
           });
         } else {
-          // If no settings found for the brand, initialize with sensible defaults
-          // This might happen for a brand created before this feature was implemented
-          console.warn(`No settings found for brand ${brandId}. Initializing with defaults.`);
+          // If no settings found for the brand, initialize with admin defaults
+          console.warn(`No settings found for brand ${brandId}. Initializing with admin defaults.`);
+          const adminDefaults = await fetchAdminDefaultsFromAirtable();
           setSettings({
-            language: 'English',
-            totalPostsPerMonth: 30,
-            mediaPromptSuffix: '',
-            affiliateContentKit: '',
-            textGenerationModel: '',
-            imageGenerationModel: '',
-            textModelFallbackOrder: [],
-            visionModels: [],
+            ...adminDefaults,
           });
         }
 
@@ -269,8 +244,8 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
     );
   }
 
-  const textGenerationModels = getTextGenerationModels(aiServices);
-  const imageGenerationModels = getImageGenerationModels(aiServices);
+  const textGenerationModels = getModelsByCapability(aiServices, 'text');
+  const imageGenerationModels = getModelsByCapability(aiServices, 'image');
 
   const handleSave = async () => {
     if (!settings || !brandId) return;
@@ -281,11 +256,11 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
       // Save general settings
       await saveSettingsToAirtable(settings, brandId);
 
-      // Save AI model configuration
-      await saveAiModelConfigToAirtable({
-        textModelFallbackOrder: settings.textModelFallbackOrder,
-        visionModels: settings.visionModels,
-      }, brandId);
+      // // Save AI model configuration
+      // await saveAiModelConfigToAirtable({
+      //   textModelFallbackOrder: settings.textModelFallbackOrder,
+      //   visionModels: settings.visionModels,
+      // }, brandId);
 
       onClose(); // Close modal on successful save
     } catch (err) {
@@ -431,9 +406,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                             {styleTemplates.map((template) => (
                                 <button
                                     key={template.name}
-                                    onClick={() => setSettings(prev => ({...prev, imagePromptSuffix: template.suffix}))}
+                                    onClick={() => setSettings(prev => ({...prev, mediaPromptSuffix: template.suffix}))}
                                     className={`relative rounded-lg overflow-hidden border-4 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all ${
-                                        settings.imagePromptSuffix === template.suffix ? 'border-brand-green' : 'border-transparent hover:border-gray-300'
+                                        settings.mediaPromptSuffix === template.suffix ? 'border-brand-green' : 'border-transparent hover:border-gray-300'
                                     }`}
                                 >
                                     <img src={template.previewUrl} alt={template.name} className="h-24 w-full object-cover"/>
@@ -444,16 +419,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                          </div>
                     </div>
                      <div>
-                        <label htmlFor="imagePromptSuffix" className="block text-lg font-medium text-gray-800">{texts.image_prompt_suffix}</label>
+                        <label htmlFor="mediaPromptSuffix" className="block text-lg font-medium text-gray-800">{texts.media_prompt_suffix}</label>
                         <TextArea
-                            id="imagePromptSuffix"
-                            name="imagePromptSuffix"
-                            value={settings.imagePromptSuffix}
+                            id="mediaPromptSuffix"
+                            name="mediaPromptSuffix"
+                            value={settings.mediaPromptSuffix}
                             onChange={handleInputChange}
                             rows={3}
                             className="mt-1 font-mono text-sm"
                         />
-                        <p className="text-sm text-gray-500 mt-1 font-serif">{texts.image_prompt_suffix_desc}</p>
+                        <p className="text-sm text-gray-500 mt-1 font-serif">{texts.media_prompt_suffix_desc}</p>
                     </div>
 
                     {/* Text Model Fallback Order */}

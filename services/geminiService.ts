@@ -603,7 +603,8 @@ export const generateMediaPromptForPost = async (
     brandFoundation: BrandFoundation,
     language: string,
     model: string,
-    persona: Persona | null
+    persona: Persona | null,
+    mediaPromptSuffix: string
 ): Promise<string | string[]> => {
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey || typeof apiKey !== 'string' || apiKey.trim().length === 0) {
@@ -658,14 +659,21 @@ Post Content: "${postContent.content}"
 
     if (postContent.contentType === 'Carousel Post') {
         try {
-            return JSON.parse(textResponse);
+            const parsedResponse = JSON.parse(textResponse);
+            // For carousel posts, append suffix to each prompt in the array
+            if (Array.isArray(parsedResponse)) {
+                return parsedResponse.map((prompt: string) => prompt + mediaPromptSuffix);
+            } else {
+                return parsedResponse;
+            }
         } catch (e) {
             console.error("Failed to parse carousel prompts, returning as single string:", textResponse);
             return textResponse;
         }
     }
 
-    return textResponse;
+    // For single prompts, append the suffix
+    return textResponse + mediaPromptSuffix;
 };
 
 

@@ -68,8 +68,8 @@ const AdminPage: React.FC = () => {
 
         // Load app settings and AI model config from configService
         const adminDefaults = await configService.getAdminDefaults();
-        setAppSettings(adminDefaults.settings);
-        setAiModelConfig(adminDefaults.aiModelConfig);
+        setAppSettings(adminDefaults);
+        setAiModelConfig(configService.getAiModelConfig());
 
       } catch (err) {
         setError('Failed to load data: ' + (err instanceof Error ? err.message : 'Unknown error'));
@@ -230,8 +230,10 @@ const AdminPage: React.FC = () => {
 
   const handleSaveAppSettings = async () => {
     try {
-      console.log("Saving admin app settings:", appSettings, aiModelConfig);
-      await configService.saveAdminDefaults(appSettings, aiModelConfig);
+      // Merge appSettings and aiModelConfig into a single settings object
+      const mergedSettings = { ...appSettings, ...aiModelConfig };
+      console.log("Saving admin app settings:", mergedSettings);
+      await configService.saveAdminDefaults(mergedSettings);
       setSuccessMessage('Application settings saved successfully!');
       setError(null);
     } catch (err) {
@@ -244,8 +246,10 @@ const AdminPage: React.FC = () => {
 
   const handleSaveAiModelConfig = async () => {
     try {
-      console.log("Saving AI model config:", appSettings, aiModelConfig);
-      await configService.saveAdminDefaults(appSettings, aiModelConfig);
+      // Merge appSettings and aiModelConfig into a single settings object
+      const mergedSettings = { ...appSettings, ...aiModelConfig };
+      console.log("Saving AI model config:", mergedSettings);
+      await configService.saveAdminDefaults(mergedSettings);
       setSuccessMessage('AI Model Configuration saved successfully!');
       setError(null);
     } catch (err) {
@@ -613,9 +617,7 @@ const AdminPage: React.FC = () => {
                               <>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{model.name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.provider}</td>
-                                <td className="px-6 py-4 text-sm text-gray-500">
-                                  {model.capabilities.join(', ')}
-                                </td>
+                                <td className="px-6 py-4 text-sm text-gray-500">{model.capabilities}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                                   <div className="flex gap-2">
                                     <Button 

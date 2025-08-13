@@ -584,11 +584,11 @@ const App: React.FC = () => {
     ): Promise<T> => {
         console.log("Preferred model:", preferredModel);
         
-        const availableTextModels = aiModelConfig.allAvailableModels.filter(model => model.capabilities.includes('text'));
+        // Use textModelFallbackOrder from aiModelConfig if available, otherwise use an empty array
+        const textModelFallbackOrder = aiModelConfig?.textModelFallbackOrder || [];
         const modelsToTry = [
             preferredModel, 
-            ...(aiModelConfig.textModelFallbackOrder || []).filter((m: string) => m !== preferredModel),
-            ...(availableTextModels || []).map((m: any) => m.name).filter((m: string) => m !== preferredModel && !(aiModelConfig.textModelFallbackOrder || []).includes(m))
+            ...textModelFallbackOrder.filter((m: string) => m !== preferredModel)
         ];
         console.log("Models to try:", modelsToTry);
 
@@ -613,45 +613,41 @@ const App: React.FC = () => {
                 
                 if (model !== preferredModel) {
                     setSettings(prev => ({ ...prev, textGenerationModel: model }));
-                    setSuccessMessage(`Switched to model ${model} after request failed.`);
                 }
+                
                 return result;
-            } catch (e: any) {
-                lastError = e;
+            } catch (error: any) {
+                console.error(`Text generation failed with model ${model}:`, error);
+                lastError = error;
                 
-                if (e.message && (e.message.includes('rate limit') || e.message.includes('Rate limit'))) {
+                // Special handling for rate limit errors
+                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
                     rateLimitErrorCount++;
+                    if (rateLimitErrorCount >= RATE_LIMIT_THRESHOLD) {
+                        console.log(`Rate limit threshold (${RATE_LIMIT_THRESHOLD}) reached. Waiting before next attempt...`);
+                        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+                    }
                 }
                 
-                if (rateLimitErrorCount >= RATE_LIMIT_THRESHOLD) {
-                    console.warn(`Too many rate limit errors. Stopping fallback attempts.`);
-                    throw new Error("Too many rate limit errors. Please try again later or configure a different model in Settings.");
+                // If it's a model-specific error (e.g., unsupported model), continue to the next model
+                if (error.message && (error.message.includes('not supported') || error.message.includes('invalid model'))) {
+                    console.log(`Skipping model ${model} due to model-specific error.`);
+                    continue;
                 }
                 
-                if (model.startsWith('gemini-') && e.message && e.message.includes('API Key must be set when running in a browser')) {
-                    console.warn(`Model ${model} failed due to browser security restrictions. This is a known limitation. Trying next model...`);
-                } else {
-                    console.warn(`Model ${model} failed: ${e.message}. Trying next model...`);
+                // For other errors, we might want to stop trying other models
+                // unless it's a rate limit error
+                if (!(error.message && (error.message.includes('429') || error.message.includes('rate limit')))) {
+                    console.log("Non-rate limit error encountered. Stopping fallback attempts.");
+                    break;
                 }
             }
         }
         
-        if (lastError && lastError.message.includes('rate limit')) {
-            throw new Error("All models are currently rate limited. Please try again later or configure a different model in Settings.");
-        }
-        
-        const allGeminiBrowserErrors = modelsToTry.every(model => 
-            model.startsWith('gemini-') && 
-            lastError && 
-            lastError.message.includes('API Key must be set when running in a browser')
-        );
-        
-        if (allGeminiBrowserErrors) {
-            throw new Error("The Gemini API cannot be used directly in the browser due to security restrictions. Please use OpenRouter models or set up a backend proxy for Gemini.");
-        }
-        
+        // If we get here, all models failed
+        console.error("All text generation models failed.", lastError);
         throw lastError || new Error("All text generation models failed.");
-    }, [aiModelConfig, setSettings, setSuccessMessage]);
+    }, [aiModelConfig, setSettings]);
 
     const ensureAirtableProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
         const assets = assetsToSave || generatedAssets;
@@ -863,10 +859,39 @@ const App: React.FC = () => {
             };
             const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
+            // Append mediaPromptSuffix to each post's mediaPrompt
+            const mediaPromptSuffix = settings.mediaPromptSuffix;
+            const updatedPlan = newGroup.plan.map(week => ({
+                ...week,
+                posts: week.posts.map(post => {
+                    if (post.mediaPrompt) {
+                        if (Array.isArray(post.mediaPrompt)) {
+                            // For carousel posts, append suffix to each prompt in the array
+                            return {
+                                ...post,
+                                mediaPrompt: post.mediaPrompt.map(prompt => prompt + mediaPromptSuffix)
+                            };
+                        } else {
+                            // For single prompts, append the suffix
+                            return {
+                                ...post,
+                                mediaPrompt: post.mediaPrompt + mediaPromptSuffix
+                            };
+                        }
+                    }
+                    return post;
+                })
+            }));
 
-            dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: newGroup });
-            setMediaPlanGroupsList(prev => [...prev, { id: newGroup.id, name: newGroup.name, prompt: newGroup.prompt, productImages: newGroup.productImages }]);
-            setActivePlanId(newGroup.id);
+            const updatedGroup = {
+                ...newGroup,
+                plan: updatedPlan
+            };
+            
+
+            dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: updatedGroup });
+            setMediaPlanGroupsList(prev => [...prev, { id: updatedGroup.id, name: updatedGroup.name, prompt: updatedGroup.prompt, productImages: updatedGroup.productImages }]);
+            setActivePlanId(updatedGroup.id);
             setKhongMinhSuggestions({});
             
             updateAutoSaveStatus('saving');
@@ -881,7 +906,7 @@ const App: React.FC = () => {
             const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
             const allImageUrls = { ...generatedImages, ...newPublicUrls };
 
-            await saveMediaPlanGroup(newGroup, allImageUrls, brandId);
+            await saveMediaPlanGroup(updatedGroup, allImageUrls, brandId);
             setGeneratedImages(allImageUrls); 
             updateAutoSaveStatus('saved');
             setLoaderContent(null); 
@@ -1113,6 +1138,7 @@ const App: React.FC = () => {
                     settings.language,
                     model,
                     persona,
+                    settings.mediaPromptSuffix
                 ] as const;
 
                 return textGenerationService.generateMediaPromptForPost(...commonArgs);
@@ -1585,8 +1611,8 @@ const App: React.FC = () => {
             // Check if the plan already exists in the assets
             const existingPlanIndex = currentAssets.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
 
-            console.log(`Handling plan ID selection for ${planId}`);
-            console.log("Current plan:", plan);
+            // console.log(`Handling plan ID selection for ${planId}`);
+            // console.log("Current plan:", plan);
             
             if (existingPlanIndex !== -1) {
                 // If plan exists, update it with the loaded data

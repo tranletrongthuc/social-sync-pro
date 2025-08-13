@@ -58,7 +58,8 @@ export interface TextGenerationService {
     brandFoundation: BrandFoundation,
     language: string,
     model: string,
-    persona: Persona | null
+    persona: Persona | null,
+    mediaPromptSuffix: string
   ) => Promise<string | string[]>;
   generateAffiliateComment: (
     post: MediaPlanPost,
@@ -236,10 +237,11 @@ export const textGenerationService: TextGenerationService = {
     brandFoundation: BrandFoundation,
     language: string,
     model: string,
-    persona: Persona | null
+    persona: Persona | null,
+    mediaPromptSuffix: string
   ): Promise<string | string[]> => {
     const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateMediaPromptForPost(postContent, brandFoundation, language, model, persona);
+    return service.generateMediaPromptForPost(postContent, brandFoundation, language, model, persona, mediaPromptSuffix);
   },
   
   generateAffiliateComment: async (

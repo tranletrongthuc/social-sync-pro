@@ -173,7 +173,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     const ideasForSelectedTrend = useMemo(() => {
         if (!selectedTrend) {
-            console.log("DEBUG: No trend selected, returning empty ideas array");
+            // console.log("DEBUG: No trend selected, returning empty ideas array");
             return [];
         }
         
