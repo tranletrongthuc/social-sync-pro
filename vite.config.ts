@@ -9,6 +9,14 @@ export default defineConfig(({ mode }) => {
       plugins: [basicSsl(), EnvironmentPlugin('all')],
       server: {
         https: true,
+        proxy: {
+          '/api': {
+            target: 'https://localhost:3001',
+            changeOrigin: true,
+            secure: false, // Allow self-signed certificates
+            ws: true,
+          }
+        }
       },
       resolve: {
         alias: {

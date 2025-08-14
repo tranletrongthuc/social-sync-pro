@@ -97,6 +97,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
         }).format(value);
     }, [language]);
 
+    console.log("affiliateLinks:", affiliateLinks);
+
     const kpiData = useMemo(() => {
         const totalLinks = affiliateLinks.length;
         if (totalLinks === 0) {

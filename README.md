@@ -1,4 +1,4 @@
-# Run and deploy your AI Studio app
+# SocialSync Pro 2.1
 
 This contains everything you need to run your app locally.
 
@@ -6,12 +6,28 @@ This contains everything you need to run your app locally.
 
 **Prerequisites:**  Node.js
 
-1. Install dependencies:
+1. Install frontend dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. (Optional) Set the `VITE_ADMIN_PASSWORD` in [.env.local](.env.local) to your preferred admin password (defaults to 'admin123')
-4. Run the app:
+2. Install backend dependencies:
+   `cd server && npm install`
+3. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+4. (Optional) Set the `VITE_ADMIN_PASSWORD` in [.env.local](.env.local) to your preferred admin password (defaults to 'admin123')
+5. Set Airtable and Cloudinary credentials in the server's [.env](server/.env) file
+6. Run the backend (BFF):
+   `cd server && npm start`
+7. Run the frontend app:
    `npm run dev`
+
+## Backend-for-Frontend (BFF) Layer
+
+SocialSync Pro now includes a dedicated Backend-for-Frontend (BFF) service that acts as an intermediary between the client-side application and numerous third-party services (Airtable, Gemini, Facebook, Cloudinary). This architecture provides several key benefits:
+
+- **Security**: API keys are kept secure on the backend rather than exposed in the frontend
+- **Centralized Logic**: All external API communications are handled in one place
+- **Caching Opportunities**: Future enhancements can implement server-side caching
+- **Rate Limiting**: Better control over API usage and request throttling
+
+The BFF is implemented with Node.js and Express, and provides proxy endpoints for all external services.
 
 ## Admin Panel
 

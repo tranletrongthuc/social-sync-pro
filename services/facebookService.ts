@@ -1,4 +1,5 @@
 import type { MediaPlanPost, FacebookLoginResponse, FacebookPage } from '../types';
+import { publishToFacebookWithBff } from './bffService';
 
 declare const FB: any; // Declare the FB object from the SDK
 
@@ -60,39 +61,47 @@ export const publishToFacebookPage = async (
     videoUrl?: string
 ): Promise<{ publishedUrl: string }> => {
     console.log("publishToFacebookPage received args:", { post, imageUrl, pageId, accessToken: accessToken ? '[REDACTED]' : '[MISSING]', videoUrl });
-    const apiVersion = 'v23.0';
-    const fullMessage = `${post.title}\n\n${post.content}\n\n${(post.hashtags || []).join(' ')}\n\nCTA: ${post.cta}`;
+    
+    try {
+        // Try to use BFF for secure Facebook publishing
+        return await publishToFacebookWithBff(post, imageUrl, pageId, accessToken, videoUrl);
+    } catch (error) {
+        console.warn("BFF Facebook publishing failed, falling back to direct API call:", error);
+        // Fallback to direct API call if BFF fails
+        const apiVersion = 'v23.0';
+        const fullMessage = `${post.title}\n\n${post.content}\n\n${(post.hashtags || []).join(' ')}\n\nCTA: ${post.cta}`;
 
-    let endpoint = '';
-    const params = new URLSearchParams();
-    params.append('access_token', accessToken);
+        let endpoint = '';
+        const params = new URLSearchParams();
+        params.append('access_token', accessToken);
 
-    console.log("Page ID right before URL construction:", pageId); // New diagnostic log
+        console.log("Page ID right before URL construction:", pageId); // New diagnostic log
 
-    if (imageUrl) {
-        endpoint = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/photos";
-        params.append('caption', fullMessage);
-        params.append('url', imageUrl); // Use URL directly, assuming it's publicly accessible
-    } else {
-        endpoint = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/feed";
-        params.append('message', fullMessage);
+        if (imageUrl) {
+            endpoint = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/photos";
+            params.append('caption', fullMessage);
+            params.append('url', imageUrl); // Use URL directly, assuming it's publicly accessible
+        } else {
+            endpoint = "https://graph.facebook.com/" + apiVersion + "/" + pageId + "/feed";
+            params.append('message', fullMessage);
+        }
+
+        const response = await fetch(`${endpoint}?${params.toString()}`, {
+            method: 'POST',
+        });
+
+        const responseData = await response.json();
+
+        if (!response.ok) {
+            throw new Error(responseData.error?.message || "Failed to publish to Facebook.");
+        }
+
+        const postId = responseData.id || responseData.post_id;
+        if (!postId) {
+            throw new Error("Facebook API did not return a post ID.");
+        }
+
+        const publishedUrl = `https://www.facebook.com/${postId}`;
+        return { publishedUrl };
     }
-
-    const response = await fetch(`${endpoint}?${params.toString()}`, {
-        method: 'POST',
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-        throw new Error(responseData.error?.message || "Failed to publish to Facebook.");
-    }
-
-    const postId = responseData.id || responseData.post_id;
-    if (!postId) {
-        throw new Error("Facebook API did not return a post ID.");
-    }
-
-    const publishedUrl = `https://www.facebook.com/${postId}`;
-    return { publishedUrl };
-};
+};;

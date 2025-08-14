@@ -1,3 +1,5 @@
+import { uploadMediaWithBff } from './bffService';
+
 const dataUrlToBlob = (dataUrl: string): Blob => {
     const parts = dataUrl.split(',');
     if (parts.length < 2 || !parts[1]) {
@@ -34,42 +36,49 @@ export const uploadMediaToCloudinary = async (
         return {};
     }
     
-    const uploadPromises = mediaToUpload.map(async ([key, url]) => {
-        try {
-            const isVideo = url.startsWith('data:video');
-            const resourceType = isVideo ? 'video' : 'image';
-            const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+    try {
+        // Try to use BFF for secure Cloudinary uploads
+        return await uploadMediaWithBff(media, cloudName, uploadPreset);
+    } catch (error) {
+        console.warn("BFF Cloudinary upload failed, falling back to direct upload:", error);
+        // Fallback to direct upload if BFF fails
+        const uploadPromises = mediaToUpload.map(async ([key, url]) => {
+            try {
+                const isVideo = url.startsWith('data:video');
+                const resourceType = isVideo ? 'video' : 'image';
+                const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
 
-            const blob = dataUrlToBlob(url);
-            const formData = new FormData();
-            formData.append('file', blob);
-            formData.append('upload_preset', uploadPreset);
-            formData.append('public_id', key); 
-            
-            const response = await fetch(uploadUrl, {
-                method: 'POST',
-                body: formData,
-            });
+                const blob = dataUrlToBlob(url);
+                const formData = new FormData();
+                formData.append('file', blob);
+                formData.append('upload_preset', uploadPreset);
+                formData.append('public_id', key); 
+                
+                const response = await fetch(uploadUrl, {
+                    method: 'POST',
+                    body: formData,
+                });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                console.error(`Cloudinary upload failed for key "${key}":`, errorData.error.message);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error(`Cloudinary upload failed for key "${key}":`, errorData.error.message);
+                    return null;
+                }
+
+                const result = await response.json();
+                return [key, result.secure_url];
+            } catch (error) {
+                console.error(`Failed to upload media with key "${key}" to Cloudinary.`, error);
                 return null;
             }
+        });
+        
+        const results = await Promise.all(uploadPromises);
 
-            const result = await response.json();
-            return [key, result.secure_url];
-        } catch (error) {
-            console.error(`Failed to upload media with key "${key}" to Cloudinary.`, error);
-            return null;
-        }
-    });
-    
-    const results = await Promise.all(uploadPromises);
-
-    const newPublicUrls: Record<string, string> = Object.fromEntries(
-        results.filter((r): r is [string, string] => r !== null)
-    );
-    
-    return newPublicUrls;
+        const newPublicUrls: Record<string, string> = Object.fromEntries(
+            results.filter((r): r is [string, string] => r !== null)
+        );
+        
+        return newPublicUrls;
+    }
 };

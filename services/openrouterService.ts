@@ -1,136 +1,9 @@
-import { GoogleGenAI } from "@google/genai";
 import { sanitizeAndParseJson, normalizeMediaPlanGroupResponse, normalizePillarContent, normalizeArrayResponse } from './geminiService';
+import { generateContentWithOpenRouterBff, generateImageWithOpenRouterBff } from './bffService';
 import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Idea, PostStatus } from '../types';
 
-const openrouterFetch = async (body: object, retries = 3, initialDelay = 1000) => {
-    const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-    if (!apiKey) {
-        throw new Error("OpenRouter API key is not configured. Please set it in the Integrations panel.");
-    }
-
-    const siteUrl = window.location.href;
-    const siteTitle = document.title || "SocialSync Pro";
-    
-    let lastError: Error | null = null;
-    let delay = initialDelay;
-    let rateLimitRetries = 1; // Set to 1 rate limit wait
-    const baseWaitSeconds = 61; // Base wait time
-
-    for (let i = 0; i < retries; i++) {
-        try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "HTTP-Referer": siteUrl,
-                    "X-Title": siteTitle,
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(body)
-            });
-
-            if (response.ok) {
-                window.dispatchEvent(new CustomEvent('rateLimitWaitClear'));
-                return await response.json(); // Success! 
-            }
-            
-            // Handle non-OK responses
-            let errorData;
-            let message = response.statusText;
-            try {
-                errorData = await response.json();
-                message = errorData.error?.message || message;
-            } catch (e) {
-                // The error response wasn't valid JSON. Use the status text.
-                console.warn("OpenRouter error response was not valid JSON.");
-            }
-
-            // Handle 429 Rate Limit specifically
-            if (response.status === 429) {
-                if (rateLimitRetries > 0) {
-                    rateLimitRetries--;
-                    // Add some randomization to avoid consistent rate limiting
-                    const waitSeconds = baseWaitSeconds + Math.floor(Math.random() * 30); // 61-90 seconds
-                    lastError = new Error(`OpenRouter rate limit hit (1 req/min).`);
-                    console.warn(`${lastError.message} Waiting ${waitSeconds}s before retrying. (${rateLimitRetries} waits remaining)`);
-                    
-                    window.dispatchEvent(new CustomEvent('rateLimitWait', { 
-                        detail: { service: 'OpenRouter', seconds: waitSeconds, attempt: (5 - rateLimitRetries), total: 5 } 
-                    }));
-
-                    await new Promise(res => setTimeout(res, waitSeconds * 1000));
-                    i--; // This was a rate limit wait, not a failure retry, so don't increment i.
-                    continue;
-                } else {
-                    lastError = new Error('OpenRouter rate limit persisted for over 5 minutes.');
-                    break; // Exit the loop if we've been rate-limited too many times.
-                }
-            }
-
-            const isProviderError = message.includes("Provider returned error");
-            const isRetryableStatus = response.status >= 500;
-
-            if (isProviderError || isRetryableStatus) {
-                lastError = new Error(`OpenRouter returned a retryable error: ${response.status} ${message}`);
-                console.warn(`${lastError.message}. Retrying in ${delay / 1000}s... (Attempt ${i + 1}/${retries})`);
-                await new Promise(res => setTimeout(res, delay));
-                delay *= 2;
-                continue; // Next retry
-            }
-
-            // For non-retryable client-side errors (4xx), fail immediately.
-            lastError = new Error(`OpenRouter API Error: ${message}`);
-            throw lastError;
-
-        } catch (error) {
-            // This catches network errors or errors thrown from the non-retryable handler.
-            lastError = error instanceof Error ? error : new Error('An unknown network error occurred');
-            
-            // If it was a non-retryable API error that we chose to throw, don't retry, just re-throw.
-            if (lastError.message.startsWith('OpenRouter API Error:')) {
-                throw lastError;
-            }
-
-            // Otherwise, it was a network error, so we can retry.
-            if (i < retries - 1) {
-                console.warn(`A network error occurred during OpenRouter fetch: ${lastError.message}. Retrying in ${delay / 1000}s...`);
-                await new Promise(res => setTimeout(res, delay));
-                delay *= 2;
-            }
-        }
-    }
-
-    // If all retries fail, clear any waiting message and throw the last captured error.
-    window.dispatchEvent(new CustomEvent('rateLimitWaitClear'));
-    throw new Error(`OpenRouter request failed after multiple attempts. Last error: ${lastError?.message}`);
-};
-
-const parseOpenRouterResponse = (response: any): string => {
-    if (response.choices && response.choices.length > 0 && response.choices[0].message?.content) {
-        let content = response.choices[0].message.content;
-
-        // Remove any <think>...</think> tags and their content
-        content = content.replace(/<think>[\s\S]*?<\/think>/g, '');
-
-        // Try to extract content within ```json...``` markdown blocks
-        const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-        if (jsonMatch && jsonMatch[1]) {
-            return jsonMatch[1].trim();
-        }
-
-        // If no markdown block, try to find the first { and last } to extract JSON
-        const firstBrace = content.indexOf('{');
-        const lastBrace = content.lastIndexOf('}');
-
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            return content.substring(firstBrace, lastBrace + 1).trim();
-        }
-        
-        // Fallback to trimming the content if no JSON structure is clearly found
-        return content.trim();
-    }
-    throw new Error("Received an invalid or empty response from OpenRouter.");
-};
+// Remove the openrouterFetch function and all direct API calls
+// All OpenRouter requests will now go through the BFF
 
 export const refinePostContentWithOpenRouter = async (postText: string, model: string): Promise<string> => {
     const prompt = `You are a world-class social media copywriter. Refine the following post content to maximize engagement and impact, while preserving its core message. The output should ONLY be the refined text, without any introductory phrases, explanations, or quotes.
@@ -138,26 +11,14 @@ export const refinePostContentWithOpenRouter = async (postText: string, model: s
 Original content:
 """${postText}"""`;
 
-    // This function now only handles non-Gemini (i.e., OpenRouter) models
-    const response = await openrouterFetch({
-        model: model,
-        messages: [
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [
             { role: "user", content: prompt }
         ]
-    });
+    );
 
-    if (response.choices && response.choices.length > 0 && response.choices[0].message?.content) {
-        let content = response.choices[0].message.content;
-
-        const thinkTagEnd = content.indexOf('</think>');
-        if (thinkTagEnd !== -1) {
-            content = content.substring(thinkTagEnd + '</think>'.length);
-        }
-        
-        return content.trim();
-    }
-
-    throw new Error("Received an invalid response from OpenRouter.");
+    return response;
 };
 
 export const generateBrandProfileWithOpenRouter = async (idea: string, language: string, model: string): Promise<BrandInfo> => {
@@ -175,15 +36,18 @@ Generate the following brand profile fields in ${language}:
 - **audience**: A brief description of the target audience.
 - **personality**: 3-4 keywords describing the brand's personality.
 `;
+
     const openRouterPrompt = `${prompt}
 
 You MUST respond with a single, valid JSON object. Do not add any text or explanation before or after the JSON object.`;
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: openRouterPrompt }],
-        response_format: { "type": "json_object" },
-    });
-    const jsonText = parseOpenRouterResponse(response);
+    
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [{ role: 'user', content: openRouterPrompt }],
+        { "type": "json_object" }
+    );
+    
+    const jsonText = response;
 
     // Fix malformed JSON responses that are missing array brackets
     let fixedJsonText = jsonText.trim();
@@ -233,19 +97,20 @@ Generate the following assets IN ${language}:
     const openRouterPrompt = `${prompt}
 
 You MUST respond with a single, valid JSON object. Do not add any text or explanation before or after the JSON object.`;
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: openRouterPrompt }],
-        response_format: { "type": "json_object" },
-    });
-    const jsonText = parseOpenRouterResponse(response);
+    
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [{ role: 'user', content: openRouterPrompt }],
+        { "type": "json_object" }
+    );
+    
+    const jsonText = response;
     
     if (!jsonText) {
         throw new Error("Received an empty response from the AI. This could be due to content filtering or an internal error. Please try adjusting your prompt.");
     }
 
     try {
-
         // Fix malformed JSON responses that are missing array brackets
         let fixedJsonText = jsonText.trim();
         if (fixedJsonText.startsWith('{') && fixedJsonText.includes('title') && fixedJsonText.includes('description') && fixedJsonText.includes('targetAudience')) {
@@ -292,7 +157,7 @@ You MUST respond with a single, valid JSON object. Do not add any text or explan
                     ...logo,
                     id: logoId,
                     imageKey: `logo_${logoId}`
-                };
+                } as any;
             });
         }
         if(normalizedResponse.unifiedProfileAssets){
@@ -404,7 +269,7 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
 - **Consistency**: The entire media plan must be thematically consistent with the Brand Foundation.
 
 **JSON Schema for Media Plan Group (Strictly Adhere to This:)**
-\\\`\\\`\\\`json
+\`\`\`json
 {
   "type": "object",
   "properties": {
@@ -442,7 +307,7 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
   },
   "required": ["name", "plan"]
 }
-\\\`\\\`\\\`
+\`\`\`
 
 **KOL/KOC Persona (Crucial):
 All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
@@ -455,16 +320,16 @@ IMPORTANT: For image prompts, the prompt you generate MUST start with the exact 
 - **Tone:** The content's tone must perfectly match this persona's style.
 `;
 
-    const response = await openrouterFetch({
-        model: model,
-        messages: [
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [
             { role: 'system', content: affiliateContentKitSystemInstruction },
             { role: 'user', content: openRouterPrompt }
         ],
-        response_format: { "type": "json_object" },
-    });
+        { "type": "json_object" }
+    );
     
-    const jsonText = parseOpenRouterResponse(response);
+    const jsonText = response;
     if (!jsonText) throw new Error("Received empty response from OpenRouter.");
     
     const parsedResult = sanitizeAndParseJson(jsonText);
@@ -543,11 +408,12 @@ Post Content: "${postContent.content}"
             break;
     }
 
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: prompt }]
-    });
-    const text = parseOpenRouterResponse(response);
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [{ role: 'user', content: prompt }]
+    );
+    
+    const text = response;
     
     if (!text) {
         return `A visually appealing image representing the concept of "${postContent.title}" in a style that is ${brandFoundation.personality}.`;
@@ -646,11 +512,12 @@ https://your-affiliate-link.com
 Now, generate the comment based on the provided post and product details. Output ONLY the comment text.
 `;
 
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: prompt }]
-    });
-    const text = parseOpenRouterResponse(response);
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [{ role: 'user', content: prompt }]
+    );
+    
+    const text = response;
     
     if (!text) {
         throw new Error("AI failed to generate a comment.");
@@ -677,9 +544,6 @@ export const generateImageWithOpenRouter = async (
     if (!prompt || prompt.trim() === '') {
         throw new Error("Prompt cannot be empty for OpenRouter image generation.");
     }
-    if (!(window as any).process.env.OPENROUTER_API_KEY) {
-        throw new Error("OPENROUTER_API_KEY not set. Please set it in the Integrations panel.");
-    }
     
     const messages: any[] = [];
     const userContent: any[] = [];
@@ -702,26 +566,14 @@ Description (aspect ratio ${aspectRatio}): "${prompt}${promptSuffix ? `, ${promp
 
     messages.push({ role: 'user', content: userContent });
     
-    const response = await openrouterFetch({
-        model: model,
-        messages: messages,
-        response_format: { "type": "json_object" },
-    });
+    const response = await generateImageWithOpenRouterBff(
+        model,
+        messages,
+        { "type": "json_object" }
+    );
     
-    const jsonText = parseOpenRouterResponse(response);
-    
-    try {
-        const parsed = sanitizeAndParseJson(jsonText);
-        if (parsed.b64_json) {
-            return `data:image/jpeg;base64,${parsed.b64_json}`;
-        } else {
-            console.error("OpenRouter image gen response missing b64_json:", parsed);
-            throw new Error("OpenRouter model did not return a base64 image in the expected format.");
-        }
-    } catch (e) {
-        console.error("Failed to parse JSON response from OpenRouter for image generation:", jsonText);
-        throw new Error("Failed to get a valid image from OpenRouter model.");
-    }
+    // The BFF should already return a data URL, so we can return it directly
+    return response;
 };
 
 export const generateViralIdeasWithOpenRouter = async (
@@ -747,12 +599,14 @@ Keywords: ${trend.keywords.join(', ')}
     const openRouterPrompt = `${prompt}
 
 You MUST respond with a single, valid JSON array, containing 5 idea objects. Do not add any text or explanation before or after the JSON object. The root of your response must be an array, like this: [ { "title": ... }, ... ]`;
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: openRouterPrompt }],
-        response_format: { "type": "json_object" },
-    });
-    const jsonText = parseOpenRouterResponse(response);
+    
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [{ role: 'user', content: openRouterPrompt }],
+        { "type": "json_object" }
+    );
+    
+    const jsonText = response;
     
     if (!jsonText) {
         throw new Error("Received an empty response from OpenRouter for viral ideas.");
@@ -832,12 +686,17 @@ All content MUST be generated from the perspective of the following KOL/KOC.
     Language: ${language}.
     You MUST respond with a single, valid JSON object.
     `;
-    const pillarResponse = await openrouterFetch({
+    
+    const pillarResponse = await generateContentWithOpenRouterBff(
         model, 
-        messages: [{ role: 'system', content: affiliateContentKit }, { role: 'user', content: pillarPrompt }],
-        response_format: { "type": "json_object" },
-    });
-    const rawPillar = sanitizeAndParseJson(parseOpenRouterResponse(pillarResponse));
+        [
+            { role: 'system', content: affiliateContentKit }, 
+            { role: 'user', content: pillarPrompt }
+        ],
+        { "type": "json_object" }
+    );
+    
+    const rawPillar = sanitizeAndParseJson(pillarResponse);
     const pillarPost = normalizePillarContent(rawPillar);
 
     // 2. Generate Repurposed Content
@@ -885,13 +744,17 @@ All content MUST be generated from the perspective of the following KOL/KOC.
     - Do NOT respond with just a single post object.
     - The root of your response MUST be an object with a "posts" key.
     `;
-    const repurposedResponse = await openrouterFetch({
-        model, 
-        messages: [{ role: 'system', content: affiliateContentKit }, { role: 'user', content: repurposedPrompt }],
-        response_format: { "type": "json_object" },
-    });
     
-    const rawRepurposed = sanitizeAndParseJson(parseOpenRouterResponse(repurposedResponse));
+    const repurposedResponse = await generateContentWithOpenRouterBff(
+        model, 
+        [
+            { role: 'system', content: affiliateContentKit }, 
+            { role: 'user', content: repurposedPrompt }
+        ],
+        { "type": "json_object" }
+    );
+    
+    const rawRepurposed = sanitizeAndParseJson(repurposedResponse);
     let repurposedPosts: Omit<MediaPlanPost, 'id'|'status'>[] = normalizeArrayResponse(rawRepurposed, 'post');
 
     // Normalize hashtags for each repurposed post
@@ -1004,13 +867,13 @@ Make sure each idea is distinct and highlights different aspects of the product.
 
 You MUST respond with a single, valid JSON array containing 5 idea objects. Do not add any text or explanation before or after the JSON array.`;
     
-    const response = await openrouterFetch({
-        model: model,
-        messages: [{ role: 'user', content: openRouterPrompt }],
-        response_format: { "type": "json_object" },
-    });
+    const response = await generateContentWithOpenRouterBff(
+        model,
+        [{ role: 'user', content: openRouterPrompt }],
+        { "type": "json_object" }
+    );
     
-    const jsonText = parseOpenRouterResponse(response);
+    const jsonText = response;
     if (!jsonText) throw new Error("Received empty response from OpenRouter for product-based ideas.");
     
     // Log the raw response for debugging

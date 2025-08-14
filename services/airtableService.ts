@@ -244,21 +244,62 @@ const specificSchemasEnsured = new Set<string>();
 
 // --- API HELPERS (Unchanged) ---
 export const airtableFetch = async (url: string, options: RequestInit) => {
-    const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
-    if (!personalAccessToken) {
-        throw new Error("Airtable Personal Access Token is not configured in the environment (AIRTABLE_PAT).");
+    // Extract path from URL (everything after /v0/)
+    const pathMatch = url.match(/https:\/\/api\.airtable\.com\/v0\/(.+)/);
+    if (!pathMatch) {
+        throw new Error("Invalid Airtable URL format");
     }
-    const headers = {
-        'Authorization': `Bearer ${personalAccessToken}`,
-        'Content-Type': 'application/json',
-        ...options.headers
-    };
-    const response = await fetch(url, { ...options, headers });
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Airtable API error: ${response.status} ${response.statusText} - ${errorText}`);
+    
+    const path = pathMatch[1];
+    
+    try {
+        // Try to use BFF for secure Airtable requests
+        const { airtableRequestWithBff } = await import('./bffService');
+        return await airtableRequestWithBff(options.method || 'GET', path, options.body ? JSON.parse(options.body as string) : undefined, options.headers as Record<string, string>);
+    } catch (error) {
+        console.warn("BFF Airtable request failed, falling back to direct API call:", error);
+        // Fallback to direct API call if BFF fails
+        const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
+        if (!personalAccessToken) {
+            throw new Error("Airtable Personal Access Token is not configured in the environment (AIRTABLE_PAT).");
+        }
+        const headers = {
+            'Authorization': `Bearer ${personalAccessToken}`,
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Airtable API error: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        return response.json();
     }
-    return response.json();
+};
+
+// --- ID MAPPING HELPERS ---
+// Map table names to their custom ID field names
+const TABLE_ID_FIELDS: Record<string, string> = {
+    [BRANDS_TABLE_NAME]: 'brand_id',
+    [LOGO_CONCEPTS_TABLE_NAME]: 'logo_id',
+    [BRAND_VALUES_TABLE_NAME]: 'value_id',
+    [KEY_MESSAGES_TABLE_NAME]: 'message_id',
+    [MEDIA_PLANS_TABLE_NAME]: 'plan_id',
+    [POSTS_TABLE_NAME]: 'post_id',
+    [AFFILIATE_PRODUCTS_TABLE_NAME]: 'link_id',
+    [PERSONAS_TABLE_NAME]: 'persona_id',
+    [TRENDS_TABLE_NAME]: 'trend_id',
+    [IDEAS_TABLE_NAME]: 'idea_id',
+    [SOCIAL_ACCOUNTS_TABLE_NAME]: 'account_id',
+    [AI_SERVICES_TABLE_NAME]: 'service_id',
+    [AI_MODELS_TABLE_NAME]: 'model_id',
+    [ADMIN_SETTINGS_TABLE_NAME]: 'setting_id',
+    [BRAND_SETTINGS_TABLE_NAME]: 'brand_settings_id',
+};
+
+// Get the custom ID field name for a table
+const getIdFieldName = (tableName: string): string => {
+    return TABLE_ID_FIELDS[tableName] || 'id';
 };
 
 /**
@@ -525,6 +566,19 @@ const fetchFullRecordsByFormula = async (tableName: string, formula: string, fie
     return response.records || [];
 };
 
+// New function to fetch records by custom ID
+const fetchRecordsByCustomId = async (tableName: string, customId: string, fields?: string[]) => {
+    const idFieldName = getIdFieldName(tableName);
+    return await fetchFullRecordsByFormula(tableName, `{${idFieldName}} = '${customId}'`, fields);
+};
+
+// New function to fetch records by linked custom ID
+const fetchRecordsByLinkedCustomId = async (tableName: string, linkFieldName: string, linkedCustomId: string) => {
+    // For simplicity, we'll just use the existing fetchFullRecordsByFormula function
+    // In a more complex implementation, we might want to map the custom ID to a record ID first
+    return await fetchFullRecordsByFormula(tableName, `{${linkFieldName}} = '${linkedCustomId}'`);
+};
+
 const fetchFullRecords = async (tableName: string, fields?: string[]) => {
     return await fetchFullRecordsByFormula(tableName, '', fields);
 };
@@ -604,12 +658,14 @@ export const createOrUpdateBrandRecord = async (
     ]);
     
     let brandRecordId: string;
+    let newBrandId: string;
     
     if (brandId) {
         // Update existing brand
         const existingBrandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
         if (!existingBrandRecord) throw new Error(`Brand with ID ${brandId} not found.`);
         brandRecordId = existingBrandRecord.id;
+        newBrandId = brandId;
         
         const brandFields = {
             brand_id: brandId,
@@ -629,7 +685,7 @@ export const createOrUpdateBrandRecord = async (
         });
     } else {
         // Create new brand
-        const newBrandId = crypto.randomUUID();
+        newBrandId = crypto.randomUUID();
         const defaultSettings = await fetchAdminDefaultsFromAirtable();
         const brandFields = {
             brand_id: newBrandId,
@@ -719,7 +775,7 @@ export const createOrUpdateBrandRecord = async (
         await sendToAirtable(keyMessageRecords, KEY_MESSAGES_TABLE_NAME);
     }
     
-    return brandId;
+    return newBrandId;
 };
 
 // --- SETTINGS FUNCTIONS (Unchanged) ---
@@ -941,7 +997,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets
     const unifiedProfileAssets: UnifiedProfileAssets = JSON.parse(fields.unified_profile_json || '{}');
     
     // Load Affiliate Links
-    const linkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `{brand} = '${brandRecordId}'`);
+    const linkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `{brand} = '${brandRecord.fields.brand_id}'`);
     const affiliateLinks: AffiliateLink[] = linkRecords.map((r: any) => ({
         id: r.fields.link_id,
         productId: r.fields.product_id,
@@ -956,7 +1012,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets
     }));
     
     // Load Personas
-    const personaRecords = await fetchFullRecordsByFormula(PERSONAS_TABLE_NAME, `{brand} = '${brandRecordId}'`);
+    const personaRecords = await fetchFullRecordsByFormula(PERSONAS_TABLE_NAME, `{brand} = '${brandRecord.fields.brand_id}'`);
     const personas: Persona[] = personaRecords.map((r: any) => ({
         id: r.fields.persona_id,
         nickName: r.fields.nick_name,
@@ -970,7 +1026,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets
     }));
     
     // Load Trends and Ideas
-    const trendRecords = await fetchFullRecordsByFormula(TRENDS_TABLE_NAME, `{brand} = '${brandRecordId}'`);
+    const trendRecords = await fetchFullRecordsByFormula(TRENDS_TABLE_NAME, `{brand} = '${brandRecord.fields.brand_id}'`);
     // console.log("DEBUG: Loaded trend records count:", trendRecords.length);
     // console.log("DEBUG: First trend record sample:", trendRecords[0]?.fields);
     
@@ -1076,19 +1132,33 @@ const genericSaver = async <T extends { id: string }>(items: T[], brandId: strin
 };
 
 export const saveAffiliateLinks = async (links: AffiliateLink[], brandId: string) => {
-    await genericSaver(links, brandId, AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', (link, brandRecordId) => ({
-        link_id: link.id,
-        product_id: link.productId,
-        product_name: link.productName,
-        price: link.price,
-        sales_volume: link.salesVolume,
-        provider_name: link.providerName,
-        commission_rate: link.commissionRate / 100,
-        commission_value: link.commissionValue,
-        product_link: link.productLink,
-        promotion_link: link.promotionLink,
-        brand: [brandRecordId]
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) throw new Error(`Brand with ID ${brandId} not found for saving to ${tableName}.`);
+    const brandRecordId = brandRecord.id;
+    
+    const recordsToUpsert = await Promise.all(links.map(async link => {
+        const fields = {
+            link_id: link.id,
+            product_id: link.productId,
+            product_name: link.productName,
+            price: link.price,
+            sales_volume: link.salesVolume,
+            provider_name: link.providerName,
+            commission_rate: link.commissionRate / 100,
+            commission_value: link.commissionValue,
+            product_link: link.productLink,
+            promotion_link: link.promotionLink,
+            brand: [brandRecordId]
+        };
+        const existingRecord = await findRecordByField(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', link.id);
+        return existingRecord ? { id: existingRecord.id, fields } : { fields };
     }));
+    
+    const toCreate = recordsToUpsert.filter(r => !r.id);
+    const toPatch = recordsToUpsert.filter(r => r.id);
+    
+    if (toCreate.length > 0) await sendToAirtable(toCreate, AFFILIATE_PRODUCTS_TABLE_NAME);
+    if (toPatch.length > 0) await patchAirtableRecords(AFFILIATE_PRODUCTS_TABLE_NAME, toPatch);
 };
 
 export const deleteAffiliateLink = async (linkId: string, brandId: string) => {
@@ -1120,7 +1190,6 @@ export const savePersona = async (persona: Persona, brandId: string) => {
         personaAirtableRecord = (await patchAirtableRecords(PERSONAS_TABLE_NAME, [{ id: existingPersonaRecord.id, fields: personaFields }]))[0];
     } else {
         personaAirtableRecord = (await sendToAirtable([{ fields: personaFields }], PERSONAS_TABLE_NAME))[0];
-        // No need to link back to the brand since we query by brand ID directly
     }
     const personaRecordId = personaAirtableRecord.id;
     
@@ -1310,6 +1379,12 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
     
     for (const week of group.plan) {
         for (const post of week.posts) {
+            // Map promoted product custom IDs to record IDs
+            const promotedProductRecordIds = post.promotedProductIds ? await Promise.all(post.promotedProductIds.map(async (id) => {
+                const productRecord = await findRecordByField(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', id);
+                return productRecord ? productRecord.id : null;
+            })).then(ids => ids.filter(Boolean)) : [];
+            
             const postFields = {
                 post_id: post.id,
                 title: post.title,
@@ -1337,11 +1412,7 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
                 is_pillar: post.isPillar,
                 brand: [brandRecordId],
                 // Note: Not setting media_plan here, we'll set it in a separate update
-                promoted_products: post.promotedProductIds ? await Promise.all(post.promotedProductIds.map(async (id) => {
-                    const productRecord = await findRecordByField(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', id);
-                    return productRecord ? productRecord.id : null;
-                })).then(ids => ids.filter(Boolean)) : [],
-
+                promoted_products: promotedProductRecordIds,
             };
             
             // Remove undefined fields
@@ -1400,6 +1471,9 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
 };
 
 export const syncAssetMedia = async (imageUrls: Record<string, string>, brandId: string, assets: GeneratedAssets) => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) throw new Error(`Brand with ID ${brandId} not found for syncing assets.`);
+    
     // Sync logo concepts
     const logoConceptRecords = await fetchFullRecordsByFormula(LOGO_CONCEPTS_TABLE_NAME, `{brand} = '${brandId}'`);
     const logoConceptMap = new Map(logoConceptRecords.map(r => [r.fields.logo_id, r.id]));
@@ -1417,22 +1491,19 @@ export const syncAssetMedia = async (imageUrls: Record<string, string>, brandId:
     }
     
     // Sync unified profile assets
-    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
-    if (brandRecord) {
-        const unifiedProfileUpdates: Record<string, string> = {};
-        if (assets.unifiedProfileAssets.profilePictureImageKey && imageUrls[assets.unifiedProfileAssets.profilePictureImageKey]) {
-            unifiedProfileUpdates.profile_picture_image_url = imageUrls[assets.unifiedProfileAssets.profilePictureImageKey];
-        }
-        if (assets.unifiedProfileAssets.coverPhotoImageKey && imageUrls[assets.unifiedProfileAssets.coverPhotoImageKey]) {
-            unifiedProfileUpdates.cover_photo_image_url = imageUrls[assets.unifiedProfileAssets.coverPhotoImageKey];
-        }
-        
-        if (Object.keys(unifiedProfileUpdates).length > 0) {
-            await patchAirtableRecords(BRANDS_TABLE_NAME, [{
-                id: brandRecord.id,
-                fields: unifiedProfileUpdates
-            }]);
-        }
+    const unifiedProfileUpdates: Record<string, string> = {};
+    if (assets.unifiedProfileAssets.profilePictureImageKey && imageUrls[assets.unifiedProfileAssets.profilePictureImageKey]) {
+        unifiedProfileUpdates.profile_picture_image_url = imageUrls[assets.unifiedProfileAssets.profilePictureImageKey];
+    }
+    if (assets.unifiedProfileAssets.coverPhotoImageKey && imageUrls[assets.unifiedProfileAssets.coverPhotoImageKey]) {
+        unifiedProfileUpdates.cover_photo_image_url = imageUrls[assets.unifiedProfileAssets.coverPhotoImageKey];
+    }
+    
+    if (Object.keys(unifiedProfileUpdates).length > 0) {
+        await patchAirtableRecords(BRANDS_TABLE_NAME, [{
+            id: brandRecord.id,
+            fields: unifiedProfileUpdates
+        }]);
     }
 };
 
@@ -1461,7 +1532,7 @@ export const fetchAffiliateLinksForBrand = async (brandId: string): Promise<Affi
     const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
     if (!brandRecord) return [];
     
-    const linkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `{brand} = '${brandRecordId}'`);
+    const linkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `{brand} = '${brandId}'`);
     return linkRecords.map((r: any) => ({
         id: r.fields.link_id,
         productId: r.fields.product_id,
@@ -1532,7 +1603,7 @@ export const saveAIModel = async (model: { id: string; name: string; provider: s
         AI_MODELS_TABLE_NAME
     ]);
     
-    // First, verify the service exists
+    // First, verify the service exists and get its record ID
     const serviceRecord = await findRecordByField(AI_SERVICES_TABLE_NAME, 'service_id', serviceId);
     if (!serviceRecord) {
         throw new Error(`Service with ID ${serviceId} not found for saving AI model.`);
@@ -1823,6 +1894,7 @@ export const saveIdeas = async (ideas: Idea[]) => {
         }
     }
     
+    // Map the trend custom ID to record ID for linking (assuming all ideas belong to the same trend)
     const trendRecord = await findRecordByField(TRENDS_TABLE_NAME, 'trend_id', ideas[0].trendId);
     if (!trendRecord) {
         console.warn(`Could not find parent trend with ID ${ideas[0]?.trendId}. Ideas will be saved without being linked.`);
@@ -1836,7 +1908,7 @@ export const saveIdeas = async (ideas: Idea[]) => {
             description: idea.description,
             target_audience: idea.targetAudience,
             product_id: idea.productId, // Include the product ID if it exists
-            trend: trendRecordId ? [trendRecordId] : undefined,
+            trend: trendRecordId ? [trendRecordId] : undefined, // Use record ID for linking
         }
     }));
     
