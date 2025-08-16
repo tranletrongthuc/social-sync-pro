@@ -637,7 +637,13 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                     }}
                     onAcceptSuggestion={(productId) => {
                         if(viewingPost) {
-                           props.onAcceptSuggestion(viewingPost, productId);
+                            const updatedPost = {
+                                ...viewingPost.post,
+                                promotedProductIds: [...(viewingPost.post.promotedProductIds || []), productId],
+                            };
+                            const updatedInfo = { ...viewingPost, post: updatedPost };
+                            setViewingPost(updatedInfo);
+                            props.onUpdatePost(updatedInfo);
                         }
                     }}
                     onRunKhongMinhForPost={() => {

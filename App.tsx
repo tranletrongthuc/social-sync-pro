@@ -1842,7 +1842,7 @@ const App: React.FC = () => {
         }
         setAnalyzingPostIds(prev => new Set(prev).add(postInfo.post.id));
         try {
-            const suggestions = await suggestProductsForPost(postInfo.post, generatedAssets.affiliateLinks, 3);
+            const suggestions = await suggestProductsForPost(postInfo.post, generatedAssets.affiliateLinks, 2);
             setKhongMinhSuggestions(prev => ({ ...prev, [postInfo.post.id]: suggestions }));
         } catch (err) {
             console.error("KhongMinh suggestion failed:", err);

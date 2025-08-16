@@ -633,6 +633,13 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets
         commissionValue: r.fields.commission_value,
         productLink: r.fields.product_link,
         promotionLink: r.fields.promotion_link,
+        product_description: r.fields.product_description,
+        features: r.fields.features ? r.fields.features.split(',').map((f: string) => f.trim()) : [],
+        use_cases: r.fields.use_cases ? r.fields.use_cases.split(',').map((u: string) => u.trim()) : [],
+        customer_reviews: r.fields.customer_reviews,
+        product_rating: r.fields.product_rating,
+        product_avatar: r.fields.product_avatar,
+        product_image_links: r.fields.product_image_links ? r.fields.product_image_links.split('\n') : [],
     }));
     
     const personaRecords = await fetchFullRecordsByFormula(PERSONAS_TABLE_NAME, `{brand} = '${brandId}'`);
@@ -666,7 +673,7 @@ export const loadProjectFromAirtable = async (brandId: string): Promise<{ assets
     
     const ideas: Idea[] = ideaRecords.map((r: any) => ({
         id: r.fields.idea_id,
-        trendId: r.fields.trend_id,
+        trendId: r.fields.trend[0],
         title: r.fields.title,
         description: r.fields.description,
         targetAudience: r.fields.target_audience,
@@ -710,6 +717,10 @@ export const loadIdeasForTrend = async (trendId: string, brandId: string): Promi
 };
 
 export const saveAffiliateLinks = async (links: AffiliateLink[], brandId: string) => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) {
+        throw new Error(`Brand with ID ${brandId} not found.`);
+    }
     const recordsToCreate = links.map(link => ({
         fields: {
             link_id: link.id,
@@ -722,7 +733,7 @@ export const saveAffiliateLinks = async (links: AffiliateLink[], brandId: string
             commission_value: link.commissionValue,
             product_link: link.productLink,
             promotion_link: link.promotionLink,
-            brand_id: [brandId],
+            brand: [brandRecord.id],
         }
     }));
 
@@ -739,6 +750,11 @@ export const deleteAffiliateLink = async (linkId: string, brandId: string) => {
 };
 
 export const savePersona = async (persona: Persona, brandId: string) => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) {
+        throw new Error(`Brand with ID ${brandId} not found.`);
+    }
+
     const personaFields = {
         persona_id: persona.id,
         nick_name: persona.nickName,
@@ -747,14 +763,16 @@ export const savePersona = async (persona: Persona, brandId: string) => {
         outfit_description: persona.outfitDescription,
         avatar_image_key: persona.avatarImageKey,
         avatar_image_url: persona.avatarImageUrl,
-        brand_id: [brandId]
+        brand: [brandRecord.id]
     };
 
     const existingPersonaRecord = await findRecordByField(PERSONAS_TABLE_NAME, 'persona_id', persona.id);
 
     if (existingPersonaRecord) {
+        console.log(`Updating existing persona record with ID ${existingPersonaRecord.id}`);
         await patchAirtableRecords(PERSONAS_TABLE_NAME, [{ id: existingPersonaRecord.id, fields: personaFields }]);
     } else {
+        console.log(`Creating new persona record`);
         await sendToAirtable([{ fields: personaFields }], PERSONAS_TABLE_NAME);
     }
 };
@@ -777,11 +795,15 @@ export const assignPersonaToPlanInAirtable = async (planId: string, personaId: s
     const planRecord = await findRecordByField(MEDIA_PLANS_TABLE_NAME, 'plan_id', planId);
     if (!planRecord) throw new Error("Plan not found in Airtable to assign persona.");
 
-    const fieldsToUpdate: { persona_id?: string[] } = {};
+    const fieldsToUpdate: { persona?: string[] } = {};
     if (personaId) {
-        fieldsToUpdate.persona_id = [personaId];
+        const personaRecord = await findRecordByField(PERSONAS_TABLE_NAME, 'persona_id', personaId);
+        if (!personaRecord) {
+            throw new Error(`Persona with ID ${personaId} not found.`);
+        }
+        fieldsToUpdate.persona = [personaRecord.id];
     } else {
-        fieldsToUpdate.persona_id = [];
+        fieldsToUpdate.persona = [];
     }
     
     await patchAirtableRecords(MEDIA_PLANS_TABLE_NAME, [{ id: planRecord.id, fields: fieldsToUpdate }]);
@@ -798,6 +820,19 @@ export const updateMediaPlanPostInAirtable = async (post: MediaPlanPost, brandId
     if (!postRecord) {
         console.warn(`Could not find post with ID ${post.id} in Airtable to update.`);
         return;
+    }
+
+    let promotedProductRecordIds: string[] = [];
+    if (post.promotedProductIds && post.promotedProductIds.length > 0) {
+        // Convert UUIDs to Airtable record IDs for the relationship field
+        const formula = `OR(${post.promotedProductIds.map(id => `{link_id} = '${id}'`).join(',')})`;
+        const productRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, formula, ['link_id']);
+        promotedProductRecordIds = productRecords.map(r => r.id);
+        
+        // Make sure all provided IDs were found
+        if (productRecords.length !== post.promotedProductIds.length) {
+            console.warn(`Mismatch in promoted product IDs. Expected ${post.promotedProductIds.length}, found ${productRecords.length}`);
+        }
     }
     
     const fieldsToUpdate: Record<string, any> = {
@@ -824,6 +859,7 @@ export const updateMediaPlanPostInAirtable = async (post: MediaPlanPost, brandId
         auto_comment: post.autoComment,
         status: mapPostStatusToAirtable(post.status),
         is_pillar: post.isPillar,
+        promoted_products: promotedProductRecordIds.length > 0 ? promotedProductRecordIds : [],
     };
     
     Object.keys(fieldsToUpdate).forEach(key => fieldsToUpdate[key] === undefined && delete fieldsToUpdate[key]);
@@ -832,22 +868,29 @@ export const updateMediaPlanPostInAirtable = async (post: MediaPlanPost, brandId
 };
 
 export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Record<string, string>, brandId: string) => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) {
+        throw new Error(`Brand with ID ${brandId} not found.`);
+    }
     const planFields = {
         plan_id: group.id,
         name: group.name,
         prompt: group.prompt,
         source: group.source,
         product_images_json: JSON.stringify(group.productImages || []),
-        brand_id: [brandId],
-        persona_id: group.personaId ? [group.personaId] : [],
+        brand: [brandRecord.id],
+        persona: group.personaId ? [group.personaId] : [],
     };
 
     const existingPlanRecord = await findRecordByField(MEDIA_PLANS_TABLE_NAME, 'plan_id', group.id);
+    let planRecordId;
 
     if (existingPlanRecord) {
         await patchAirtableRecords(MEDIA_PLANS_TABLE_NAME, [{ id: existingPlanRecord.id, fields: planFields }]);
+        planRecordId = existingPlanRecord.id;
     } else {
-        await sendToAirtable([{ fields: planFields }], MEDIA_PLANS_TABLE_NAME);
+        const newPlanRecords = await sendToAirtable([{ fields: planFields }], MEDIA_PLANS_TABLE_NAME);
+        planRecordId = newPlanRecords[0].id;
     }
 
     const postsToUpsert = [];
@@ -878,10 +921,23 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
                 auto_comment: post.autoComment,
                 status: mapPostStatusToAirtable(post.status),
                 is_pillar: post.isPillar,
-                brand_id: [brandId],
-                plan_id: [group.id],
-                promoted_products: post.promotedProductIds,
+                brand: [brandRecord.id],
+                media_plan: [planRecordId],
+                promoted_products: [], // Will be set after we get the record IDs
             };
+            
+            // Convert UUIDs to Airtable record IDs for the relationship field
+            if (post.promotedProductIds && post.promotedProductIds.length > 0) {
+                const formula = `OR(${post.promotedProductIds.map(id => `{link_id} = '${id}'`).join(',')})`;
+                const productRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, formula, ['link_id']);
+                const promotedProductRecordIds = productRecords.map(r => r.id);
+                postFields.promoted_products = promotedProductRecordIds;
+                
+                // Make sure all provided IDs were found
+                if (productRecords.length !== post.promotedProductIds.length) {
+                    console.warn(`Mismatch in promoted product IDs for new post. Expected ${post.promotedProductIds.length}, found ${productRecords.length}`);
+                }
+            }
             
             Object.keys(postFields).forEach(key => postFields[key] === undefined && delete postFields[key]);
             postsToUpsert.push({ fields: postFields });
@@ -951,7 +1007,11 @@ export const bulkUpdatePostSchedules = async (updates: { postId: string; schedul
 };
 
 export const fetchAffiliateLinksForBrand = async (brandId: string): Promise<AffiliateLink[]> => {
-    const linkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `{brand} = '${brandId}'`);
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) {
+        throw new Error(`Brand with ID ${brandId} not found.`);
+    }
+    const linkRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, `{brand} = '${brandRecord.id}'`);
     return linkRecords.map((r: any) => ({
         id: r.fields.link_id,
         productId: r.fields.product_id,
@@ -963,6 +1023,13 @@ export const fetchAffiliateLinksForBrand = async (brandId: string): Promise<Affi
         commissionValue: r.fields.commission_value,
         productLink: r.fields.product_link,
         promotionLink: r.fields.promotion_link,
+        product_description: r.fields.product_description,
+        features: r.fields.features ? r.fields.features.split(',').map((f: string) => f.trim()) : [],
+        use_cases: r.fields.use_cases ? r.fields.use_cases.split(',').map((u: string) => u.trim()) : [],
+        customer_reviews: r.fields.customer_reviews,
+        product_rating: r.fields.product_rating,
+        product_avatar: r.fields.product_avatar,
+        product_image_links: r.fields.product_image_links ? r.fields.product_image_links.split('\n') : [],
     }));
 };
 
@@ -1081,6 +1148,10 @@ export const loadAIServices = async (): Promise<AIService[]> => {
 };
 
 export const listMediaPlanGroupsForBrand = async (brandId: string): Promise<{id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[]; personaId?: string;}> => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) {
+        throw new Error(`Brand with ID ${brandId} not found.`);
+    }
     await ensureSpecificTablesAndFieldsExist([MEDIA_PLANS_TABLE_NAME, PERSONAS_TABLE_NAME]);
     const planRecords = await fetchFullRecordsByFormula(MEDIA_PLANS_TABLE_NAME, `{brand} = '${brandId}'`);
     
@@ -1091,12 +1162,16 @@ export const listMediaPlanGroupsForBrand = async (brandId: string): Promise<{id:
             prompt: record.fields.prompt,
             source: record.fields.source,
             productImages: record.fields.product_images_json ? JSON.parse(record.fields.product_images_json) : [],
-            personaId: record.fields.persona_id ? record.fields.persona_id[0] : undefined,
+            personaId: record.fields.persona ? record.fields.persona[0] : undefined,
         }
     });
 };
 
 export const loadMediaPlan = async (planId: string): Promise<{ plan: MediaPlan; imageUrls: Record<string, string>; videoUrls: Record<string, string>; }> => {
+    const planRecord = await findRecordByField(MEDIA_PLANS_TABLE_NAME, 'plan_id', planId);
+    if (!planRecord) {
+        throw new Error(`Plan with ID ${planId} not found.`);
+    }
     const postRecords = await fetchFullRecordsByFormula(POSTS_TABLE_NAME, `{media_plan} = '${planId}'`);
     
     const imageUrls: Record<string, string> = {};
@@ -1144,6 +1219,42 @@ export const loadMediaPlan = async (planId: string): Promise<{ plan: MediaPlan; 
         weeks.get(weekNum)!.posts.push(post);
     });
     
+    // Convert Airtable record IDs to UUIDs for all posts
+    const allPromotedProductIds = Array.from(weeks.values())
+        .flatMap(week => week.posts)
+        .flatMap(post => post.promotedProductIds || [])
+        .filter(id => id.startsWith('rec'));
+        
+    if (allPromotedProductIds.length > 0) {
+        try {
+            // Create a formula to find records by their Airtable record IDs
+            const recordIdFormula = `OR(${[...new Set(allPromotedProductIds)].map(id => `RECORD_ID() = '${id}'`).join(',')})`;
+            const records = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, recordIdFormula, ['link_id']);
+            
+            // Create a map of record ID to link_id
+            const recordIdToLinkId = new Map(records.map(r => [r.id, r.fields.link_id]));
+            
+            // Update all posts with converted IDs
+            for (const week of weeks.values()) {
+                for (const post of week.posts) {
+                    if (post.promotedProductIds) {
+                        post.promotedProductIds = post.promotedProductIds.map(id => {
+                            if (id.startsWith('rec') && recordIdToLinkId.has(id)) {
+                                // Convert Airtable record ID to UUID
+                                return recordIdToLinkId.get(id)!;
+                            }
+                            // Keep UUIDs as-is
+                            return id;
+                        });
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to convert Airtable record IDs to UUIDs:', error);
+            // Continue with original IDs to avoid breaking the functionality
+        }
+    }
+    
     const finalPlan: MediaPlan = Array.from(weeks.entries())
         .sort((a, b) => a[0] - b[0])
         .map(([weekNum, weekData]) => ({
@@ -1171,6 +1282,10 @@ export const bulkPatchPosts = async (updates: { postId: string; fields: Record<s
 };
 
 export const saveTrend = async (trend: Trend, brandId: string) => {
+    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecord) {
+        throw new Error(`Brand with ID ${brandId} not found.`);
+    }
     const trendFields = {
         trend_id: trend.id,
         industry: trend.industry,
@@ -1179,7 +1294,7 @@ export const saveTrend = async (trend: Trend, brandId: string) => {
         links_json: JSON.stringify(trend.links),
         notes: trend.notes,
         created_at: trend.createdAt,
-        brand_id: [brandId]
+        brand: [brandRecord.id]
     };
     
     const existingRecord = await findRecordByField(TRENDS_TABLE_NAME, 'trend_id', trend.id);
@@ -1198,30 +1313,31 @@ export const deleteTrendFromAirtable = async (trendId: string) => {
 export const saveIdeas = async (ideas: Idea[]) => {
     if (ideas.length === 0) return;
 
-    for (let i = 0; i < ideas.length; i++) {
-        const idea = ideas[i];
+    for (const idea of ideas) {
         if (!idea.id || !idea.title || !idea.description || !idea.targetAudience) {
-            console.error("Invalid idea structure at index", i, ":", idea);
-            throw new Error(`Idea at index ${i} is missing required fields for Airtable save. ID: ${!!idea.id}, Title: ${!!idea.title}, Description: ${!!idea.description}, TargetAudience: ${!!idea.targetAudience}`);
+            console.error("Invalid idea structure:", idea);
+            throw new Error(`Idea is missing required fields for Airtable save. ID: ${!!idea.id}, Title: ${!!idea.title}, Description: ${!!idea.description}, TargetAudience: ${!!idea.targetAudience}`);
         }
-    }
-
-    const recordsToCreate = ideas.map(idea => ({
-        fields: {
-            idea_id: idea.id,
-            title: idea.title,
-            description: idea.description,
-            target_audience: idea.targetAudience,
-            product_id: idea.productId,
-            trend_id: [idea.trendId],
+        const trendRecord = await findRecordByField(TRENDS_TABLE_NAME, 'trend_id', idea.trendId);
+        if (!trendRecord) {
+            throw new Error(`Trend with ID ${idea.trendId} not found.`);
         }
-    }));
-
-    try {
-        await sendToAirtable(recordsToCreate, IDEAS_TABLE_NAME);
-    } catch (error) {
-        console.error("Failed to save ideas to Airtable:", error);
-        throw new Error(`Failed to save ideas to Airtable: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const recordsToCreate = {
+            fields: {
+                idea_id: idea.id,
+                title: idea.title,
+                description: idea.description,
+                target_audience: idea.targetAudience,
+                product_id: idea.productId,
+                trend: [trendRecord.id],
+            }
+        };
+        try {
+            await sendToAirtable([recordsToCreate], IDEAS_TABLE_NAME);
+        } catch (error) {
+            console.error("Failed to save ideas to Airtable:", error);
+            throw new Error(`Failed to save ideas to Airtable: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
     }
 };
 

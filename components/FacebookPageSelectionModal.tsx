@@ -12,7 +12,7 @@ interface FacebookPageSelectionModalProps {
 }
 
 const FacebookPageSelectionModal: React.FC<FacebookPageSelectionModalProps> = ({ isOpen, pages, onSelectPage, onClose, language, onRetryConnect }) => {
-    console.log("FacebookPageSelectionModal isOpen:", isOpen);
+    //  console.log("FacebookPageSelectionModal isOpen:", isOpen);
     if (!isOpen) return null;
 
     const T = {

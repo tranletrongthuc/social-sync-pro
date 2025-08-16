@@ -4,6 +4,7 @@ import { Button, Input, TextArea, HoverCopyWrapper } from './ui';
 import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
 
+
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
     Facebook: FacebookIcon,
@@ -449,9 +450,21 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
         }
     };
     
-    const acceptedProducts = props.affiliateLinks.filter(link => (post.promotedProductIds || []).includes(link.id));
-    const suggestedProducts = props.khongMinhSuggestions[post.id] || [];
-    const hasPromotedProducts = (post.promotedProductIds || []).length > 0;
+    // Match promoted products with affiliate links
+    // Handle both cases: IDs might be UUIDs or Airtable record IDs (starting with "rec")
+    const acceptedProducts = props.affiliateLinks.filter(link => 
+        (editedPost.promotedProductIds || []).some(id => {
+            // Direct match (both are UUIDs)
+            if (id.trim() === link.id.trim()) {
+                return true;
+            }
+            // If the promoted ID looks like an Airtable record ID, we might need to handle it differently
+            // But since we've fixed the saving logic, this should be rare
+            return false;
+        })
+    );
+    const suggestedProducts = (props.khongMinhSuggestions[post.id] || []).filter(s => !(editedPost.promotedProductIds || []).includes(s.id));
+    const hasPromotedProducts = (editedPost.promotedProductIds || []).length > 0;
     
     const hasMediaPath = editedPost.mediaPrompt || editedPost.script || (editedPost.imageKey && props.generatedImages[editedPost.imageKey]) || (editedPost.videoKey && props.generatedVideos[editedPost.videoKey]);
 
@@ -679,7 +692,13 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 acceptedProducts={acceptedProducts}
                                 suggestedProducts={suggestedProducts}
                                 affiliateLinksCount={props.affiliateLinks.length}
-                                onAccept={(productId) => props.onAcceptSuggestion(productId)}
+                                onAccept={(productId) => {
+                                    if (!editedPost.promotedProductIds?.includes(productId)) {
+                                        const updatedPost = { ...editedPost, promotedProductIds: [...(editedPost.promotedProductIds || []), productId] };
+                                        setEditedPost(updatedPost);
+                                        props.onUpdatePost({ ...postInfo, post: updatedPost });
+                                    }
+                                }}
                                 onRunAnalysis={() => props.onRunKhongMinhForPost()}
                             />
                         )}

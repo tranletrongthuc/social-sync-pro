@@ -56,6 +56,13 @@ const KhongMinhSuggestion: React.FC<KhongMinhSuggestionProps> = ({ acceptedProdu
     const hasSuggestions = suggestedProducts && suggestedProducts.length > 0;
     const currentSuggestion = hasSuggestions ? suggestedProducts[currentIndex] : null;
 
+    // Handle accepting a product
+    const handleAccept = (productId: string) => {
+        onAccept(productId);
+        // When a product is accepted, the suggestedProducts array will be filtered in the parent component
+        // The currentIndex will be automatically adjusted by the useEffect if it becomes out of bounds
+    };
+
     return (
         <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
             <h5 className="font-bold text-sm text-gray-800 flex items-center gap-2">
@@ -119,12 +126,12 @@ const KhongMinhSuggestion: React.FC<KhongMinhSuggestionProps> = ({ acceptedProdu
                          <a href={currentSuggestion.productLink} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-blue-700 hover:underline flex items-center gap-1">
                             {texts.viewProduct}
                         </a>
-                        <Button onClick={() => onAccept(currentSuggestion.id)} className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-700">{texts.accept}</Button>
+                        <Button onClick={() => handleAccept(currentSuggestion.id)} className="text-xs px-3 py-1 bg-blue-600 hover:bg-blue-700">{texts.accept}</Button>
                     </div>
                 </div>
             )}
 
-            {!isAnalyzing && !hasSuggestions && acceptedProducts.length < 2 && affiliateLinksCount > acceptedProducts.length && (
+            {!isAnalyzing && !hasSuggestions && acceptedProducts.length === 0 && affiliateLinksCount > 0 && (
                 <div className="mt-2">
                     <Button
                         variant="secondary"

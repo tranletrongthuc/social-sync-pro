@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Settings } from '../types';
 import { Button, Input, TextArea, Select } from './ui';
@@ -173,7 +172,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
       }
     };
 
-    loadAllData();
+    if (isOpen) {
+      loadAllData();
+    }
   }, [isOpen, brandId]); // Depend on isOpen and brandId
 
   const texts = (T as any)[settings?.language || 'English'] || T['English'];
