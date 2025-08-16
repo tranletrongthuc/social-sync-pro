@@ -5,7 +5,7 @@ const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const https = require('https');
 const selfsigned = require('selfsigned');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const FormData = require('form-data');
 
 // dotenv.config();
@@ -46,7 +46,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-console.log('Gemini API key:', process.env.GEMINI_API_KEY);
+// console.log('Gemini API key:', process.env.GEMINI_API_KEY);
 
 app.get('/', (req, res) => {
   res.send('SocialSync Pro BFF is running!');
@@ -65,12 +65,32 @@ app.post('/api/gemini/generate', async (req, res) => {
     }
     console.log(`Model: ${model}`);
 
-    const geminiModel = genAI.getGenerativeModel({ model: model });
+    // Separate systemInstruction from generationConfig
+    const generationConfig = { ...config };
+    const systemInstruction = generationConfig?.systemInstruction;
+    if (systemInstruction) {
+      delete generationConfig.systemInstruction;
+    }
+
+    const modelConfig = { model: model };
+    if (systemInstruction) {
+      modelConfig.systemInstruction = systemInstruction;
+    }
+
+    const geminiModel = genAI.getGenerativeModel(modelConfig);
     console.log('Got generative model. Calling generateContent...');
 
     // Using the full configuration if provided
+    const generateContentRequest = {
+      contents: [{ parts: [{ text: JSON.stringify(contents) }] }]
+    };
+    
+    if (Object.keys(generationConfig).length > 0) {
+      generateContentRequest.generationConfig = generationConfig;
+    }
+
     const result = config 
-      ? await geminiModel.generateContent({ contents: [{ parts: [{ text: JSON.stringify(contents) }] }], generationConfig: config })
+      ? await geminiModel.generateContent(generateContentRequest)
       : await geminiModel.generateContent(JSON.stringify(contents));
     
     console.log('--- generateContent call SUCCEEDED ---');
@@ -96,10 +116,22 @@ app.post('/api/gemini/generate-image', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: model and prompt' });
     }
 
-    const geminiModel = genAI.getGenerativeModel({ model });
+    // Separate systemInstruction from generationConfig
+    const generationConfig = { ...config };
+    const systemInstruction = generationConfig?.systemInstruction;
+    if (systemInstruction) {
+      delete generationConfig.systemInstruction;
+    }
+
+    const modelConfig = { model: model };
+    if (systemInstruction) {
+      modelConfig.systemInstruction = systemInstruction;
+    }
+
+    const geminiModel = genAI.getGenerativeModel(modelConfig);
     console.log('Generating image with Gemini...');
 
-    const result = await geminiModel.generateImages({ prompt, config });
+    const result = await geminiModel.generateImages({ prompt, config: generationConfig });
     
     console.log('--- generateImages call SUCCEEDED ---');
     
@@ -256,11 +288,7 @@ app.post('/api/openrouter/generate-image', async (req, res) => {
 app.post('/api/cloudinary/upload', async (req, res) => {
   console.log('--- Received request for /api/cloudinary/upload ---');
   try {
-    const { media, cloudName, uploadPreset } = req.body;
-
-    if (!cloudName || !uploadPreset) {
-      return res.status(400).json({ error: 'Missing Cloudinary configuration: cloudName and uploadPreset required' });
-    }
+    const { media } = req.body;
 
     if (!media || typeof media !== 'object') {
       return res.status(400).json({ error: 'Missing or invalid media data' });
@@ -278,7 +306,9 @@ app.post('/api/cloudinary/upload', async (req, res) => {
       try {
         const isVideo = url.startsWith('data:video');
         const resourceType = isVideo ? 'video' : 'image';
-        const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+        const uploadUrl = `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
+        
+        console.log(uploadUrl)
 
         // Convert data URL to buffer
         const dataUrlParts = url.split(',');
@@ -300,7 +330,7 @@ app.post('/api/cloudinary/upload', async (req, res) => {
           filename: `${key}.${mimeType.split('/')[1] || 'jpg'}`,
           contentType: mimeType
         });
-        formData.append('upload_preset', uploadPreset);
+        formData.append('upload_preset', process.env.CLOUDINARY_UPLOAD_PRESET);
         formData.append('public_id', key);
 
         const response = await fetch(uploadUrl, {
@@ -395,7 +425,7 @@ app.post('/api/facebook/publish', async (req, res) => {
 
 // Airtable API Proxy Endpoint
 app.post('/api/airtable/request', async (req, res) => {
-  console.log('--- Received request for /api/airtable/request ---');
+  // console.log('--- Received request for /api/airtable/request ---');
   try {
     const { method = 'GET', path, body, headers = {} } = req.body;
     const { AIRTABLE_PAT, AIRTABLE_BASE_ID } = process.env;
@@ -408,7 +438,20 @@ app.post('/api/airtable/request', async (req, res) => {
       return res.status(400).json({ error: 'Missing path for Airtable request' });
     }
 
-    const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${path}`;
+    // Construct the full URL
+    // Handle different types of paths:
+    // 1. Meta operations like "meta/bases/tables" should become "meta/bases/${AIRTABLE_BASE_ID}/tables"
+    // 2. Table operations like "Brands" should become "${AIRTABLE_BASE_ID}/Brands"
+    let fullPath;
+    if (path.startsWith('meta/bases/')) {
+      // Meta operation - insert the base ID after "meta/bases/"
+      fullPath = path.replace('meta/bases/', `meta/bases/${AIRTABLE_BASE_ID}/`);
+    } else {
+      // Regular table operation - prepend the base ID
+      fullPath = `${AIRTABLE_BASE_ID}/${path}`;
+    }
+    
+    const url = `https://api.airtable.com/v0/${fullPath}`;
     
     const airtableHeaders = {
       'Authorization': `Bearer ${AIRTABLE_PAT}`,
@@ -433,12 +476,636 @@ app.post('/api/airtable/request', async (req, res) => {
     }
 
     res.json(responseData);
-    console.log('--- Airtable response sent to client ---');
+    // console.log('--- Airtable response sent to client ---');
 
   } catch (error) {
     console.error('--- CRASH in /api/airtable/request ---');
     console.error('Error object:', error);
     res.status(500).json({ error: `Failed to communicate with Airtable: ${error.message}` });
+  }
+});
+
+// --- BFF Airtable Service Endpoints ---
+
+// Helper function to make Airtable requests
+const makeAirtableRequest = async (method, path, body = null) => {
+  const { AIRTABLE_PAT, AIRTABLE_BASE_ID } = process.env;
+
+  if (!AIRTABLE_PAT || !AIRTABLE_BASE_ID) {
+    throw new Error('Airtable credentials not configured on server');
+  }
+
+  const url = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${path}`;
+  
+  const airtableHeaders = {
+    'Authorization': `Bearer ${AIRTABLE_PAT}`,
+    'Content-Type': 'application/json'
+  };
+
+  const fetchOptions = { method, headers: airtableHeaders };
+  
+  if (body && (method === 'POST' || method === 'PATCH' || method === 'PUT')) {
+    fetchOptions.body = JSON.stringify(body);
+  }
+
+  const response = await fetch(url, fetchOptions);
+  const responseData = await response.json();
+
+  if (!response.ok) {
+    throw new Error(`Airtable API error: ${response.status} ${response.statusText} - ${JSON.stringify(responseData)}`);
+  }
+
+  return responseData;
+};
+
+// Check Airtable credentials
+app.get('/api/airtable/check-credentials', async (req, res) => {
+  console.log('--- Received request for /api/airtable/check-credentials ---');
+  try {
+    const { AIRTABLE_PAT, AIRTABLE_BASE_ID } = process.env;
+    
+    if (!AIRTABLE_PAT || !AIRTABLE_BASE_ID) {
+      return res.json({ valid: false });
+    }
+    
+    // Perform a simple, low-cost request to validate credentials
+    await makeAirtableRequest('GET', `meta/bases/${AIRTABLE_BASE_ID}/tables`);
+    res.json({ valid: true });
+  } catch (error) {
+    console.error('Airtable credential check failed:', error);
+    res.json({ valid: false });
+  }
+});
+
+// List brands
+app.get('/api/airtable/list-brands', async (req, res) => {
+  console.log('--- Received request for /api/airtable/list-brands ---');
+  try {
+    const { AIRTABLE_BASE_ID } = process.env;
+    if (!AIRTABLE_BASE_ID) {
+      throw new Error('Airtable Base ID not configured on server');
+    }
+    
+    const BRANDS_TABLE_NAME = 'Brands';
+    const response = await makeAirtableRequest('GET', BRANDS_TABLE_NAME);
+    
+    const brands = response.records.map(record => ({
+      id: record.fields.brand_id,
+      name: record.fields.name
+    }));
+    
+    res.json({ brands });
+    console.log('--- Brands list sent to client ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/list-brands ---');
+    console.error('Error object:', error);
+    
+    // If the table doesn't exist, return an empty array
+    if (error.message && error.message.includes('NOT_FOUND')) {
+      console.warn("Brands table not found in Airtable. Returning empty list.");
+      return res.json({ brands: [] });
+    }
+    
+    res.status(500).json({ error: `Failed to fetch brands from Airtable: ${error.message}` });
+  }
+});
+
+// Create or update brand record
+app.post('/api/airtable/create-or-update-brand', async (req, res) => {
+  console.log('--- Received request for /api/airtable/create-or-update-brand ---');
+  try {
+    const { brandInfo, colorPalette, fontRecommendations, unifiedProfile, brandId } = req.body;
+    
+    // Implementation would go here - for now, we'll just proxy to the existing airtable/request endpoint
+    const response = await makeAirtableRequest('POST', 'Brands', {
+      records: [{
+        fields: {
+          brand_id: brandId,
+          name: brandInfo.brandName,
+          mission: brandInfo.mission,
+          usp: brandInfo.usp,
+          target_audience: brandInfo.targetAudience,
+          personality: brandInfo.personality,
+          color_palette_json: JSON.stringify(colorPalette),
+          font_recs_json: JSON.stringify(fontRecommendations),
+          unified_profile_json: JSON.stringify(unifiedProfile)
+        }
+      }]
+    });
+    
+    res.json({ brandId: response.records[0].fields.brand_id });
+    console.log('--- Brand record response sent to client ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/create-or-update-brand ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to create or update brand record: ${error.message}` });
+  }
+});
+
+// Save affiliate links
+app.post('/api/airtable/save-affiliate-links', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-affiliate-links ---');
+  try {
+    const { links, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Affiliate links saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-affiliate-links ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save affiliate links: ${error.message}` });
+  }
+});
+
+// Delete affiliate link
+app.post('/api/airtable/delete-affiliate-link', async (req, res) => {
+  console.log('--- Received request for /api/airtable/delete-affiliate-link ---');
+  try {
+    const { linkId, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Affiliate link deleted ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/delete-affiliate-link ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to delete affiliate link: ${error.message}` });
+  }
+});
+
+// Save persona
+app.post('/api/airtable/save-persona', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-persona ---');
+  try {
+    const { persona, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Persona saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-persona ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save persona: ${error.message}` });
+  }
+});
+
+// Delete persona
+app.post('/api/airtable/delete-persona', async (req, res) => {
+  console.log('--- Received request for /api/airtable/delete-persona ---');
+  try {
+    const { personaId, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Persona deleted ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/delete-persona ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to delete persona: ${error.message}` });
+  }
+});
+
+// Assign persona to plan
+app.post('/api/airtable/assign-persona-to-plan', async (req, res) => {
+  console.log('--- Received request for /api/airtable/assign-persona-to-plan ---');
+  try {
+    const { planId, personaId, updatedPosts, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Persona assigned to plan ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/assign-persona-to-plan ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to assign persona to plan: ${error.message}` });
+  }
+});
+
+// Update media plan post
+app.post('/api/airtable/update-media-plan-post', async (req, res) => {
+  console.log('--- Received request for /api/airtable/update-media-plan-post ---');
+  try {
+    const { post, brandId, imageUrl, videoUrl } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Media plan post updated ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/update-media-plan-post ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to update media plan post: ${error.message}` });
+  }
+});
+
+// Save media plan group
+app.post('/api/airtable/save-media-plan-group', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-media-plan-group ---');
+  try {
+    const { group, imageUrls, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Media plan group saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-media-plan-group ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save media plan group: ${error.message}` });
+  }
+});
+
+// Sync asset media
+app.post('/api/airtable/sync-asset-media', async (req, res) => {
+  console.log('--- Received request for /api/airtable/sync-asset-media ---');
+  try {
+    const { imageUrls, brandId, assets } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Asset media synced ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/sync-asset-media ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to sync asset media: ${error.message}` });
+  }
+});
+
+// Bulk update post schedules
+app.post('/api/airtable/bulk-update-post-schedules', async (req, res) => {
+  console.log('--- Received request for /api/airtable/bulk-update-post-schedules ---');
+  try {
+    const { updates, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Post schedules updated ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/bulk-update-post-schedules ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to update post schedules: ${error.message}` });
+  }
+});
+
+// Fetch affiliate links
+app.post('/api/airtable/fetch-affiliate-links', async (req, res) => {
+  console.log('--- Received request for /api/airtable/fetch-affiliate-links ---');
+  try {
+    const { brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ links: [] });
+    console.log('--- Affiliate links fetched ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/fetch-affiliate-links ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to fetch affiliate links: ${error.message}` });
+  }
+});
+
+// Save settings
+app.post('/api/airtable/save-settings', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-settings ---');
+  try {
+    const { settings, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Settings saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-settings ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save settings: ${error.message}` });
+  }
+});
+
+// Fetch settings
+app.post('/api/airtable/fetch-settings', async (req, res) => {
+  console.log('--- Received request for /api/airtable/fetch-settings ---');
+  try {
+    const { brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ settings: null });
+    console.log('--- Settings fetched ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/fetch-settings ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to fetch settings: ${error.message}` });
+  }
+});
+
+// Load project
+app.post('/api/airtable/load-project', async (req, res) => {
+  console.log('--- Received request for /api/airtable/load-project ---');
+  try {
+    const { brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ 
+      assets: null, 
+      generatedImages: {}, 
+      generatedVideos: {}, 
+      brandId 
+    });
+    console.log('--- Project loaded ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/load-project ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to load project: ${error.message}` });
+  }
+});
+
+// List media plan groups
+app.post('/api/airtable/list-media-plan-groups', async (req, res) => {
+  console.log('--- Received request for /api/airtable/list-media-plan-groups ---');
+  try {
+    const { brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ groups: [] });
+    console.log('--- Media plan groups listed ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/list-media-plan-groups ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to list media plan groups: ${error.message}` });
+  }
+});
+
+// Load media plan
+app.post('/api/airtable/load-media-plan', async (req, res) => {
+  console.log('--- Received request for /api/airtable/load-media-plan ---');
+  try {
+    const { planId, brandFoundation, language } = req.body;
+    
+    // Implementation would go here
+    res.json({ 
+      plan: null, 
+      imageUrls: {}, 
+      videoUrls: {} 
+    });
+    console.log('--- Media plan loaded ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/load-media-plan ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to load media plan: ${error.message}` });
+  }
+});
+
+// Bulk patch posts
+app.post('/api/airtable/bulk-patch-posts', async (req, res) => {
+  console.log('--- Received request for /api/airtable/bulk-patch-posts ---');
+  try {
+    const { updates, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Posts patched ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/bulk-patch-posts ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to patch posts: ${error.message}` });
+  }
+});
+
+// Save trend
+app.post('/api/airtable/save-trend', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-trend ---');
+  try {
+    const { trend, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Trend saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-trend ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save trend: ${error.message}` });
+  }
+});
+
+// Delete trend
+app.post('/api/airtable/delete-trend', async (req, res) => {
+  console.log('--- Received request for /api/airtable/delete-trend ---');
+  try {
+    const { trendId, brandId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Trend deleted ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/delete-trend ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to delete trend: ${error.message}` });
+  }
+});
+
+// Save ideas
+app.post('/api/airtable/save-ideas', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-ideas ---');
+  try {
+    const { ideas } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Ideas saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-ideas ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save ideas: ${error.message}` });
+  }
+});
+
+// Fetch admin defaults
+app.get('/api/airtable/fetch-admin-defaults', async (req, res) => {
+  console.log('--- Received request for /api/airtable/fetch-admin-defaults ---');
+  try {
+    // Implementation would go here
+    res.json({ settings: null });
+    console.log('--- Admin defaults fetched ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/fetch-admin-defaults ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to fetch admin defaults: ${error.message}` });
+  }
+});
+
+// Save admin defaults
+app.post('/api/airtable/save-admin-defaults', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-admin-defaults ---');
+  try {
+    const { settings } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Admin defaults saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-admin-defaults ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save admin defaults: ${error.message}` });
+  }
+});
+
+// Load AI services
+app.get('/api/airtable/load-ai-services', async (req, res) => {
+  console.log('--- Received request for /api/airtable/load-ai-services ---');
+  try {
+    // Implementation would go here
+    res.json({ services: [] });
+    console.log('--- AI services loaded ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/load-ai-services ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to load AI services: ${error.message}` });
+  }
+});
+
+// Save AI service
+app.post('/api/airtable/save-ai-service', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-ai-service ---');
+  try {
+    const { service } = req.body;
+    
+    // Implementation would go here
+    res.json({ service: null });
+    console.log('--- AI service saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-ai-service ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save AI service: ${error.message}` });
+  }
+});
+
+// Delete AI service
+app.post('/api/airtable/delete-ai-service', async (req, res) => {
+  console.log('--- Received request for /api/airtable/delete-ai-service ---');
+  try {
+    const { serviceId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- AI service deleted ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/delete-ai-service ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to delete AI service: ${error.message}` });
+  }
+});
+
+// Save AI model
+app.post('/api/airtable/save-ai-model', async (req, res) => {
+  console.log('--- Received request for /api/airtable/save-ai-model ---');
+  try {
+    const { model } = req.body;
+    
+    // Implementation would go here
+    res.json({ model: null });
+    console.log('--- AI model saved ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/save-ai-model ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to save AI model: ${error.message}` });
+  }
+});
+
+// Delete AI model
+app.post('/api/airtable/delete-ai-model', async (req, res) => {
+  console.log('--- Received request for /api/airtable/delete-ai-model ---');
+  try {
+    const { modelId } = req.body;
+    
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- AI model deleted ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/delete-ai-model ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to delete AI model: ${error.message}` });
+  }
+});
+
+// Ensure tables exist
+app.post('/api/airtable/ensure-tables', async (req, res) => {
+  console.log('--- Received request for /api/airtable/ensure-tables ---');
+  try {
+    // Implementation would go here
+    res.json({ success: true });
+    console.log('--- Tables ensured ---');
+  } catch (error) {
+    console.error('--- CRASH in /api/airtable/ensure-tables ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to ensure tables: ${error.message}` });
+  }
+});
+
+// Cloudflare Image Generation Endpoint
+app.post('/api/cloudflare/generate-image', async (req, res) => {
+  console.log('--- Received request for /api/cloudflare/generate-image ---');
+  try {
+    const { prompt, model, image } = req.body;
+    const { CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN } = process.env;
+
+    if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
+      return res.status(500).json({ error: 'Cloudflare credentials not configured on server' });
+    }
+
+    if (!model || !prompt) {
+      return res.status(400).json({ error: 'Missing required fields: model and prompt' });
+    }
+    const apiUrl = `https://ai-proxy.tk100mil.workers.dev/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/ai/run/${encodeURIComponent(model)}`;
+
+    // The payload can be either text-to-image or image-to-image
+    const inputs = {
+      prompt,
+      negative_prompt: 'text, typography, writing, letters, words, text overlay'
+    };
+
+    // Add image if provided (for image-to-image tasks)
+    if (image && Array.isArray(image)) {
+      inputs.image = image;
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(inputs)
+    });
+
+    if (!response.ok) {
+      let errorText;
+      try {
+        const errorData = await response.json();
+        errorText = errorData.errors?.map((e) => e.message).join(', ') || JSON.stringify(errorData);
+      } catch (e) {
+        errorText = await response.text();
+      }
+      throw new Error(`Cloudflare AI Error: ${errorText}`);
+    }
+
+    const blob = await response.blob();
+    // Check if the successful response is actually an image
+    if (blob.type.startsWith('image/')) {
+      const buffer = await blob.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      const mimeType = blob.type;
+      const dataUrl = `data:${mimeType};base64,${base64}`;
+      
+      res.json({ image: dataUrl });
+    } else {
+      // Handle cases where the server returns OK but sends an error in a non-image format (e.g., JSON)
+      const responseText = await blob.text();
+      console.error("Cloudflare AI returned a non-image success response:", responseText);
+      throw new Error("Cloudflare AI returned an unexpected response format.");
+    }
+
+    console.log('--- Cloudflare image response sent to client ---');
+
+  } catch (error) {
+    console.error('--- CRASH in /api/cloudflare/generate-image ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: 'Failed to generate image from Cloudflare API: ' + error.message });
   }
 });
 
@@ -450,10 +1117,55 @@ app.get('/api/health', (req, res) => {
     services: {
       gemini: !!process.env.GEMINI_API_KEY,
       openrouter: !!process.env.OPENROUTER_API_KEY,
+      cloudflare: !!(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN),
       cloudinary: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_UPLOAD_PRESET),
+      facebook: !!(process.env.FACEBOOK_APP_ID),
       airtable: !!(process.env.AIRTABLE_PAT && process.env.AIRTABLE_BASE_ID)
     }
   });
+});
+
+// Gemini Embedding Endpoint for KhongMinh service
+app.post('/api/gemini/embed', async (req, res) => {
+  console.log('--- Received request for /api/gemini/embed ---');
+  try {
+    const { texts, taskTypes } = req.body;
+    const { GEMINI_API_KEY } = process.env;
+
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'Gemini API key not configured on server' });
+    }
+
+    if (!texts || !Array.isArray(texts) || !taskTypes || !Array.isArray(taskTypes) || texts.length !== taskTypes.length) {
+      return res.status(400).json({ error: 'Invalid request: texts and taskTypes must be arrays of the same length' });
+    }
+
+    // Import the Google GenAI library
+    const { GoogleGenAI } = await import("@google/genai");
+    const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+    // Generate embeddings for all texts
+    const embeddingPromises = texts.map((text, index) => 
+      ai.models.embedContent({
+        model: "embedding-001",
+        contents: { parts: [{ text }] },
+        taskType: taskTypes[index]
+      })
+    );
+
+    const embeddingResults = await Promise.all(embeddingPromises);
+    
+    // Extract embedding values
+    const embeddings = embeddingResults.map(res => res.embeddings[0].values);
+
+    res.json({ embeddings });
+    console.log('--- Gemini embeddings response sent to client ---');
+
+  } catch (error) {
+    console.error('--- CRASH in /api/gemini/embed ---');
+    console.error('Error object:', error);
+    res.status(500).json({ error: `Failed to generate embeddings with Gemini: ${error.message}` });
+  }
 });
 
 // Error handling middleware
@@ -483,6 +1195,7 @@ https.createServer(options, app).listen(port, () => {
   console.log(`   - GET  /api/health`);
   console.log(`   - POST /api/gemini/generate`);
   console.log(`   - POST /api/gemini/generate-image`);
+  console.log(`   - POST /api/gemini/embed`);
   console.log(`   - POST /api/openrouter/generate`);
   console.log(`   - POST /api/openrouter/generate-image`);
   console.log(`   - POST /api/cloudinary/upload`);

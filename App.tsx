@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef, useReducer } from 'react';
-import JSZip from 'jszip';
 import saveAs from 'file-saver';
 import IdeaProfiler from './components/IdeaProfiler';
 import BrandProfiler from './components/BrandProfiler';
@@ -9,7 +8,6 @@ import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
 import AirtableLoadModal from './components/AirtableLoadModal';
 import SettingsModal from './components/SettingsModal';
-import IntegrationModal from './components/IntegrationModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
 import { generateImage } from './services/geminiService';
@@ -28,11 +26,7 @@ import {
     loadProjectFromAirtable,
     listMediaPlanGroupsForBrand,
     loadMediaPlan,
-    saveSettingsToAirtable,
-    fetchSettingsFromAirtable,
     syncAssetMedia,
-    ensureAllTablesExist,
-    bulkPatchPosts,
     savePersona,
     deletePersonaFromAirtable,
     saveTrend,
@@ -45,8 +39,7 @@ import {
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
 import { schedulePost as socialApiSchedulePost, directPost, SocialAccountNotConnectedError } from './services/socialApiService';
 import { getPersonaSocialAccounts } from './services/socialAccountService';
-import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, BrandFoundation, FacebookTrend, FacebookPostIdea } from './types';
-import { AirtableIcon, KhongMinhIcon } from './components/icons';
+import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, FacebookTrend, FacebookPostIdea } from './types';
 import { Button } from './components/ui';
 import { configService, AiModelConfig } from './services/configService';
 
@@ -343,18 +336,6 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
 };
 
 // Helper functions for file serialization
-const fileToBase64 = (file: File): Promise<{ name: string, type: string, data: string }> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve({
-            name: file.name,
-            type: file.type,
-            data: reader.result as string
-        });
-        reader.onerror = error => reject(error);
-    });
-};
 
 const base64ToFile = (base64Data: string, filename: string, mimeType: string): File => {
     if (!base64Data || typeof base64Data !== 'string') {
@@ -407,7 +388,7 @@ const App: React.FC = () => {
         mediaPromptSuffix: '',
         affiliateContentKit: '',
         textGenerationModel: 'gemini-1.5-flash',
-        imageGenerationModel: '@cf/stable-diffusion-xl-base-1.0'
+        imageGenerationModel: '@cf/stabilityai/stable-diffusion-xl-base-1.0'
     });
     const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig | null>(null);
     
@@ -418,7 +399,6 @@ const App: React.FC = () => {
     // Integration States
     const [isAirtableLoadModalOpen, setIsAirtableLoadModalOpen] = useState<boolean>(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-    const [isIntegrationModalOpen, setIsIntegrationModalOpen] = useState<boolean>(false);
     const [isPersonaConnectModalOpen, setIsPersonaConnectModalOpen] = useState<boolean>(false);
     const [personaToConnect, setPersonaToConnect] = useState<Persona | null>(null);
     const [platformToConnect, setPlatformToConnect] = useState<string | null>(null);
@@ -431,7 +411,6 @@ const App: React.FC = () => {
     const autoSaveTimeoutRef = useRef<number | null>(null);
 
     // Ref to store the product trend ID to select in StrategyDisplay
-    const productTrendToSelectRef = useRef<string | null>(null);
     
     // State to track the product trend to select (for passing to MainDisplay)
     const [productTrendToSelect, setProductTrendToSelect] = useState<string | null>(null);
@@ -439,12 +418,20 @@ const App: React.FC = () => {
     // Log environment variables for debugging
     useEffect(() => {
         // console.log("Environment variables at startup:", import.meta.env);
-        const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-        if (geminiApiKey) {
-            console.log("Gemini API Key is configured");
-        } else {
-            console.log("Gemini API Key is not configured or not loaded properly");
-        }
+        // Check BFF health instead of directly accessing environment variables
+        import('./services/bffService').then(({ checkBffHealth }) => {
+            checkBffHealth().then(health => {
+                if (health.services.gemini) {
+                    console.log("Gemini API Key is configured on the BFF");
+                } else {
+                    console.log("Gemini API Key is not configured on the BFF");
+                }
+            }).catch(error => {
+                console.log("Failed to check BFF health:", error);
+            });
+        }).catch(error => {
+            console.log("Failed to import BFF service:", error);
+        });
     }, []);
 
     // Set brandId in configService when it changes
@@ -532,39 +519,6 @@ const App: React.FC = () => {
     const isLoading = !!loaderContent;
     const isPerformingBulkAction = !!bulkActionStatus;
 
-    const ensureCredentials = useCallback(async (requiredServices: ('airtable' | 'cloudinary')[]) => {
-        const check = () => {
-            const hasAirtable = !!(import.meta.env.VITE_AIRTABLE_PAT && import.meta.env.VITE_AIRTABLE_BASE_ID);
-            const hasCloudinary = !!(import.meta.env.VITE_CLOUDINARY_CLOUD_NAME && import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET);
-
-            if (requiredServices.includes('airtable') && !hasAirtable) return false;
-            if (requiredServices.includes('cloudinary') && !hasCloudinary) return false;
-            return true;
-        };
-
-        if (check()) {
-            return true;
-        }
-
-        const promise = new Promise<void>((resolve) => {
-            onModalCloseRef.current = resolve;
-            if (personaToConnect && platformToConnect) {
-                setIsPersonaConnectModalOpen(true);
-            } else {
-                setIsIntegrationModalOpen(true);
-            }
-        });
-
-        await promise;
-
-        if (!check()) {
-            console.log("Credential provision was cancelled by the user.");
-            return false;
-        }
-        return true;
-    }, [personaToConnect, platformToConnect]);
-
-    const ensureAirtableCredentials = useCallback(() => ensureCredentials(['airtable']), [ensureCredentials]);
 
     const updateAutoSaveStatus = useCallback((status: 'saving' | 'saved' | 'error') => {
         setAutoSaveStatus(status);
@@ -601,11 +555,18 @@ const App: React.FC = () => {
                 console.log(`Attempting text generation with model: ${model}`);
                 
                 if (model.startsWith('gemini-') && !model.includes('free')) {
-                    const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-                    console.log(`Checking Gemini API key for model ${model}:`, geminiApiKey ? "Key exists" : "Key is missing");
-                    if (!geminiApiKey) {
-                        console.log(`Skipping ${model} because Gemini API key is not configured`);
-                        throw new Error("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
+                    // Check BFF health instead of directly accessing environment variables
+                    try {
+                        const { checkBffHealth } = await import('./services/bffService');
+                        const health = await checkBffHealth();
+                        console.log(`Checking Gemini API key for model ${model}:`, health.services.gemini ? "Key exists on BFF" : "Key is missing on BFF");
+                        if (!health.services.gemini) {
+                            console.log(`Skipping ${model} because Gemini API key is not configured on BFF`);
+                            throw new Error("Gemini API key is not configured on the BFF. Please check your server .env file and restart the BFF server.");
+                        }
+                    } catch (error) {
+                        console.log(`Failed to check BFF health for model ${model}:`, error);
+                        throw new Error("Failed to check BFF health. Please ensure the BFF server is running.");
                     }
                 }
                 
@@ -651,7 +612,7 @@ const App: React.FC = () => {
 
     const ensureAirtableProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
         const assets = assetsToSave || generatedAssets;
-        const success = await ensureCredentials(['airtable', 'cloudinary']);
+        
         if (!success) return null;
 
         if (airtableBrandId) return airtableBrandId;
@@ -688,35 +649,15 @@ const App: React.FC = () => {
         console.log("New project record created with Brand ID:", newBrandId);
         updateAutoSaveStatus('saved');
         return newBrandId;
-    }, [airtableBrandId, generatedAssets, generatedImages, updateAutoSaveStatus, ensureCredentials]);
+    }, [airtableBrandId, generatedAssets, generatedImages, updateAutoSaveStatus]);
 
     
-    const handleSetProductImages = (files: File[]) => {
+    const handleSetProductImages = () => {
         // This function is now a stub, as product images are managed locally in the wizard.
         // It could be repurposed for brand-level product images if it needed in the future.
         console.warn("handleSetProductImages is deprecated for plan-specific images.");
     };
 
-    const handleUpdateSettings = async (newSettings: Settings) => {
-        setIsSettingsModalOpen(false); 
-        
-        setIsSavingSettings(true);
-        updateAutoSaveStatus('saving');
-        setError(null);
-        try {
-            await configService.updateAppSettings(newSettings);
-            // Reload settings to ensure UI is updated
-            const updatedSettings = configService.getAppSettings();
-            setSettings(updatedSettings);
-            updateAutoSaveStatus('saved');
-        } catch (err) {
-            console.error("Failed to save settings", err);
-            setError(err instanceof Error ? err.message : "Could not save settings.");
-            updateAutoSaveStatus('error');
-        } finally {
-            setIsSavingSettings(false);
-        }
-    };
     
     const setLanguage = async (lang: string) => {
         await configService.updateAppSettings({ ...settings, language: lang });
@@ -954,11 +895,6 @@ const App: React.FC = () => {
         if (airtableBrandId && generatedAssets) {
             updateAutoSaveStatus('saving');
             try {
-                const hasCreds = await ensureCredentials(['airtable', 'cloudinary']);
-                if (!hasCreds) {
-                    setAutoSaveStatus('idle');
-                    return;
-                }
 
                 const publicUrls = await uploadMediaToCloudinary({ [newImageKey]: dataUrl });
                 const publicUrl = publicUrls[newImageKey];
@@ -986,7 +922,7 @@ const App: React.FC = () => {
                 updateAutoSaveStatus('error');
             }
         }
-    }, [generatedAssets, airtableBrandId, updateAutoSaveStatus, ensureCredentials, setError]);
+    }, [generatedAssets, airtableBrandId, updateAutoSaveStatus, setError]);
 
     const handleSetVideo = useCallback(async (dataUrl: string, key: string, postInfo: PostInfo) => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
@@ -1002,11 +938,7 @@ const App: React.FC = () => {
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
             try {
-                const hasCreds = await ensureCredentials(['airtable', 'cloudinary']);
-                if (!hasCreds) {
-                    setAutoSaveStatus('idle');
-                    return;
-                }
+            
 
                 const publicUrls = await uploadMediaToCloudinary({ [newVideoKey]: dataUrl });
                 const publicUrl = publicUrls[newVideoKey];
@@ -1023,7 +955,7 @@ const App: React.FC = () => {
                 updateAutoSaveStatus('error');
             }
         }
-    }, [airtableBrandId, updateAutoSaveStatus, ensureCredentials, setError]);
+    }, [airtableBrandId, updateAutoSaveStatus, setError]);
 
     const generateSingleImageCore = useCallback(async (mediaPrompt: string, settings: Settings, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
         let imagesToUse: File[] = [];
@@ -1076,30 +1008,25 @@ const App: React.FC = () => {
             if (airtableBrandId && dataUrl.startsWith('data:image') && generatedAssets) {
                 updateAutoSaveStatus('saving');
                 try {
-                    const hasCreds = await ensureCredentials(['airtable', 'cloudinary']);
-                    if (!hasCreds) {
-                        setAutoSaveStatus('idle');
-                        return;
-                    }
+                    // With BFF, we no longer need to check credentials on the frontend
+                    // All credential management is handled by the BFF
+                    
                     const publicUrls = await uploadMediaToCloudinary({ [newImageKey]: dataUrl });
+                    // Even if Cloudinary upload is skipped (due to missing env vars), we should still save the image locally
                     const publicUrl = publicUrls[newImageKey];
 
-                    if (publicUrl) {
-                        if (postInfo) {
-                            const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
-                            const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
-                            await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
-                        } else {
-                            const updatedAssets = assetsReducer(generatedAssets, action);
-                            if (updatedAssets) {
-                                await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
-                            }
-                        }
-                        setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
-                        updateAutoSaveStatus('saved');
+                    if (postInfo) {
+                        const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
+                        const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
+                        await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
                     } else {
-                        throw new Error("Image upload to Cloudinary failed.");
+                        const updatedAssets = assetsReducer(generatedAssets, action);
+                        if (updatedAssets) {
+                            await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
+                        }
                     }
+                    setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
+                    updateAutoSaveStatus('saved');
                 } catch (e) {
                     const message = e instanceof Error ? e.message : 'Could not save new image.';
                     console.error("Explicit image save failed:", e);
@@ -1117,7 +1044,7 @@ const App: React.FC = () => {
                 return newSet;
             });
         }
-    }, [settings, airtableBrandId, generatedAssets, updateAutoSaveStatus, ensureCredentials, generateSingleImageCore]);
+    }, [settings, airtableBrandId, generatedAssets, updateAutoSaveStatus, generateSingleImageCore]);
     
     const handleGenerateMediaPrompt = useCallback(async (postInfo: PostInfo): Promise<MediaPlanPost | null> => {
         if (!('planId' in postInfo) || !generatedAssets?.brandFoundation) return null;
@@ -1400,9 +1327,17 @@ const App: React.FC = () => {
         console.log("User configured model:", settings.textGenerationModel);
         
         if ((settings.textGenerationModel).startsWith('gemini-') && !(settings.textGenerationModel).includes('free')) {
-            const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!geminiApiKey) {
-                setError("Gemini API key is not configured or not loaded properly. Please check your .env.local file and restart the development server.");
+            // Check BFF health instead of directly accessing environment variables
+            try {
+                const { checkBffHealth } = await import('./services/bffService');
+                const health = await checkBffHealth();
+                if (!health.services.gemini) {
+                    setError("Gemini API key is not configured on the BFF. Please check your server .env file and restart the BFF server.");
+                    setLoaderContent(null);
+                    return;
+                }
+            } catch (error) {
+                setError("Failed to check BFF health. Please ensure the BFF server is running.");
                 setLoaderContent(null);
                 return;
             }
@@ -1599,7 +1534,6 @@ const App: React.FC = () => {
             setError("Cannot load plan without brand foundation.");
             return;
         }
-        const bf = currentAssets.brandFoundation;
         setLoaderContent({ title: `Loading Plan...`, steps: ["Fetching plan details..."] });
         try {
             const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId, currentAssets.brandFoundation, settings.language);
@@ -1792,11 +1726,7 @@ const App: React.FC = () => {
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
             try {
-                const hasCreds = await ensureCredentials(['airtable']);
-                if (!hasCreds) {
-                    setAutoSaveStatus('idle');
-                    return;
-                }
+                
                 const updatedState = assetsReducer(generatedAssets, { type: 'ASSIGN_PERSONA_TO_PLAN', payload: { planId, personaId } });
                 const updatedPlan = updatedState?.mediaPlans.find(p => p.id === planId);
                 if (updatedPlan) {
@@ -1811,7 +1741,7 @@ const App: React.FC = () => {
                 updateAutoSaveStatus('error');
             }
         }
-    }, [generatedAssets, airtableBrandId, updateAutoSaveStatus, ensureCredentials]);
+    }, [generatedAssets, airtableBrandId, updateAutoSaveStatus]);
 
         const handleSaveAffiliateLink = useCallback((link: AffiliateLink) => {
         dispatchAssets({ type: 'ADD_OR_UPDATE_AFFILIATE_LINK', payload: link });
@@ -2098,7 +2028,7 @@ const App: React.FC = () => {
     const handleBulkGenerateImages = createBulkActionHandler(
         "Bulk Generating Images...",
         (post) => `Generating image for "${post.title}"`,
-        (postInfo) => handleGenerateImage(postInfo.post.imagePrompt!, postInfo.post.imageKey || postInfo.post.id, '1:1', postInfo)
+        (postInfo) => handleGenerateImage(postInfo.post.mediaPrompt!, postInfo.post.imageKey || postInfo.post.id, '1:1', postInfo)
     );
 
     const handleBulkSuggestPromotions = createBulkActionHandler(
@@ -2119,14 +2049,13 @@ const App: React.FC = () => {
         updateAutoSaveStatus('saving');
         try {
             if (personaToSave.avatarImageUrl && personaToSave.avatarImageUrl.startsWith('data:') && personaToSave.avatarImageKey) {
-                const hasCreds = await ensureCredentials(['cloudinary', 'airtable']);
-                if (hasCreds) {
-                    const publicUrls = await uploadMediaToCloudinary({ [personaToSave.avatarImageKey]: personaToSave.avatarImageUrl });
-                    const publicUrl = publicUrls[personaToSave.avatarImageKey];
-                    if (publicUrl) {
-                        personaToSave.avatarImageUrl = publicUrl;
-                        setGeneratedImages(prev => ({ ...prev, [personaToSave.avatarImageKey!]: publicUrl }));
-                    }
+                
+                const publicUrls = await uploadMediaToCloudinary({ [personaToSave.avatarImageKey]: personaToSave.avatarImageUrl });
+                const publicUrl = publicUrls[personaToSave.avatarImageKey];
+                if (publicUrl) {
+                    personaToSave.avatarImageUrl = publicUrl;
+                    setGeneratedImages(prev => ({ ...prev, [personaToSave.avatarImageKey!]: publicUrl }));
+                
                 }
             }
             
@@ -2140,7 +2069,7 @@ const App: React.FC = () => {
             setError(e.message);
             updateAutoSaveStatus('error');
         }
-    }, [airtableBrandId, updateAutoSaveStatus, ensureCredentials]);
+    }, [airtableBrandId, updateAutoSaveStatus]);
 
     const handleUpdatePersona = useCallback(async (persona: Persona) => {
         dispatchAssets({ type: 'SAVE_PERSONA', payload: persona });
@@ -2175,13 +2104,7 @@ const App: React.FC = () => {
         return newImageKey;
     }, []);
 
-    const handleCloseIntegrationModal = () => {
-        setIsIntegrationModalOpen(false);
-        if (onModalCloseRef.current) {
-            onModalCloseRef.current();
-            onModalCloseRef.current = null;
-        }
-    };
+    
 
     const handleClosePersonaConnectModal = useCallback(() => {
         setIsPersonaConnectModalOpen(false);
@@ -2226,7 +2149,7 @@ const App: React.FC = () => {
             content: idea.content,
             hashtags: [],
             cta: idea.cta,
-            imagePrompt: idea.imagePrompt,
+            mediaPrompt: idea.mediaPrompt,
             status: 'draft',
         };
 
@@ -2333,19 +2256,13 @@ const App: React.FC = () => {
                         isLoading={!!loaderContent}
                         onLoadProject={handleLoadProjectFile}
                         onLoadProjectFromAirtable={handleLoadFromAirtable}
-                        onOpenIntegrations={() => setIsIntegrationModalOpen(true)}
                         language={settings.language}
                         setLanguage={setLanguage}
                         integrationsVersion={integrationsVersion}
                         areCredentialsSet={areCredentialsSet}
                     />
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-                    <IntegrationModal
-                        isOpen={isIntegrationModalOpen}
-                        onClose={handleCloseIntegrationModal}
-                        language={settings.language}
-                        onCredentialsConfigured={() => setIntegrationsVersion(v => v + 1)}
-                    />
+                    
                 </>
             );
         case 'profile':
@@ -2387,7 +2304,6 @@ const App: React.FC = () => {
                             onStartOver={handleBackToIdea}
                             autoSaveStatus={autoSaveStatus}
                             onOpenSettings={() => setIsSettingsModalOpen(true)}
-                            onOpenIntegrations={() => setIsIntegrationModalOpen(true)}
                             activeTab={activeTab}
                             setActiveTab={setActiveTab}
                             // Media Plan props
@@ -2469,19 +2385,13 @@ const App: React.FC = () => {
                             onClose={() => setIsAirtableLoadModalOpen(false)}
                             onLoadProject={handleLoadFromAirtable}
                             language={settings.language}
-                            ensureCredentials={ensureAirtableCredentials}
                         />
                         <SettingsModal
                             isOpen={isSettingsModalOpen}
                             onClose={() => setIsSettingsModalOpen(false)}
                             brandId={airtableBrandId || ''}
                         />
-                        <IntegrationModal
-                            isOpen={isIntegrationModalOpen && !isPersonaConnectModalOpen}
-                            onClose={handleCloseIntegrationModal}
-                            language={settings.language}
-                            onCredentialsConfigured={() => setIntegrationsVersion(v => v + 1)}
-                        />
+                        
 
                         <PersonaConnectModal
                             isOpen={isPersonaConnectModalOpen}

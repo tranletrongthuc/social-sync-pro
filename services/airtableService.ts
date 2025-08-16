@@ -242,39 +242,23 @@ export const ALL_TABLE_SCHEMAS = {
 let schemaEnsured = false;
 const specificSchemasEnsured = new Set<string>();
 
-// --- API HELPERS (Unchanged) ---
+// --- API HELPERS (Modified to always use BFF) ---
 export const airtableFetch = async (url: string, options: RequestInit) => {
     // Extract path from URL (everything after /v0/)
+    // But now we also handle the case where the URL is already just the path
+    let path;
     const pathMatch = url.match(/https:\/\/api\.airtable\.com\/v0\/(.+)/);
-    if (!pathMatch) {
-        throw new Error("Invalid Airtable URL format");
+    if (pathMatch) {
+        // Full URL was provided, extract the path
+        path = pathMatch[1];
+    } else {
+        // Assume url is already the path
+        path = url;
     }
     
-    const path = pathMatch[1];
-    
-    try {
-        // Try to use BFF for secure Airtable requests
-        const { airtableRequestWithBff } = await import('./bffService');
-        return await airtableRequestWithBff(options.method || 'GET', path, options.body ? JSON.parse(options.body as string) : undefined, options.headers as Record<string, string>);
-    } catch (error) {
-        console.warn("BFF Airtable request failed, falling back to direct API call:", error);
-        // Fallback to direct API call if BFF fails
-        const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
-        if (!personalAccessToken) {
-            throw new Error("Airtable Personal Access Token is not configured in the environment (AIRTABLE_PAT).");
-        }
-        const headers = {
-            'Authorization': `Bearer ${personalAccessToken}`,
-            'Content-Type': 'application/json',
-            ...options.headers
-        };
-        const response = await fetch(url, { ...options, headers });
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Airtable API error: ${response.status} ${response.statusText} - ${errorText}`);
-        }
-        return response.json();
-    }
+    // Always use BFF for secure Airtable requests
+    const { airtableRequestWithBff } = await import('./bffService');
+    return await airtableRequestWithBff(options.method || 'GET', path, options.body ? JSON.parse(options.body as string) : undefined, options.headers as Record<string, string>);
 };
 
 // --- ID MAPPING HELPERS ---
@@ -307,18 +291,15 @@ const getIdFieldName = (tableName: string): string => {
  * @param tableNames - Array of table names to ensure exist
  */
 export const ensureSpecificTablesAndFieldsExist = async (tableNames: string[]): Promise<void> => {
-    // Check if we've already ensured these specific tables
+    // Sort table names to create a consistent key for the Set
     const key = tableNames.sort().join(',');
     if (specificSchemasEnsured.has(key)) return;
     
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    if (!baseId) throw new Error("Airtable Base ID is not configured in the environment.");
-    
-    const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
-    if (!personalAccessToken) throw new Error("Airtable Personal Access Token is not configured in the environment.");
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
     
     try {
-        const tablesResponse = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        const tablesResponse = await airtableFetch(`meta/bases/tables`, {});
         let tablesResponse2 = tablesResponse; // Initialize with tablesResponse
 
         const existingTableNames = new Set(tablesResponse.tables.map((t: any) => t.name));
@@ -367,7 +348,7 @@ export const ensureSpecificTablesAndFieldsExist = async (tableNames: string[]): 
                 
                 try {
                     // Create table with all fields in one request
-                    await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {
+                    await airtableFetch(`meta/bases/tables`, {
                         method: 'POST',
                         body: JSON.stringify({ 
                             name: tableName,
@@ -382,7 +363,7 @@ export const ensureSpecificTablesAndFieldsExist = async (tableNames: string[]): 
             }
 
             // Re-fetch table list after creation attempts
-            tablesResponse2 = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+            tablesResponse2 = await airtableFetch(`meta/bases/tables`, {});
             const existingTableNames2 = new Set(tablesResponse2.tables.map((t: any) => t.name));
             
             console.log("Tables after creation attempts:", Array.from(existingTableNames2));
@@ -458,7 +439,7 @@ export const ensureSpecificTablesAndFieldsExist = async (tableNames: string[]): 
                 
                 for (const [index, chunk] of fieldChunks.entries()) {
                     try {
-                        const response = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`, {
+                        const response = await airtableFetch(`meta/bases/tables/${tableId}/fields`, {
                             method: 'POST',
                             body: JSON.stringify({ fields: chunk })
                         });
@@ -477,7 +458,7 @@ export const ensureSpecificTablesAndFieldsExist = async (tableNames: string[]): 
                         console.log("Falling back to individual field creation...");
                         for (const field of chunk) {
                             try {
-                                await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables/${tableId}/fields`, {
+                                await airtableFetch(`meta/bases/tables/${tableId}/fields`, {
                                     method: 'POST',
                                     body: JSON.stringify(field)
                                 });
@@ -524,10 +505,11 @@ export const ensureAllTablesExist = async (): Promise<void> => {
 
 
 const findRecordByField = async (tableName: string, fieldName: string, value: string) => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
     const encodedValue = encodeURIComponent(value);
-    const url = `https://api.airtable.com/v0/${baseId}/${tableName}?filterByFormula={${fieldName}}='${encodedValue}'`;
-    const response = await airtableFetch(url, {});
+    const path = `${tableName}?filterByFormula={${fieldName}}='${encodedValue}'`; // Just the path
+    const response = await airtableFetch(path, {});
     
     // Validate that we got a valid response
     if (!response || !Array.isArray(response.records)) {
@@ -546,8 +528,9 @@ const findRecordByField = async (tableName: string, fieldName: string, value: st
 };
 
 const fetchFullRecordsByFormula = async (tableName: string, formula: string, fields?: string[]) => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    let url = `https://api.airtable.com/v0/${baseId}/${tableName}`;
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
+    let path = `${tableName}`; // Just the path
     const queryParams: string[] = [];
 
     if (formula) {
@@ -559,10 +542,10 @@ const fetchFullRecordsByFormula = async (tableName: string, formula: string, fie
     }
 
     if (queryParams.length > 0) {
-        url += '?' + queryParams.join('&');
+        path += '?' + queryParams.join('&');
     }
 
-    const response = await airtableFetch(url, {});
+    const response = await airtableFetch(path, {});
     return response.records || [];
 };
 
@@ -572,20 +555,14 @@ const fetchRecordsByCustomId = async (tableName: string, customId: string, field
     return await fetchFullRecordsByFormula(tableName, `{${idFieldName}} = '${customId}'`, fields);
 };
 
-// New function to fetch records by linked custom ID
-const fetchRecordsByLinkedCustomId = async (tableName: string, linkFieldName: string, linkedCustomId: string) => {
-    // For simplicity, we'll just use the existing fetchFullRecordsByFormula function
-    // In a more complex implementation, we might want to map the custom ID to a record ID first
-    return await fetchFullRecordsByFormula(tableName, `{${linkFieldName}} = '${linkedCustomId}'`);
-};
-
 const fetchFullRecords = async (tableName: string, fields?: string[]) => {
     return await fetchFullRecordsByFormula(tableName, '', fields);
 };
 
 const sendToAirtable = async (records: { fields: Record<string, any> }[], tableName: string) => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    const url = `https://api.airtable.com/v0/${baseId}/${tableName}`;
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
+    const path = `${tableName}`; // Just the path
     
     const chunks = [];
     for (let i = 0; i < records.length; i += 10) {
@@ -594,7 +571,7 @@ const sendToAirtable = async (records: { fields: Record<string, any> }[], tableN
     
     const results = [];
     for (const chunk of chunks) {
-        const response = await airtableFetch(url, {
+        const response = await airtableFetch(path, {
             method: 'POST',
             body: JSON.stringify({ records: chunk })
         });
@@ -604,8 +581,9 @@ const sendToAirtable = async (records: { fields: Record<string, any> }[], tableN
 };
 
 const patchAirtableRecords = async (tableName: string, records: { id: string; fields: Record<string, any> }[]) => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    const url = `https://api.airtable.com/v0/${baseId}/${tableName}`;
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
+    const path = `${tableName}`; // Just the path
     
     const chunks = [];
     for (let i = 0; i < records.length; i += 10) {
@@ -614,7 +592,7 @@ const patchAirtableRecords = async (tableName: string, records: { id: string; fi
     
     const results = [];
     for (const chunk of chunks) {
-        const response = await airtableFetch(url, {
+        const response = await airtableFetch(path, {
             method: 'PATCH',
             body: JSON.stringify({ records: chunk })
         });
@@ -624,8 +602,9 @@ const patchAirtableRecords = async (tableName: string, records: { id: string; fi
 };
 
 const deleteAirtableRecords = async (tableName: string, recordIds: string[]) => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    const url = `https://api.airtable.com/v0/${baseId}/${tableName}`;
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
+    const path = `${tableName}`; // Just the path
     
     const chunks = [];
     for (let i = 0; i < recordIds.length; i += 10) {
@@ -633,8 +612,8 @@ const deleteAirtableRecords = async (tableName: string, recordIds: string[]) => 
     }
     
     for (const chunk of chunks) {
-        const deleteUrl = url + '?' + chunk.map(id => `records[]=${id}`).join('&');
-        await airtableFetch(deleteUrl, { method: 'DELETE' });
+        const deletePath = path + '?' + chunk.map(id => `records[]=${id}`).join('&');
+        await airtableFetch(deletePath, { method: 'DELETE' });
     }
 };
 
@@ -644,11 +623,8 @@ export const createOrUpdateBrandRecord = async (
     imageUrls: Record<string, string>,
     brandId: string | null
 ): Promise<string> => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    if (!baseId) throw new Error("Airtable Base ID is not configured in the environment.");
-    
-    const personalAccessToken = import.meta.env.VITE_AIRTABLE_PAT;
-    if (!personalAccessToken) throw new Error("Airtable Personal Access Token is not configured in the environment.");
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
     
     await ensureSpecificTablesAndFieldsExist([
         BRANDS_TABLE_NAME,
@@ -679,7 +655,7 @@ export const createOrUpdateBrandRecord = async (
             unified_profile_json: JSON.stringify(assets.unifiedProfileAssets),
         };
         
-        await airtableFetch(`https://api.airtable.com/v0/${baseId}/${BRANDS_TABLE_NAME}`, {
+        await airtableFetch(`${BRANDS_TABLE_NAME}`, {
             method: 'PATCH',
             body: JSON.stringify({ records: [{ id: brandRecordId, fields: brandFields }] })
         });
@@ -707,7 +683,7 @@ export const createOrUpdateBrandRecord = async (
             vision_models_json: JSON.stringify(defaultSettings.visionModels),
         };
         
-        const response = await airtableFetch(`https://api.airtable.com/v0/${baseId}/${BRANDS_TABLE_NAME}`, {
+        const response = await airtableFetch(`${BRANDS_TABLE_NAME}`, {
             method: 'POST',
             body: JSON.stringify({ records: [{ fields: brandFields }] })
         });
@@ -1936,12 +1912,12 @@ export const saveIdeas = async (ideas: Idea[]) => {
 };
 
 export const listBrandsFromAirtable = async (): Promise<{ id: string, name: string }[]> => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    if (!baseId) throw new Error("Airtable Base ID is not configured in the environment.");
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
     
     try {
-        const url = `https://api.airtable.com/v0/${baseId}/${BRANDS_TABLE_NAME}`;
-        const response = await airtableFetch(url, {});
+        const path = `${BRANDS_TABLE_NAME}`; // Just the path
+        const response = await airtableFetch(path, {});
         
         return response.records.map((record: any) => ({
             id: record.fields.brand_id,
@@ -1959,16 +1935,13 @@ export const listBrandsFromAirtable = async (): Promise<{ id: string, name: stri
 };
 
 export const checkAirtableCredentials = async (): Promise<boolean> => {
-    const pat = import.meta.env.VITE_AIRTABLE_PAT;
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    
-    if (!pat || !baseId) {
-        return false;
-    }
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
     
     try {
         // Perform a simple, low-cost request to validate credentials, like listing tables.
-        await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        // The BFF will handle the actual Airtable API call.
+        await airtableFetch(`meta/bases/tables`, {});
         return true; // If the request succeeds, credentials are valid.
     } catch (error) {
         console.error("Airtable credential check failed:", error);
@@ -1978,11 +1951,11 @@ export const checkAirtableCredentials = async (): Promise<boolean> => {
 
 // Function to list all tables in the base for debugging
 export const listAllAirtableTables = async (): Promise<any[]> => {
-    const baseId = import.meta.env.VITE_AIRTABLE_BASE_ID;
-    if (!baseId) throw new Error("Airtable Base ID is not configured in the environment.");
+    // Since we're using BFF, we don't need to check for environment variables on the frontend
+    // The BFF will handle the Airtable credentials
     
     try {
-        const response = await airtableFetch(`https://api.airtable.com/v0/meta/bases/${baseId}/tables`, {});
+        const response = await airtableFetch(`meta/bases/tables`, {});
         return response.tables || [];
     } catch (error) {
         console.error("Failed to list Airtable tables:", error);

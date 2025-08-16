@@ -8,10 +8,9 @@ interface AirtableLoadModalProps {
   onClose: () => void;
   onLoadProject: (brandId: string) => Promise<void>;
   language: string;
-  ensureCredentials: () => Promise<boolean>;
 }
 
-const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, onLoadProject, language, ensureCredentials }) => {
+const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, onLoadProject, language }) => {
   const [brands, setBrands] = useState<{id: string, name: string}[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,12 +48,6 @@ const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, 
         setIsLoading(true);
         setError(null);
         try {
-            const hasCreds = await ensureCredentials();
-            if (!hasCreds) {
-                setError(texts.envNotSetMessage);
-                setIsLoading(false);
-                return;
-            }
             
             const brandList = await listBrandsFromAirtable();
             setBrands(brandList);
@@ -68,7 +61,7 @@ const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, 
 
     fetchBrands();
 
-  }, [isOpen, ensureCredentials, language, texts.envNotSetMessage]);
+  }, [isOpen, language, texts.envNotSetMessage]);
 
 
   const handleSelectBrand = async (brand: {id: string, name: string}) => {

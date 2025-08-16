@@ -2,7 +2,7 @@
 
 
 
-import { GoogleGenAI, type ContentEmbedding, type EmbedContentResponse } from "@google/genai";
+import { generateEmbeddingsWithBff } from './bffService';
 import type { MediaPlanPost, AffiliateLink } from '../types';
 
 
@@ -43,17 +43,11 @@ export const suggestProductsForPost = async (
     availableAffiliateLinks: AffiliateLink[],
     count: number
 ): Promise<AffiliateLink[]> => {
-    if (!import.meta.env.VITE_GEMINI_API_KEY) {
-      console.warn("API_KEY not set, skipping KhongMinh suggestion.");
-      return [];
-    }
     if (!availableAffiliateLinks || availableAffiliateLinks.length === 0 || count <= 0) {
         return [];
     }
 
     try {
-        const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY });
-        
         // Workflow B, Step 2: Construct Post Text
         const postText = `${post.title} | ${post.content} | ${(post.hashtags || []).join(' ')}`;
 
@@ -63,39 +57,25 @@ export const suggestProductsForPost = async (
         );
         
         // Workflow B, Step 3: Generate Post and Product embeddings
-        const postRequest = {
-            contents: { parts: [{ text: postText }] },
-            taskType: "RETRIEVAL_QUERY" as const
-        };
-        const productRequests = productTexts.map(text => ({
-            contents: { parts: [{ text }] },
-            taskType: "RETRIEVAL_DOCUMENT" as const
-        }));
+        const allTexts = [postText, ...productTexts];
+        const allTaskTypes = [
+            "RETRIEVAL_QUERY", 
+            ...productTexts.map(() => "RETRIEVAL_DOCUMENT")
+        ];
 
-        const allRequests = [postRequest, ...productRequests];
-
-        const embeddingPromises = allRequests.map(req => 
-            ai.models.embedContent({
-                model: "embedding-001",
-                ...req
-            })
-        );
+        const embeddings = await generateEmbeddingsWithBff(allTexts, allTaskTypes);
         
-        const embeddingResults = await Promise.all(embeddingPromises);
-        
-        const embeddings: (ContentEmbedding | undefined)[] = embeddingResults.map(res => res.embeddings[0]);
-
-        if (!embeddings || embeddings.length < 2 || !embeddings[0]?.values) {
+        if (!embeddings || embeddings.length < 2) {
              console.error("Not enough embeddings returned from API.");
              return [];
         }
 
-        const postEmbedding = embeddings[0].values;
+        const postEmbedding = embeddings[0];
         const productEmbeddings = embeddings.slice(1);
 
         // Workflow B, Step 4: Perform Similarity Search
         const scoredLinks = availableAffiliateLinks.map((link, index) => {
-            const productEmbeddingValues = productEmbeddings[index]?.values;
+            const productEmbeddingValues = productEmbeddings[index];
             if (!productEmbeddingValues) {
                 return { link, similarity: -1 };
             }

@@ -4,7 +4,7 @@ import type { MediaPlanPost, AffiliateLink, BrandFoundation, Persona } from '../
 const BFF_URL = import.meta.env.VITE_BFF_URL || '';
 
 // Generic fetch helper with error handling
-const bffFetch = async (endpoint: string, options: RequestInit = {}) => {
+export const bffFetch = async (endpoint: string, options: RequestInit = {}) => {
   // Use relative path when proxying through Vite
   const url = BFF_URL ? `${BFF_URL}${endpoint}` : endpoint;
   
@@ -126,13 +126,11 @@ export const generateImageWithOpenRouterBff = async (
 
 export const uploadMediaWithBff = async (
   media: Record<string, string>,
-  cloudName: string,
-  uploadPreset: string
 ): Promise<Record<string, string>> => {
   try {
     const response = await bffFetch('/api/cloudinary/upload', {
       method: 'POST',
-      body: JSON.stringify({ media, cloudName, uploadPreset }),
+      body: JSON.stringify({ media }),
     });
     
     return response.uploadedUrls;
@@ -196,6 +194,45 @@ export const checkBffHealth = async (): Promise<{
     return await bffFetch('/api/health');
   } catch (error) {
     console.error(`Error calling BFF endpoint /api/health:`, error);
+    throw error;
+  }
+};
+
+// --- Cloudflare API Functions ---
+
+export const generateImageWithCloudflareBff = async (
+  prompt: string,
+  model: string,
+  image?: number[]
+): Promise<string> => {
+  try {
+    const response = await bffFetch('/api/cloudflare/generate-image', {
+      method: 'POST',
+      body: JSON.stringify({ prompt, model, image }),
+    });
+    
+    return response.image;
+  } catch (error) {
+    console.error(`Error calling BFF endpoint /api/cloudflare/generate-image:`, error);
+    throw error;
+  }
+};
+
+// --- Gemini Embedding Functions ---
+
+export const generateEmbeddingsWithBff = async (
+  texts: string[],
+  taskTypes: string[]
+): Promise<number[][]> => {
+  try {
+    const response = await bffFetch('/api/gemini/embed', {
+      method: 'POST',
+      body: JSON.stringify({ texts, taskTypes }),
+    });
+    
+    return response.embeddings;
+  } catch (error) {
+    console.error(`Error calling BFF endpoint /api/gemini/embed:`, error);
     throw error;
   }
 };
