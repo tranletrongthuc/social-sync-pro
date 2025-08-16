@@ -98,7 +98,6 @@ export const Header: React.FC<HeaderProps> = (props) => {
             savingProject: 'Đang lưu...',
             startOver: 'Bắt đầu lại',
             settings: 'Cài đặt',
-            integrations: 'Tích hợp',
         },
         'English': {
             brandKit: { text: 'Brand Kit', icon: <TagIcon className="h-5 w-5"/> },
@@ -110,7 +109,6 @@ export const Header: React.FC<HeaderProps> = (props) => {
             savingProject: 'Saving...',
             startOver: 'Start Over',
             settings: 'Settings',
-            integrations: 'Integrations',
         }
     }
     const currentTexts = (TABS_CONFIG as any)[props.language] || TABS_CONFIG['English'];
@@ -121,10 +119,6 @@ export const Header: React.FC<HeaderProps> = (props) => {
             <>
                 <Button onClick={props.onSaveProject} disabled={props.isSavingProject} variant="secondary" className={`${mobileClasses}`}>
                     {props.isSavingProject ? currentTexts.savingProject : currentTexts.saveProject}
-                </Button>
-                <Button onClick={props.onOpenIntegrations} variant="tertiary" className={`flex items-center gap-2 ${mobileClasses}`}>
-                    <PlugIcon className="h-5 w-5"/>
-                    <span>{currentTexts.integrations}</span>
                 </Button>
                 <Button onClick={props.onOpenSettings} variant="tertiary" className={`flex items-center gap-2 ${mobileClasses}`}>
                     <SettingsIcon className="h-5 w-5"/>

@@ -16,7 +16,7 @@ const TrendForm: React.FC<{
         topic: trend.topic || '',
         industry: trend.industry || '',
         keywords: (trend.keywords || []).join(', '),
-        links: (trend.links || []).map(l => `${l.title}: ${l.url}`).join('\n'),
+        links: (trend.links || []).map(l => `${l.title}: ${l.url}`).join(''),
         notes: trend.notes || '',
     });
 
@@ -50,6 +50,47 @@ const TrendForm: React.FC<{
     );
 };
 
+// --- IDEA LIST COMPONENT ---
+
+const IdeaCard: React.FC<{
+    idea: Idea;
+    onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
+    onOpenContentPackageWizard: (idea: Idea) => void;
+    language: string;
+}> = ({ idea, onCreatePlanFromIdea, onOpenContentPackageWizard, language }) => {
+    const T = {
+        'Việt Nam': {
+            createPlan: "Tạo Kế hoạch",
+            createPackage: "Tạo Gói Nội dung",
+            target: "Đối tượng:",
+            imagePrompt: "Prompt hình ảnh:",
+            cta: "CTA:"
+        },
+        'English': {
+            createPlan: "Create Plan",
+            createPackage: "Create Content Package",
+            target: "Target:",
+            imagePrompt: "Image Prompt:",
+            cta: "CTA:"
+        }
+    };
+    const texts = (T as any)[language] || T['English'];
+
+    return (
+        <div key={idea.id} className="bg-white p-4 rounded-lg border border-gray-200">
+            <h4 className="font-bold text-gray-900">{idea.title}</h4>
+            <p className="text-sm text-gray-600 mt-1">{idea.description}</p>
+            {idea.targetAudience && <p className="text-xs text-gray-400 mt-2">{texts.target} {idea.targetAudience}</p>}
+            {idea.mediaPrompt && <HoverCopyWrapper textToCopy={idea.mediaPrompt}><p className="text-xs text-gray-400 mt-1">{texts.imagePrompt} {idea.mediaPrompt}</p></HoverCopyWrapper>}
+            {idea.cta && <p className="text-xs text-gray-400 mt-1">{texts.cta} {idea.cta}</p>}
+            <div className="flex justify-end gap-2 mt-3">
+                <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} className="text-xs py-1 px-2">{texts.createPlan}</Button>
+                <Button variant="primary" onClick={() => onOpenContentPackageWizard(idea)} className="text-xs py-1 px-2">{texts.createPackage}</Button>
+            </div>
+        </div>
+    );
+};
+
 // --- MAIN DISPLAY COMPONENT ---
 
 interface StrategyDisplayProps {
@@ -68,10 +109,11 @@ interface StrategyDisplayProps {
     onGenerateFacebookTrends: (industry: string) => void;
     isGeneratingTrendsFromSearch: boolean;
     productTrendToSelect?: string | null; // New prop to specify which product trend to select
+    onLoadIdeasForTrend?: (trendId: string) => void; // New prop to load ideas for a trend
 }
 
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
-    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect } = props;
+    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend } = props;
     
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
@@ -81,18 +123,37 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     const [industryForSearch, setIndustryForSearch] = useState('');
 
+    // Debugging: Log the props when they change
+    useEffect(() => {
+        console.log("DEBUG: StrategyDisplay props updated", { 
+            trendsCount: trends.length, 
+            ideasCount: ideas.length,
+            productTrendToSelect 
+        });
+        console.log("DEBUG: All trends:", trends);
+        console.log("DEBUG: All ideas:", ideas);
+    }, [trends, ideas, productTrendToSelect]);
+
     useEffect(() => {
         // If a product trend to select was specified, select it
         if (productTrendToSelect && trends.length > 0) {
             const trendToSelect = trends.find(t => t.id === productTrendToSelect);
             if (trendToSelect) {
                 setSelectedTrend(trendToSelect);
+                // Load ideas for this trend if onLoadIdeasForTrend is provided
+                if (onLoadIdeasForTrend) {
+                    onLoadIdeasForTrend(trendToSelect.id);
+                }
             }
         } else if (!selectedTrend && trends.length > 0) {
             // Default behavior: select the first trend if none is selected
             setSelectedTrend(trends[0]);
+            // Load ideas for this trend if onLoadIdeasForTrend is provided
+            if (onLoadIdeasForTrend) {
+                onLoadIdeasForTrend(trends[0].id);
+            }
         }
-    }, [trends, selectedTrend, productTrendToSelect]);
+    }, [trends, selectedTrend, productTrendToSelect, onLoadIdeasForTrend]);
     
     const T = {
         'Việt Nam': {
@@ -138,7 +199,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     const handleSaveTrend = (trendData: Omit<Partial<Trend>, 'keywords' | 'links'> & { keywords?: string; links?: string }) => {
         const parsedKeywords = (trendData.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
-        const parsedLinks = (trendData.links || '').split('\n').map(line => {
+        const parsedLinks = (trendData.links || '').split('').map(line => {
             const parts = line.split(':');
             if (parts.length < 2) return null;
             const title = parts[0].trim();
@@ -171,24 +232,55 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
         }
     };
 
+    // Improved matching function to handle potential ID mismatches
     const ideasForSelectedTrend = useMemo(() => {
         if (!selectedTrend) {
-            // console.log("DEBUG: No trend selected, returning empty ideas array");
+            console.log("DEBUG: No trend selected, returning empty ideas array");
             return [];
         }
         
-        console.log("DEBUG: Filtering ideas for trend ID:", selectedTrend.id);
-        console.log("DEBUG: Total ideas available:", ideas.length);
+        console.log("DEBUG: Filtering ideas for trend:", selectedTrend);
+        console.log("DEBUG: Total ideas available:", ideas);
         
-        const filtered = ideas.filter(i => {
-            const match = i.trendId === selectedTrend.id;
-            console.log("DEBUG: Checking idea ID:", i.id, "Idea trendId:", i.trendId, "Selected trend ID:", selectedTrend.id, "Match:", match);
-            return match;
-        });
+        // Try multiple matching strategies
+        const exactMatch = ideas.filter(idea => idea.trendId === selectedTrend.id);
+        console.log("DEBUG: Exact match count:", exactMatch.length);
         
-        console.log("DEBUG: Filtered ideas count:", filtered.length);
-        return filtered;
+        if (exactMatch.length > 0) {
+            return exactMatch;
+        }
+        
+        // If no exact matches, try partial matching for product trends
+        if (selectedTrend.id.startsWith('product-')) {
+            const productId = selectedTrend.id.replace('product-', '');
+            const partialMatch = ideas.filter(idea => 
+                idea.trendId === selectedTrend.id || 
+                (idea.productId && idea.productId === productId)
+            );
+            console.log("DEBUG: Product partial match count:", partialMatch.length);
+            return partialMatch;
+        }
+        
+        return [];
     }, [ideas, selectedTrend]);
+
+    // Debug component to show trend/idea matching information
+    const DebugInfo = () => (
+        <div className="mt-4 p-3 bg-yellow-50 rounded text-xs text-gray-600">
+            <p className="font-bold">Debug Info:</p>
+            <p>Selected Trend ID: {selectedTrend?.id || 'None'}</p>
+            <p>Total Trends: {trends.length}</p>
+            <p>Total Ideas: {ideas.length}</p>
+            {selectedTrend && (
+                <>
+                    <p>Exact matches: {ideas.filter(i => i.trendId === selectedTrend.id).length}</p>
+                    {selectedTrend.id.startsWith('product-') && (
+                        <p>Product ID matches: {ideas.filter(i => i.productId === selectedTrend.id.replace('product-', '')).length}</p>
+                    )}
+                </>
+            )}
+        </div>
+    );
 
     return (
         <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
@@ -225,7 +317,11 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                                     onClick={() => { 
                                         console.log("DEBUG: Trend clicked, setting selected trend to:", trend);
                                         setSelectedTrend(trend); 
-                                        setEditingTrend(null); 
+                                        setEditingTrend(null);
+                                        // Load ideas for this trend if onLoadIdeasForTrend is provided
+                                        if (onLoadIdeasForTrend) {
+                                            onLoadIdeasForTrend(trend.id);
+                                        }
                                     }} 
                                     className={`w-full text-left p-3 rounded-md transition-colors ${selectedTrend?.id === trend.id && !editingTrend ? 'bg-green-100' : 'hover:bg-gray-100'}`}
                                 >
@@ -288,25 +384,31 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                                 </div>
                             )}
                             <div className="space-y-4">
-                                {ideasForSelectedTrend.map(idea => (
-                                    <div key={idea.id} className="bg-white p-4 rounded-lg border border-gray-200">
-                                        <h4 className="font-bold text-gray-900">{idea.title}</h4>
-                                        <p className="text-sm text-gray-600 mt-1">{idea.description}</p>
-                                        {idea.targetAudience && <p className="text-xs text-gray-400 mt-2">Target: {idea.targetAudience}</p>}
-                                        {idea.mediaPrompt && <HoverCopyWrapper textToCopy={idea.mediaPrompt}><p className="text-xs text-gray-400 mt-1">Image Prompt: {idea.mediaPrompt}</p></HoverCopyWrapper>}
-                                        {idea.cta && <p className="text-xs text-gray-400 mt-1">CTA: {idea.cta}</p>}
-                                        <div className="flex justify-end gap-2 mt-3">
-                                            <Button variant="secondary" onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} className="text-xs py-1 px-2">{texts.createPlan}</Button>
-                                            <Button variant="primary" onClick={() => setWizardIdea(idea)} className="text-xs py-1 px-2">{texts.createPackage}</Button>
-                                        </div>
+                                {ideasForSelectedTrend.length > 0 ? (
+                                    ideasForSelectedTrend.map(idea => (
+                                        <IdeaCard 
+                                            key={idea.id} 
+                                            idea={idea} 
+                                            onCreatePlanFromIdea={onCreatePlanFromIdea} 
+                                            onOpenContentPackageWizard={setWizardIdea} 
+                                            language={language} 
+                                        />
+                                    ))
+                                ) : (
+                                    <div className="text-center py-10 text-gray-500">
+                                        <LightBulbIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                                        <p className="font-medium">No ideas generated yet</p>
+                                        <p className="text-sm mt-1">Click "Generate Ideas" to create content ideas for this trend</p>
+                                        <DebugInfo />
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </div>
                     ) : (
                         <div className="text-center py-20 text-gray-400 h-full flex flex-col items-center justify-center">
                             <LightBulbIcon className="h-16 w-16 text-gray-300 mb-4" />
                             <p className="text-lg font-semibold">{texts.noTrendSelected}</p>
+                            <DebugInfo />
                         </div>
                     )}
                 </main>

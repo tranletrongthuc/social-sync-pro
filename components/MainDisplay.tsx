@@ -84,6 +84,7 @@ interface MainDisplayProps {
   onGenerateTrendsFromSearch: (industry: string) => void;
   isGeneratingTrendsFromSearch: boolean;
   onUpdatePersona: (persona: Persona) => void;
+  onLoadIdeasForTrend?: (trendId: string) => void; // New prop
 }
 
 const MainDisplay: React.FC<MainDisplayProps> = (props) => {
@@ -162,6 +163,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
         isGeneratingTrendsFromSearch,
         onPublishPost,
         onUpdatePersona,
+        onLoadIdeasForTrend,
     } = props;
     
     const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -274,6 +276,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         onGenerateFacebookTrends={onGenerateTrendsFromSearch}
                         isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
                         productTrendToSelect={productTrendToSelect} // Pass the product trend to select
+                        onLoadIdeasForTrend={onLoadIdeasForTrend} // Pass the new prop
                     />
                 )}
                 {activeTab === 'affiliateVault' && (

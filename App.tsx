@@ -35,6 +35,7 @@ import {
     assignPersonaToPlanInAirtable,
     checkAirtableCredentials,
     fetchAffiliateLinksForBrand,
+    loadIdeasForTrend,
 } from './services/airtableService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
 import { schedulePost as socialApiSchedulePost, directPost, SocialAccountNotConnectedError } from './services/socialApiService';
@@ -68,6 +69,7 @@ type AssetsAction =
   | { type: 'SAVE_TREND'; payload: Trend }
   | { type: 'DELETE_TREND'; payload: string }
   | { type: 'ADD_IDEAS'; payload: Idea[] }
+  | { type: 'SET_IDEAS'; payload: Idea[] }
   | { type: 'ADD_CONTENT_PACKAGE'; payload: MediaPlanGroup }
   | { type: 'ASSIGN_PERSONA_TO_PLAN'; payload: { planId: string; personaId: string | null; } }
   | { type: 'SET_FACEBOOK_TRENDS'; payload: FacebookTrend[] }
@@ -317,9 +319,10 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
             return newState;
         }
 
-        case 'SET_FACEBOOK_TRENDS': {
+        case 'SET_IDEAS': {
             if (!state) return state;
-            return { ...state, facebookTrends: action.payload };
+            console.log("DEBUG: SET_IDEAS called with:", action.payload);
+            return { ...state, ideas: action.payload };
         }
 
         case 'ADD_FACEBOOK_POST_IDEAS': {
@@ -1743,7 +1746,23 @@ const App: React.FC = () => {
         }
     }, [generatedAssets, airtableBrandId, updateAutoSaveStatus]);
 
-        const handleSaveAffiliateLink = useCallback((link: AffiliateLink) => {
+    const handleLoadIdeasForTrend = useCallback(async (trendId: string) => {
+        if (!airtableBrandId) {
+            console.warn("DEBUG: No airtableBrandId, cannot load ideas for trend");
+            return;
+        }
+        
+        console.log("DEBUG: Loading ideas for trend ID:", trendId);
+        try {
+            const ideas = await loadIdeasForTrend(trendId, airtableBrandId);
+            console.log("DEBUG: Loaded ideas:", ideas);
+            dispatchAssets({ type: 'ADD_IDEAS', payload: ideas });
+        } catch (error) {
+            console.error("DEBUG: Failed to load ideas for trend:", error);
+        }
+    }, [airtableBrandId]);
+
+    const handleSaveAffiliateLink = useCallback((link: AffiliateLink) => {
         dispatchAssets({ type: 'ADD_OR_UPDATE_AFFILIATE_LINK', payload: link });
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
@@ -2358,9 +2377,10 @@ const App: React.FC = () => {
                             onGenerateContentPackage={handleGenerateContentPackage}
                             onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
                             productTrendToSelect={productTrendToSelect}
-                    brandFoundation={generatedAssets?.brandFoundation}
+                            brandFoundation={generatedAssets?.brandFoundation}
                             onGenerateFacebookTrends={handleGenerateFacebookTrends}
                             isGeneratingTrendsFromSearch={isGeneratingFacebookTrends}
+                            onLoadIdeasForTrend={handleLoadIdeasForTrend} // Add this line
                             // Video
                             generatedVideos={generatedVideos}
                             onSetVideo={handleSetVideo}
