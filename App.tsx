@@ -282,6 +282,11 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
             };
         }
 
+        case 'SET_SELECTED_PLATFORMS': {
+            if (!state) return state;
+            return { ...state, selectedPlatforms: action.payload };
+        }
+
         case 'ASSIGN_PERSONA_TO_PLAN': {
             if (!state) return state;
             const { planId, personaId } = action.payload;
@@ -364,9 +369,22 @@ const base64ToFile = (base64Data: string, filename: string, mimeType: string): F
     return new File([blob], filename, { type: mimeType });
 };
 
-
-
-
+const initialGeneratedAssets: GeneratedAssets = {
+    mediaPlans: [],
+    personas: [],
+    trends: [],
+    ideas: [],
+    affiliateLinks: [],
+    coreMediaAssets: {
+        logoConcepts: [],
+    },
+    unifiedProfileAssets: {
+        profilePictureImageKey: null,
+        coverPhotoImageKey: null,
+    },
+    facebookPostIdeas: [],
+    selectedPlatforms: []
+};
 
 const App: React.FC = () => {
     const [currentStep, setCurrentStep] = useState<'idea' | 'profile' | 'assets'>('idea');
@@ -383,6 +401,9 @@ const App: React.FC = () => {
     const [generatingImageKeys, setGeneratingImageKeys] = useState<Set<string>>(new Set());
     const [uploadingImageKeys, setUploadingImageKeys] = useState<Set<string>>(new Set());
     const [generatingPromptKeys, setGeneratingPromptKeys] = useState<Set<string>>(new Set());
+    const [analyzingPostIds, setAnalyzingPostIds] = useState<Set<string>>(new Set());
+    const [khongMinhSuggestions, setKhongMinhSuggestions] = useState<Record<string, AffiliateLink[]>>({});
+    const [generatingCommentPostIds, setGeneratingCommentPostIds] = useState<Set<string>>(new Set());
     // Global product images removed, now managed per-plan.
     
     const [settings, setSettings] = useState<Settings>({
@@ -467,10 +488,12 @@ const App: React.FC = () => {
         }
     }, [activeTab, productTrendToSelect]);
     
-    // KhongMinh State
-    const [analyzingPostIds, setAnalyzingPostIds] = useState<Set<string>>(new Set());
-    const [khongMinhSuggestions, setKhongMinhSuggestions] = useState<Record<string, AffiliateLink[]>>({});
-    const [generatingCommentPostIds, setGeneratingCommentPostIds] = useState<Set<string>>(new Set());
+    // Wizard state
+    const [initialWizardPrompt, setInitialWizardPrompt] = useState<string | null>(null);
+    const [initialProductId, setInitialProductId] = useState<string | null>(null);
+    const [personaIdForWizard, setPersonaIdForWizard] = useState<string | null>(null);
+    const [optionsForWizard, setOptionsForWizard] = useState<{ tone: string; style: string; length: string } | null>(null);
+    const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
     
     // Selection & Scheduling State
     const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
@@ -1242,41 +1265,50 @@ const App: React.FC = () => {
     }, [settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
     
     const handleGenerateContentPackage = useCallback(async (
-        idea: Idea, 
-        pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', 
+        idea: Idea,
         personaId: string | null,
-        options: { tone: string; style: string; length: string; }
+        selectedProductId: string | null,
+        options: { tone: string; style: string; length: string; includeEmojis: boolean; }
     ) => {
         if (!generatedAssets?.brandFoundation) return;
-        
-        const persona = personaId ? (generatedAssets.personas || []).find(p => p.id === personaId) ?? null : null;
-        const selectedProduct = idea.productId ? (generatedAssets.affiliateLinks || []).find(l => l.id === idea.productId) ?? null : null;
 
-        setLoaderContent({ title: "Generating Content Package...", steps: ["Crafting pillar content...", "Repurposing for other platforms...", "Generating media prompts...", "Assembling package..."] });
+        const pillarPlatform = 'YouTube'; // Hardcoded
+        const selectedProduct = selectedProductId ? (generatedAssets.affiliateLinks || []).find(link => link.id === selectedProductId) ?? null : null;
+
+        setLoaderContent({ 
+            title: settings.language === 'Việt Nam' ? "Đang tạo Gói Nội Dung..." : "Generating Content Package...",
+            steps: [
+                settings.language === 'Việt Nam' ? "Soạn nội dung trụ cột..." : "Crafting pillar content...",
+                settings.language === 'Việt Nam' ? "Tạo các gợi ý hình ảnh..." : "Generating image prompts...",
+                settings.language === 'Việt Nam' ? "Hoàn thiện gói nội dung..." : "Finalizing content package..."
+            ]
+        });
+
         try {
-            const generationTask = (model: string) => {
-                return textGenerationService.generateContentPackage(idea, generatedAssets.brandFoundation!, settings.language, settings.affiliateContentKit, model, persona, pillarPlatform, options, selectedProduct);
-            };
-            const newPackage = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
-            dispatchAssets({ type: 'ADD_CONTENT_PACKAGE', payload: newPackage });
+            const newPackage = await textGenerationService.generateContentPackage(
+                idea,
+                generatedAssets.brandFoundation,
+                settings.language,
+                settings.affiliateContentKit,
+                settings.textGenerationModel,
+                personaId ? (generatedAssets.personas || []).find(p => p.id === personaId) ?? null : null,
+                pillarPlatform,
+                options,
+                selectedProduct
+            );
 
+            dispatchAssets({ type: 'ADD_CONTENT_PACKAGE', payload: newPackage });
             setMediaPlanGroupsList(prev => [...prev, { id: newPackage.id, name: newPackage.name, prompt: newPackage.prompt, source: newPackage.source, personaId: newPackage.personaId }]);
             setActivePlanId(newPackage.id);
             setActiveTab('mediaPlan');
 
-            if (airtableBrandId) {
-                updateAutoSaveStatus('saving');
-                saveMediaPlanGroup(newPackage, generatedImages, airtableBrandId)
-                    .then(() => updateAutoSaveStatus('saved'))
-                    .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
-            }
         } catch (err) {
             console.error("Failed to generate content package:", err);
             setError(err instanceof Error ? err.message : "Failed to generate content package.");
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedImages]);
+    }, [generatedAssets, settings, dispatchAssets, setError, setLoaderContent, setActivePlanId, setActiveTab, setMediaPlanGroupsList]);
 
     const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
         if (!airtableBrandId) {

@@ -80,7 +80,7 @@ interface MainDisplayProps {
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
   onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
-  onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
+  onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
   onGenerateTrendsFromSearch: (industry: string) => void;
   isGeneratingTrendsFromSearch: boolean;
   onUpdatePersona: (persona: Persona) => void;
@@ -265,6 +265,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         trends={assets.trends || []}
                         ideas={assets.ideas || []}
                         personas={assets.personas || []}
+                        affiliateLinks={assets.affiliateLinks || []}
                         generatedImages={generatedImages}
                         settings={settings}
                         onSaveTrend={onSaveTrend}
@@ -275,8 +276,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                         isGeneratingIdeas={isGeneratingPlan}
                         onGenerateFacebookTrends={onGenerateTrendsFromSearch}
                         isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
-                        productTrendToSelect={productTrendToSelect} // Pass the product trend to select
-                        onLoadIdeasForTrend={onLoadIdeasForTrend} // Pass the new prop
+                        productTrendToSelect={productTrendToSelect}
+                        onLoadIdeasForTrend={onLoadIdeasForTrend}
                     />
                 )}
                 {activeTab === 'affiliateVault' && (

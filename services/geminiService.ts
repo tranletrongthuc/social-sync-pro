@@ -31,7 +31,7 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     // This regex looks for a comma or opening bracket, optional whitespace,
     // then the erroneous `="` followed by a string, and a closing `"`.
     // It reconstructs it as a valid JSON string.
-    sanitized = sanitized.replace(/([,\[])\\s*=\s*"([^"]*)"/g, '$1"$2"');
+    sanitized = sanitized.replace(/([,[\]\s*=\s*"([^"]*)")/g, '$1"$2"');
 
     // 3. Fix for Pinterest posts generating "infographicContent" instead of "content".
     sanitized = sanitized.replace(/"infographicContent":/g, '"content":');
@@ -39,10 +39,10 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     // 4. Fix for hashtags missing an opening quote, e.g., [... , #tag"] or [#tag"]
     // This looks for a comma/bracket followed by whitespace, then a #, then captures the tag content, and the closing quote.
     // It then reconstructs it with the opening quote.
-    sanitized = sanitized.replace(/([,\[]\s*)#([^\"]+)(")/g, '$1"#$2$3');
+    sanitized = sanitized.replace(/([,[\]\s*)#([^\"]+)(")/g, '$1"#$2$3');
 
     // 5. Removed risky unescaped quote sanitizer. Relying on responseMimeType: "application/json".
-    // sanitized = sanitized.replace(/(?<![\[{\s:,])"(?![\s,}\]:])/g, '\"');
+    // sanitized = sanitized.replace(/(?<![[\]{\s:,])"(?![\]s,}\]:])/g, '"');
 
     // 6. Remove trailing commas, which are valid in JS but not in strict JSON.
     // e.g., `{"key":"value",}` or `["item1",]`
@@ -117,13 +117,15 @@ export const normalizePillarContent = (data: any): Omit<MediaPlanPost, 'id'|'pla
     // Handle cases where the AI returns a structured array for 'content'.
     if (Array.isArray(pillarPost.content)) {
         pillarPost.content = (pillarPost.content as { section?: string, script?: string }[])
-            .map(part => `${part.section ? `## ${part.section}\n\n` : ''}${part.script || ''}`)
+            .map(part => `${part.section ? `## ${part.section}\
+\
+` : ''}${part.script || ''}`)
             .join('\n\n');
     }
 
     // Handle cases where the AI returns a string for 'hashtags'.
     if (typeof pillarPost.hashtags === 'string') {
-        pillarPost.hashtags = pillarPost.hashtags.split(/[, ]+/)
+        pillarPost.hashtags = pillarPost.hashtags.split(/[, ]+/) 
             .map((h: string) => h.trim())
             .filter(Boolean)
             .map((h: string) => h.startsWith('#') ? h : `#${h}`);
@@ -240,7 +242,7 @@ const mediaPlanSchema = {
                         content: { type: Type.STRING },
                         hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
                         cta: { type: Type.STRING },
-                        mediaPrompt: { 
+                        mediaPrompt: {
                             oneOf: [
                                 { type: Type.STRING },
                                 { type: Type.ARRAY, items: { type: Type.STRING } }
@@ -461,9 +463,61 @@ export const generateMediaPlanGroup = async (
     persona: Persona | null,
     selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
-    const personaInstruction = persona ? `\n**KOL/KOC Persona (Crucial):**\nAll content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.\n- **Nickname:** ${persona.nickName}\n- **Main Style:** ${persona.mainStyle}\n- **Field of Activity:** ${persona.activityField}\n- **Detailed Description (for media generation):** ${persona.outfitDescription}\n- **Tone:** The content's tone must perfectly match this persona's style.\n- **Media Prompts (VERY IMPORTANT):** For any post that requires an image, the 'mediaPrompt' MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]".\n` : '';
+    const personaInstruction = persona ? `
+**KOL/KOC Persona (Crucial):**
+All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
+- **Nickname:** ${persona.nickName}
+- **Main Style:** ${persona.mainStyle}
+- **Field of Activity:** ${persona.activityField}
+- **Detailed Description (for media generation):** ${persona.outfitDescription}
+- **Tone:** The content's tone must perfectly match this persona's style.
+- **Media Prompts (VERY IMPORTANT):** For any post that requires an image, the 'mediaPrompt' MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]".
+` : '';
 
-    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.\nThe output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.\n\n**Brand Foundation (Use this as your guide):**\n- Brand Name: ${brandFoundation.brandName}\n- Mission: ${brandFoundation.mission}\n- USP: ${brandFoundation.usp}\n- Values: ${(brandFoundation.values || []).join(', ')}\n- Target Audience: ${brandFoundation.targetAudience}\n- Personality: ${brandFoundation.personality}\n\n${personaInstruction}\n\n**User's Goal for the Plan:**\n"${userPrompt}"\n\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.\n- **Emojis**\n: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}\n\nBased on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.\n- **Name**\n: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").\n- **Plan Structure**\n: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").\n- **Content**\n: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.\n- **Post Details (CRITICAL):\n    -   **contentType**: e.g., "Image Post", "Video Idea", "Story", "Carousel Post", "Shorts Idea".\n    -   **content**: This is ALWAYS the user-facing text caption for the post.\n    -   **script**: For video contentTypes ("Video Idea", "Shorts Idea", "Story"), this field MUST contain the video script, storyboard, or detailed scene-by-scene description. For non-video posts, this should be null.\n    -   **mediaPrompt**: This is the prompt for the visual media. It MUST be in English.\n        -   For "Image Post": A single, detailed DALL-E prompt to generate the image.\n        -   For "Video Idea", "Shorts Idea", "Story": A concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.\n        -   For "Carousel Post": An array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts).\n- **Consistency**\n: The entire media plan must be thematically consistent with the Brand Foundation.\n`;
+    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.
+The output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.
+
+**Brand Foundation (Use this as your guide):**
+- Brand Name: ${brandFoundation.brandName}
+- Mission: ${brandFoundation.mission}
+- USP: ${brandFoundation.usp}
+- Values: ${(brandFoundation.values || []).join(', ')}
+- Target Audience: ${brandFoundation.targetAudience}
+- Personality: ${brandFoundation.personality}
+
+${personaInstruction}
+
+**User's Goal for the Plan:**
+"${userPrompt}"
+
+**Content Customization Instructions:**
+- **Tone of Voice**
+: Generate all content with a '${options.tone}' tone.
+- **Writing Style**
+: The primary style should be '${options.style}'.
+- **Post Length**
+: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.
+- **Emojis**
+: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}
+
+Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
+- **Name**
+: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").
+- **Plan Structure**
+: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
+- **Content**
+: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.
+- **Post Details (CRITICAL):
+    -   **contentType**: e.g., "Image Post", "Video Idea", "Story", "Carousel Post", "Shorts Idea".
+    -   **content**: This is ALWAYS the user-facing text caption for the post.
+    -   **script**: For video contentTypes ("Video Idea", "Shorts Idea", "Story"), this field MUST contain the video script, storyboard, or detailed scene-by-scene description. For non-video posts, this should be null.
+    -   **mediaPrompt**: This is the prompt for the visual media. It MUST be in English.
+        -   For "Image Post": A single, detailed DALL-E prompt to generate the image.
+        -   For "Video Idea", "Shorts Idea", "Story": A concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.
+        -   For "Carousel Post": An array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts).
+- **Consistency**
+: The entire media plan must be thematically consistent with the Brand Foundation.
+`;
 
     const config: any = {
         systemInstruction: affiliateContentKitSystemInstruction,
@@ -563,7 +617,7 @@ The media MUST feature the following persona:
 - Field of Activity: ${persona.activityField}
 - Detailed Description: ${persona.outfitDescription}
 
-IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Detailed Description" above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]"
+IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Detailed Description" provided above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]"
 ` : '';
 
     let prompt = `
@@ -576,7 +630,7 @@ Do not add any explanations, labels, or extra text. Output ONLY the prompt.
 
 Post Title: "${postContent.title}"
 Post Content: "${postContent.content}"
-`
+`;
 
     switch (postContent.contentType) {
         case 'Image Post':
@@ -604,8 +658,6 @@ Post Content: "${postContent.content}"
             // For carousel posts, append suffix to each prompt in the array
             if (Array.isArray(parsedResponse)) {
                 return parsedResponse.map((prompt: string) => prompt + mediaPromptSuffix);
-            } else {
-                return parsedResponse;
             }
         } catch (e) {
             console.error("Failed to parse carousel prompts, returning as single string:", textResponse);
@@ -664,7 +716,32 @@ export const generateAffiliateComment = async (
 
     const productDetails = products.map(formatProductDetails).join('\n');
 
-    const prompt = `\nYou are the creator who wrote the social media post. Your task is to write a follow-up comment on your own post, from your perspective as the post author. This simulates you posting content and then engaging with your own post to promote affiliate products.\n\n**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to your post. The comment must encourage clicks on the affiliate link while sounding like a genuine self-comment on your own post.\n\n**Rules:**\n1.  **Natural Tone:** The comment must sound like you're genuinely engaging with your own content. It should match the tone of the original post and sound like a real person talking to their audience. Avoid overly salesy language.\n2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:\n    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect your original post's topic with the product(s) being promoted. It should add value, share a personal tip about how you use the product, or ask a question to spark conversation and make people curious about the link. If product details like ratings, sales volume, or customer reviews are provided, you should naturally incorporate these details to make the product more appealing.\n    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.\n3.  **Language:** The entire comment MUST be in ${language}.\n\n**Original Post Content:**\n- Title: ${post.title}\n- Content: ${post.content}\n\n**Affiliate Product(s) to Promote:**\n${productDetails}\n\n**Example Output:**\nTôi vừa thử em này sau khi làm theo hướng dẫn trong bài và thấy hiệu quả bất ngờ! Bạn nào muốn thử thì xem link bên dưới nha.\n\nhttps://your-affiliate-link.com\n\n---\nNow, generate the comment based on the provided post and product details...`;
+    const prompt = `
+You are the creator who wrote the social media post. Your task is to write a follow-up comment on your own post, from your perspective as the post author. This simulates you posting content and then engaging with your own post to promote affiliate products.
+
+**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to your post. The comment must encourage clicks on the affiliate link while sounding like a genuine self-comment on your own post.
+
+**Rules:**
+1.  **Natural Tone:** The comment must sound like you're genuinely engaging with your own content. It should match the tone of the original post and sound like a real person talking to their audience. Avoid overly salesy language.
+2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:
+    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect your original post's topic with the product(s) being promoted. It should add value, share a personal tip about how you use the product, or ask a question to spark conversation and make people curious about the link. If product details like ratings, sales volume, or customer reviews are provided, you should naturally incorporate these details to make the product more appealing.
+    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.
+3.  **Language:** The entire comment MUST be in ${language}.
+
+**Original Post Content:**
+- Title: ${post.title}
+- Content: ${post.content}
+
+**Affiliate Product(s) to Promote:**
+${productDetails}
+
+**Example Output:**
+Tôi vừa thử em này sau khi làm theo hướng dẫn trong bài và thấy hiệu quả bất ngờ! Bạn nào muốn thử thì xem link bên dưới nha.
+
+https://your-affiliate-link.com
+
+---
+Now, generate the comment based on the provided post and product d...`;
     
     return await generateContentWithBff(model, prompt);
 };
@@ -675,7 +752,17 @@ export const generateViralIdeas = async (
     useSearch: boolean,
     model: string
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    let prompt = `You are a viral marketing expert and a world-class creative strategist.\nYour task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.\nThe ideas must be in ${language}.\nEach idea must have:\n1.  A catchy, curiosity-driven 'title'.\n2.  A short but comprehensive 'description' of the idea.\n3.  A specific 'targetAudience' that this idea would appeal to.\n\nTopic: "${trend.topic}"\nKeywords: ${trend.keywords.join(', ')}\n`;
+    let prompt = `You are a viral marketing expert and a world-class creative strategist.
+Your task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.
+The ideas must be in ${language}.
+Each idea must have:
+1.  A catchy, curiosity-driven 'title'.
+2.  A short but comprehensive 'description' of the idea.
+3.  A specific 'targetAudience' that this idea would appeal to.
+
+Topic: "${trend.topic}"
+Keywords: ${trend.keywords.join(', ')}
+`;
     const ideasSchema = {
         type: Type.ARRAY,
         items: {
@@ -741,10 +828,10 @@ export const generateContentPackage = async (
     affiliateContentKit: string,
     model: string,
     persona: Persona | null,
-    pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; },
+    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
+    const pillarPlatform = 'YouTube';
     const personaInstruction = persona ? `
 **KOL/KOC Persona (Crucial):**
 All content MUST be generated from the perspective of the following KOL/KOC.
@@ -753,7 +840,7 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 - **Field of Activity:** ${persona.activityField}
 - **Detailed Description (for image generation):** ${persona.outfitDescription}
 - **Tone:** The content's tone must perfectly match this persona's style.
-- **Image Prompts (VERY IMPORTANT):** Every single 'imagePrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
+- **Image Prompts (VERY IMPORTANT):** Every single 'mediaPrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
 ` : '';
 
     const productInstruction = selectedProduct ? `
@@ -763,7 +850,15 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 - **Instruction:** This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id}".
 ` : '';
 
-    const customizationInstruction = `\n**Content Customization Instructions:**\n- **Tone of Voice**\n: Generate all content with a '${options.tone}' tone.\n- **Writing Style**\n: The primary style should be '${options.style}'.\n- **Post Length**\n: Adhere to a '${options.length}' post length.\n`;
+    const customizationInstruction = `
+**Content Customization Instructions:**
+- **Tone of Voice**
+: Generate all content with a '${options.tone}' tone.
+- **Writing Style**
+: The primary style should be '${options.style}'.
+- **Post Length**
+: Adhere to a '${options.length}' post length.
+`;
 
     // 1. Generate Pillar Content
     const pillarPrompt = `
@@ -899,13 +994,20 @@ export const generateFacebookTrends = async (
     language: string,
     model: string
 ): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
-    const prompt = `You are a Facebook marketing expert. Analyze Google Search results for the query "trending topics and content formats in ${industry} on Facebook for ${language}".\nIdentify 3-5 distinct, current trends. For each trend, provide:\n1.  A concise 'topic'.\n2.  An array of relevant 'keywords'.\n3.  A brief 'analysis' explaining why it's trending for the target audience on Facebook and what content formats (e.g., Reels, Carousels, Long-form posts) are performing best.\n4.  The top 3 most relevant 'links' from the search results that support your analysis. Each link must be an object with "uri" and "title" keys.\n\nYour response must be a single, valid JSON array of objects. Each object should have the keys: "topic", "keywords", "analysis", and "links". Do not add any text or explanation before or after the JSON array.`;
+    const prompt = `You are a Facebook marketing expert. Analyze Google Search results for the query "trending topics and content formats in ${industry} on Facebook for ${language}".
+Identify 3-5 distinct, current trends. For each trend, provide:
+1.  A concise 'topic'.
+2.  An array of relevant 'keywords'.
+3.  A brief 'analysis' explaining why it's trending for the target audience on Facebook and what content formats (e.g., Reels, Carousels, Long-form posts) are performing best.
+4.  The top 3 most relevant 'links' from the search results that support your analysis. Each link must be an object with "uri" and "title" keys.
+
+Your response must be a single, valid JSON array of objects. Each object should have the keys: "topic", "keywords", "analysis", and "links". Do not add any text or explanation before or after the JSON array.`;
 
     const jsonText = await generateContentWithBff(
         model,
         prompt,
         {
-            tools: [{ googleSearch: {} }],
+            tools: [{googleSearch: {}}],
         }
     );
     
@@ -1004,7 +1106,18 @@ export const generateIdeasFromProduct = async (
         product.product_rating ? `Product Rating: ${product.product_rating}/5` : ''
     ].filter(Boolean).join('\n');
     
-    const prompt = `You are a creative marketing strategist. Based on the following affiliate product details, generate 5 unique and engaging content ideas in ${language} that can be used to promote this product effectively.\n\nFor each idea, provide:\n1.  A catchy 'title' that would grab attention.\n2.  A detailed 'description' explaining the concept and how it would showcase the product.\n3.  A specific 'targetAudience' that this idea would appeal to.\n\nProduct Details:\n${productDetails}\n\nMake sure each idea is distinct and highlights different aspects of the product. Consider various content formats like tutorials, reviews, comparisons, lifestyle content, unboxings, etc.\n`;
+    const prompt = `You are a creative marketing strategist. Based on the following affiliate product details, generate 5 unique and engaging content ideas in ${language} that can be used to promote this product effectively.
+
+For each idea, provide:
+1.  A catchy 'title' that would grab attention.
+2.  A detailed 'description' explaining the concept and how it would showcase the product.
+3.  A specific 'targetAudience' that this idea would appeal to.
+
+Product Details:
+${productDetails}
+
+Make sure each idea is distinct and highlights different aspects of the product. Consider various content formats like tutorials, reviews, comparisons, lifestyle content, unboxings, etc.
+`;
 
     const ideasSchema = {
         type: Type.ARRAY,
@@ -1054,3 +1167,12 @@ export const generateIdeasFromProduct = async (
         productId: product.id
     }));
 };
+
+// Platform-specific purposes from user requirements
+const facebookPurpose = "Leverage community and sharing features to create discussion and provide a direct path to your main video. Create compelling short clips, thought-provoking quote graphics, or key highlights that spark conversation in comments and encourage shares. Caption should act as a hook, introducing the problem/main idea and directing users to 'click the link to watch the full video'.";
+
+const instagramPurpose = "Capture immediate visual attention and generate curiosity through aesthetically pleasing, bite-sized content. Create visually striking Reels with dynamic 60-90 second clips, trending audio, or informative carousel posts that break down key tips. Primary goal is to be a 'scroll-stopper' that provides instant value and directs users to the 'link in bio' for deeper content.";
+
+const tiktokPurpose = "Hijack attention within the first three seconds with high-energy, trend-centric, easily digestible video clips. Extract the most surprising fact, controversial point, or quickest 'hack' to create an 'information gap' or emotional reaction that drives viewers to your profile to find the YouTube channel link for the complete breakdown.";
+
+const pinterestPurpose = "Create long-lasting, searchable resources that funnel users seeking solutions or inspiration. Convert core message into vertical Idea Pins or infographics with keyword-rich titles (e.g., 'How to Achieve X in 5 Easy Steps'). Serve as a visual bookmark solving part of the user's problem, with a direct outbound link to the YouTube video.";

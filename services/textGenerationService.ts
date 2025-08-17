@@ -82,7 +82,7 @@ export interface TextGenerationService {
     model: string,
     persona: Persona | null,
     pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; },
+    options: { tone: string; style: string; length: string; purpose?: string; },
     selectedProduct: AffiliateLink | null
   ) => Promise<MediaPlanGroup>;
   generateFacebookTrends: (
@@ -151,7 +151,9 @@ const openRouterService: TextGenerationService = {
     // OpenRouter doesn't use the useSearch parameter, so we ignore it
     return generateViralIdeasWithOpenRouter(trend, language, model);
   },
-  generateContentPackage,
+  generateContentPackage: async () => {
+    throw new Error('Content package generation is not supported with OpenRouter models');
+  },
   generateFacebookTrends: async () => {
     throw new Error('Facebook trend generation is not supported with OpenRouter models');
   },
@@ -280,12 +282,20 @@ export const textGenerationService: TextGenerationService = {
     affiliateContentKit: string,
     model: string,
     persona: Persona | null,
-    pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; },
+    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
   ): Promise<MediaPlanGroup> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateContentPackage(idea, brandFoundation, language, affiliateContentKit, model, persona, pillarPlatform, options, selectedProduct);
+    // Use BFF for content generation to keep API keys secure
+    return googleService.generateContentPackage(
+        idea,
+        brandFoundation,
+        language,
+        affiliateContentKit,
+        model,
+        persona,
+        options,
+        selectedProduct
+    );
   },
   
   generateFacebookTrends: async (

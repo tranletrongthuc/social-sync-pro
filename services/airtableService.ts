@@ -269,6 +269,25 @@ const findRecordByField = async (tableName: string, fieldName: string, value: st
     return record;
 };
 
+// --- ID TRANSLATION HELPERS ---
+
+// A simple in-memory cache to reduce redundant lookups for the same ID.
+const recordIdCache = new Map<string, string>();
+
+const getRecordIdFromCustomId = async (tableName: string, customIdField: string, customIdValue: string): Promise<string | null> => {
+    const cacheKey = `${tableName}:${customIdField}:${customIdValue}`;
+    if (recordIdCache.has(cacheKey)) {
+        return recordIdCache.get(cacheKey)!;
+    }
+
+    const record = await findRecordByField(tableName, customIdField, customIdValue);
+    if (record && record.id) {
+        recordIdCache.set(cacheKey, record.id);
+        return record.id;
+    }
+    return null;
+};
+
 const fetchFullRecordsByFormula = async (tableName: string, formula: string, fields?: string[]) => {
     let path = `${tableName}`;
     const queryParams: string[] = [];
@@ -743,7 +762,7 @@ export const saveAffiliateLinks = async (links: AffiliateLink[], brandId: string
 };
 
 export const deleteAffiliateLink = async (linkId: string, brandId: string) => {
-    const record = await find.findRecordByField(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', linkId);
+    const record = await findRecordByField(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', linkId);
     if (record) {
         await deleteAirtableRecords(AFFILIATE_PRODUCTS_TABLE_NAME, [record.id]);
     }
@@ -868,23 +887,33 @@ export const updateMediaPlanPostInAirtable = async (post: MediaPlanPost, brandId
 };
 
 export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Record<string, string>, brandId: string) => {
-    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
-    if (!brandRecord) {
+    const brandRecordId = await getRecordIdFromCustomId(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecordId) {
         throw new Error(`Brand with ID ${brandId} not found.`);
     }
+
+    let personaRecordId: string | null = null;
+    if (group.personaId) {
+        // Look up the Airtable record.id for the persona using its custom UUID.
+        personaRecordId = await getRecordIdFromCustomId(PERSONAS_TABLE_NAME, 'persona_id', group.personaId);
+        if (!personaRecordId) {
+            console.warn(`Persona with ID ${group.personaId} not found in Airtable. Plan will be saved without persona link.`);
+        }
+    }
+
     const planFields = {
         plan_id: group.id,
         name: group.name,
         prompt: group.prompt,
         source: group.source,
         product_images_json: JSON.stringify(group.productImages || []),
-        brand: [brandRecord.id],
-        persona: group.personaId ? [group.personaId] : [],
+        brand: [brandRecordId],
+        // This is now correct. We use the looked-up record.id for the link.
+        persona: personaRecordId ? [personaRecordId] : [],
     };
 
     const existingPlanRecord = await findRecordByField(MEDIA_PLANS_TABLE_NAME, 'plan_id', group.id);
     let planRecordId;
-
     if (existingPlanRecord) {
         await patchAirtableRecords(MEDIA_PLANS_TABLE_NAME, [{ id: existingPlanRecord.id, fields: planFields }]);
         planRecordId = existingPlanRecord.id;
@@ -920,8 +949,8 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
                 published_url: post.publishedUrl,
                 auto_comment: post.autoComment,
                 status: mapPostStatusToAirtable(post.status),
-                is_pillar: post.isPillar,
-                brand: [brandRecord.id],
+                is_pillar: !!post.isPillar,
+                brand: [brandRecordId],
                 media_plan: [planRecordId],
                 promoted_products: [], // Will be set after we get the record IDs
             };
@@ -1148,21 +1177,25 @@ export const loadAIServices = async (): Promise<AIService[]> => {
 };
 
 export const listMediaPlanGroupsForBrand = async (brandId: string): Promise<{id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[]; personaId?: string;}> => {
-    const brandRecord = await findRecordByField(BRANDS_TABLE_NAME, 'brand_id', brandId);
-    if (!brandRecord) {
+    const brandRecordId = await getRecordIdFromCustomId(BRANDS_TABLE_NAME, 'brand_id', brandId);
+    if (!brandRecordId) {
         throw new Error(`Brand with ID ${brandId} not found.`);
     }
     await ensureSpecificTablesAndFieldsExist([MEDIA_PLANS_TABLE_NAME, PERSONAS_TABLE_NAME]);
-    const planRecords = await fetchFullRecordsByFormula(MEDIA_PLANS_TABLE_NAME, `{brand} = '${brandId}'`);
+    // Using the record ID in the formula is more robust than relying on the primary field's value.
+    const planRecords = await fetchFullRecordsByFormula(MEDIA_PLANS_TABLE_NAME, `FIND('${brandId}', ARRAYJOIN({brand}))`);
     
-    return planRecords.map(record => {
+    const personaIdToCustomIdMap = await getCustomIdsFromRecordIds(PERSONAS_TABLE_NAME, 'persona_id', planRecords.map(r => r.fields.persona ? r.fields.persona[0] : null).filter(Boolean));
+
+    return planRecords.map((record: any) => {
+        const personaRecordId = record.fields.persona ? record.fields.persona[0] : undefined;
         return {
             id: record.fields.plan_id,
             name: record.fields.name,
             prompt: record.fields.prompt,
             source: record.fields.source,
             productImages: record.fields.product_images_json ? JSON.parse(record.fields.product_images_json) : [],
-            personaId: record.fields.persona ? record.fields.persona[0] : undefined,
+            personaId: personaRecordId ? personaIdToCustomIdMap.get(personaRecordId) : undefined,
         }
     });
 };
@@ -1219,39 +1252,28 @@ export const loadMediaPlan = async (planId: string): Promise<{ plan: MediaPlan; 
         weeks.get(weekNum)!.posts.push(post);
     });
     
-    // Convert Airtable record IDs to UUIDs for all posts
-    const allPromotedProductIds = Array.from(weeks.values())
+    // --- Refactored Reverse ID Mapping ---
+    // 1. Gather all Airtable record IDs that need to be mapped back to your app's custom IDs.
+    const allPromotedProductRecordIds = Array.from(weeks.values())
         .flatMap(week => week.posts)
         .flatMap(post => post.promotedProductIds || [])
-        .filter(id => id.startsWith('rec'));
-        
-    if (allPromotedProductIds.length > 0) {
-        try {
-            // Create a formula to find records by their Airtable record IDs
-            const recordIdFormula = `OR(${[...new Set(allPromotedProductIds)].map(id => `RECORD_ID() = '${id}'`).join(',')})`;
-            const records = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, recordIdFormula, ['link_id']);
-            
-            // Create a map of record ID to link_id
-            const recordIdToLinkId = new Map(records.map(r => [r.id, r.fields.link_id]));
-            
-            // Update all posts with converted IDs
-            for (const week of weeks.values()) {
-                for (const post of week.posts) {
-                    if (post.promotedProductIds) {
-                        post.promotedProductIds = post.promotedProductIds.map(id => {
-                            if (id.startsWith('rec') && recordIdToLinkId.has(id)) {
-                                // Convert Airtable record ID to UUID
-                                return recordIdToLinkId.get(id)!;
-                            }
-                            // Keep UUIDs as-is
-                            return id;
-                        });
-                    }
-                }
+        .filter(id => id && id.startsWith('rec'));
+
+    // 2. Perform a single, batched lookup to get the custom 'link_id' for each record ID.
+    const productRecordIdToCustomIdMap = await getCustomIdsFromRecordIds(
+        AFFILIATE_PRODUCTS_TABLE_NAME,
+        'link_id',
+        allPromotedProductRecordIds
+    );
+
+    // 3. Iterate through the posts and replace the Airtable record IDs with your app's custom IDs.
+    for (const week of weeks.values()) {
+        for (const post of week.posts) {
+            if (post.promotedProductIds) {
+                post.promotedProductIds = post.promotedProductIds.map(id =>
+                    productRecordIdToCustomIdMap.get(id) || id // Fallback to original id if not found
+                );
             }
-        } catch (error) {
-            console.error('Failed to convert Airtable record IDs to UUIDs:', error);
-            // Continue with original IDs to avoid breaking the functionality
         }
     }
     
@@ -1264,6 +1286,24 @@ export const loadMediaPlan = async (planId: string): Promise<{ plan: MediaPlan; 
         }));
     
     return { plan: finalPlan, imageUrls, videoUrls };
+};
+
+const getCustomIdsFromRecordIds = async (tableName: string, customIdField: string, recordIds: (string | null | undefined)[]): Promise<Map<string, string>> => {
+    const validRecordIds = recordIds.filter((id): id is string => !!id && id.startsWith('rec'));
+    if (validRecordIds.length === 0) {
+        return new Map();
+    }
+    const uniqueRecordIds = [...new Set(validRecordIds)];
+    const formula = `OR(${uniqueRecordIds.map(id => `RECORD_ID() = '${id}'`).join(',')})`;
+    const records = await fetchFullRecordsByFormula(tableName, formula, [customIdField]);
+    
+    const recordIdToCustomIdMap = new Map<string, string>();
+    records.forEach((r: any) => {
+        if (r.id && r.fields[customIdField]) {
+            recordIdToCustomIdMap.set(r.id, r.fields[customIdField]);
+        }
+    });
+    return recordIdToCustomIdMap;
 };
 
 export const bulkPatchPosts = async (updates: { postId: string; fields: Record<string, any> }[]) => {

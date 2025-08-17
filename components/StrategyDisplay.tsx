@@ -1,12 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Trend, Idea, Settings, Persona } from '../types';
+import type { Trend, Idea, Settings, Persona, AffiliateLink } from '../types';
 import { Button, Input, TextArea, Switch, HoverCopyWrapper } from './ui';
 import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, SearchIcon, TagIcon } from './icons';
 import ContentPackageWizardModal from './ContentPackageWizardModal';
 
 // --- SUB-COMPONENTS ---
 
-const TrendForm: React.FC<{
+const TrendForm: React.FC<{ 
     trend: Partial<Trend>;
     onSave: (trendData: Omit<Partial<Trend>, 'keywords' | 'links'> & { keywords?: string; links?: string }) => void;
     onCancel: () => void;
@@ -16,7 +16,7 @@ const TrendForm: React.FC<{
         topic: trend.topic || '',
         industry: trend.industry || '',
         keywords: (trend.keywords || []).join(', '),
-        links: (trend.links || []).map(l => `${l.title}: ${l.url}`).join(''),
+        links: (trend.links || []).map(l => `${l.title}: ${l.url}`).join('\n'),
         notes: trend.notes || '',
     });
 
@@ -52,7 +52,7 @@ const TrendForm: React.FC<{
 
 // --- IDEA LIST COMPONENT ---
 
-const IdeaCard: React.FC<{
+const IdeaCard: React.FC<{ 
     idea: Idea;
     onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
     onOpenContentPackageWizard: (idea: Idea) => void;
@@ -98,22 +98,23 @@ interface StrategyDisplayProps {
     trends: Trend[];
     ideas: Idea[];
     personas: Persona[];
+    affiliateLinks: AffiliateLink[];
     generatedImages: Record<string, string>;
     settings: Settings;
     onSaveTrend: (trend: Trend) => void;
     onDeleteTrend: (trendId: string) => void;
     onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
     onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
-    onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null, options: { tone: string; style: string; length: string; }) => void;
+    onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
     isGeneratingIdeas: boolean;
     onGenerateFacebookTrends: (industry: string) => void;
     isGeneratingTrendsFromSearch: boolean;
-    productTrendToSelect?: string | null; // New prop to specify which product trend to select
-    onLoadIdeasForTrend?: (trendId: string) => void; // New prop to load ideas for a trend
+    productTrendToSelect?: string | null;
+    onLoadIdeasForTrend?: (trendId: string) => void;
 }
 
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
-    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend } = props;
+    const { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend } = props;
     
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
@@ -123,32 +124,17 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     const [industryForSearch, setIndustryForSearch] = useState('');
 
-    // Debugging: Log the props when they change
     useEffect(() => {
-        console.log("DEBUG: StrategyDisplay props updated", { 
-            trendsCount: trends.length, 
-            ideasCount: ideas.length,
-            productTrendToSelect 
-        });
-        console.log("DEBUG: All trends:", trends);
-        console.log("DEBUG: All ideas:", ideas);
-    }, [trends, ideas, productTrendToSelect]);
-
-    useEffect(() => {
-        // If a product trend to select was specified, select it
         if (productTrendToSelect && trends.length > 0) {
             const trendToSelect = trends.find(t => t.id === productTrendToSelect);
             if (trendToSelect) {
                 setSelectedTrend(trendToSelect);
-                // Load ideas for this trend if onLoadIdeasForTrend is provided
                 if (onLoadIdeasForTrend) {
                     onLoadIdeasForTrend(trendToSelect.id);
                 }
             }
         } else if (!selectedTrend && trends.length > 0) {
-            // Default behavior: select the first trend if none is selected
             setSelectedTrend(trends[0]);
-            // Load ideas for this trend if onLoadIdeasForTrend is provided
             if (onLoadIdeasForTrend) {
                 onLoadIdeasForTrend(trends[0].id);
             }
@@ -199,7 +185,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     const handleSaveTrend = (trendData: Omit<Partial<Trend>, 'keywords' | 'links'> & { keywords?: string; links?: string }) => {
         const parsedKeywords = (trendData.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
-        const parsedLinks = (trendData.links || '').split('').map(line => {
+        const parsedLinks = (trendData.links || '').split('\n').map(line => {
             const parts = line.split(':');
             if (parts.length < 2) return null;
             const title = parts[0].trim();
@@ -232,55 +218,28 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
         }
     };
 
-    // Improved matching function to handle potential ID mismatches
     const ideasForSelectedTrend = useMemo(() => {
         if (!selectedTrend) {
-            console.log("DEBUG: No trend selected, returning empty ideas array");
             return [];
         }
         
-        console.log("DEBUG: Filtering ideas for trend:", selectedTrend);
-        console.log("DEBUG: Total ideas available:", ideas);
-        
-        // Try multiple matching strategies
         const exactMatch = ideas.filter(idea => idea.trendId === selectedTrend.id);
-        console.log("DEBUG: Exact match count:", exactMatch.length);
         
         if (exactMatch.length > 0) {
             return exactMatch;
         }
         
-        // If no exact matches, try partial matching for product trends
         if (selectedTrend.id.startsWith('product-')) {
             const productId = selectedTrend.id.replace('product-', '');
             const partialMatch = ideas.filter(idea => 
                 idea.trendId === selectedTrend.id || 
                 (idea.productId && idea.productId === productId)
             );
-            console.log("DEBUG: Product partial match count:", partialMatch.length);
             return partialMatch;
         }
         
         return [];
     }, [ideas, selectedTrend]);
-
-    // Debug component to show trend/idea matching information
-    const DebugInfo = () => (
-        <div className="mt-4 p-3 bg-yellow-50 rounded text-xs text-gray-600">
-            <p className="font-bold">Debug Info:</p>
-            <p>Selected Trend ID: {selectedTrend?.id || 'None'}</p>
-            <p>Total Trends: {trends.length}</p>
-            <p>Total Ideas: {ideas.length}</p>
-            {selectedTrend && (
-                <>
-                    <p>Exact matches: {ideas.filter(i => i.trendId === selectedTrend.id).length}</p>
-                    {selectedTrend.id.startsWith('product-') && (
-                        <p>Product ID matches: {ideas.filter(i => i.productId === selectedTrend.id.replace('product-', '')).length}</p>
-                    )}
-                </>
-            )}
-        </div>
-    );
 
     return (
         <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
@@ -315,10 +274,8 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                                 <button 
                                     key={trend.id} 
                                     onClick={() => { 
-                                        console.log("DEBUG: Trend clicked, setting selected trend to:", trend);
-                                        setSelectedTrend(trend); 
+                                        setSelectedTrend(trend);
                                         setEditingTrend(null);
-                                        // Load ideas for this trend if onLoadIdeasForTrend is provided
                                         if (onLoadIdeasForTrend) {
                                             onLoadIdeasForTrend(trend.id);
                                         }
@@ -399,7 +356,6 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                                         <LightBulbIcon className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                                         <p className="font-medium">No ideas generated yet</p>
                                         <p className="text-sm mt-1">Click "Generate Ideas" to create content ideas for this trend</p>
-                                        <DebugInfo />
                                     </div>
                                 )}
                             </div>
@@ -408,7 +364,6 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                         <div className="text-center py-20 text-gray-400 h-full flex flex-col items-center justify-center">
                             <LightBulbIcon className="h-16 w-16 text-gray-300 mb-4" />
                             <p className="text-lg font-semibold">{texts.noTrendSelected}</p>
-                            <DebugInfo />
                         </div>
                     )}
                 </main>
@@ -418,13 +373,15 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                 isOpen={!!wizardIdea}
                 onClose={() => setWizardIdea(null)}
                 idea={wizardIdea}
-                onGenerate={(idea, platform, personaId, options) => {
-                    onGenerateContentPackage(idea, platform, personaId, options);
+                onGenerate={(idea, personaId, selectedProductId, options) => {
+                    onGenerateContentPackage(idea, personaId, selectedProductId, options);
                     setWizardIdea(null);
                 }}
                 language={language}
                 personas={personas}
+                affiliateLinks={affiliateLinks}
                 generatedImages={generatedImages}
+                isGenerating={isGeneratingIdeas}
             />
         </div>
     );
