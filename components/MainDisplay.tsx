@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import type { GeneratedAssets, MediaPlanGroup, Settings, AffiliateLink, MediaPlanPost, SchedulingPost, Persona, Trend, Idea, PostInfo } from '../types';
-import AssetDisplay from './AssetDisplay';
-import MediaPlanDisplay from './MediaPlanDisplay';
-import AffiliateVaultDisplay from './AffiliateVaultDisplay';
-import PersonasDisplay from './PersonasDisplay';
-import StrategyDisplay from './StrategyDisplay';
 import ScheduleModal from './ScheduleModal';
 import BulkScheduleModal from './BulkScheduleModal';
 import { Header, ActiveTab } from './Header';
 import { MediaPlanWizardModal } from './MediaPlanWizardModal';
+
+const AssetDisplay = React.lazy(() => import('./AssetDisplay'));
+const MediaPlanDisplay = React.lazy(() => import('./MediaPlanDisplay'));
+const AffiliateVaultDisplay = React.lazy(() => import('./AffiliateVaultDisplay'));
+const PersonasDisplay = React.lazy(() => import('./PersonasDisplay'));
+const StrategyDisplay = React.lazy(() => import('./StrategyDisplay'));
 
 interface MainDisplayProps {
   assets: GeneratedAssets;
@@ -195,114 +196,116 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
             />
 
             <main className="flex-grow overflow-hidden">
-                {activeTab === 'brandKit' && (
-                    <AssetDisplay 
-                        assets={assets}
-                        onGenerateImage={(prompt, key, aspectRatio) => onGenerateImage(prompt, key, aspectRatio, undefined)}
-                        onSetImage={(dataUrl, key) => onSetImage(dataUrl, key, undefined)}
-                        generatedImages={generatedImages}
-                        isGeneratingImage={isGeneratingImage}
-                        language={settings.language}
-                        onExport={onExportBrandKit}
-                        isExporting={isExportingBrandKit}
-                    />
-                )}
-                {activeTab === 'mediaPlan' && (
-                    <MediaPlanDisplay 
-                        plans={assets.mediaPlans}
-                        personas={assets.personas || []}
-                        affiliateLinks={assets.affiliateLinks || []}
-                        onOpenWizard={handleOpenWizard}
-                        onGenerateImage={onGenerateImage}
-                        onSetImage={onSetImage}
-                        generatedImages={generatedImages}
-                        generatedVideos={generatedVideos}
-                        onSetVideo={onSetVideo}
-                        isGeneratingImage={isGeneratingImage}
-                        settings={settings}
-                        onExport={onExportPlan}
-                        isExporting={isExportingPlan}
-                        onRegenerateWeekImages={onRegenerateWeekImages}
-                        // New props for on-demand loading
-                        planGroupsList={mediaPlanGroupsList}
-                        onSelectPlan={onSelectPlan}
-                        activePlanId={activePlanId}
-                        onUpdatePost={onUpdatePost}
-                        onRefinePost={onRefinePost}
-                        onAssignPersonaToPlan={onAssignPersonaToPlan}
-                        // KhongMinh Props
-                        analyzingPostIds={analyzingPostIds}
-                        isAnyAnalysisRunning={isAnyAnalysisRunning}
-                        khongMinhSuggestions={khongMinhSuggestions}
-                        onAcceptSuggestion={onAcceptSuggestion}
-                        onRunKhongMinhForPost={onRunKhongMinhForPost}
-                        // On-demand prompt generation
-                        generatingPromptKeys={generatingPromptKeys}
-                        onGeneratePrompt={onGeneratePrompt}
-                        // Comment Generation
-                        onGenerateAffiliateComment={onGenerateAffiliateComment}
-                        generatingCommentPostIds={generatingCommentPostIds}
-                        // Selection and Scheduling
-                        selectedPostIds={selectedPostIds}
-                        onTogglePostSelection={onTogglePostSelection}
-                        onSelectAllPosts={onSelectAllPosts}
-                        onClearSelection={onClearSelection}
-                        onOpenScheduleModal={onOpenScheduleModal}
-                        onOpenBulkScheduleModal={onOpenBulkScheduleModal}
-                        onPostDrop={onPostDrop}
-                        onPublishPost={onPublishPost} // Pass the new prop
-                        // Bulk Actions
-                        isPerformingBulkAction={isPerformingBulkAction}
-                        onBulkGenerateImages={onBulkGenerateImages}
-                        onBulkSuggestPromotions={onBulkSuggestPromotions}
-                        onBulkGenerateComments={onBulkGenerateComments}
-                        brandFoundation={brandFoundation}
+                <Suspense fallback={<div>Loading...</div>}>
+                    {activeTab === 'brandKit' && (
+                        <AssetDisplay 
+                            assets={assets}
+                            onGenerateImage={(prompt, key, aspectRatio) => onGenerateImage(prompt, key, aspectRatio, undefined)}
+                            onSetImage={(dataUrl, key) => onSetImage(dataUrl, key, undefined)}
+                            generatedImages={generatedImages}
+                            isGeneratingImage={isGeneratingImage}
+                            language={settings.language}
+                            onExport={onExportBrandKit}
+                            isExporting={isExportingBrandKit}
                         />
-                )}
-                {activeTab === 'strategy' && (
-                    <StrategyDisplay
-                        language={settings.language}
-                        trends={assets.trends || []}
-                        ideas={assets.ideas || []}
-                        personas={assets.personas || []}
-                        affiliateLinks={assets.affiliateLinks || []}
-                        generatedImages={generatedImages}
-                        settings={settings}
-                        onSaveTrend={onSaveTrend}
-                        onDeleteTrend={onDeleteTrend}
-                        onGenerateIdeas={onGenerateIdeas}
-                        onCreatePlanFromIdea={handleOpenWizard}
-                        onGenerateContentPackage={onGenerateContentPackage}
-                        isGeneratingIdeas={isGeneratingPlan}
-                        onGenerateFacebookTrends={onGenerateTrendsFromSearch}
-                        isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
-                        productTrendToSelect={productTrendToSelect}
-                        onLoadIdeasForTrend={onLoadIdeasForTrend}
-                    />
-                )}
-                {activeTab === 'affiliateVault' && (
-                     <AffiliateVaultDisplay 
-                        affiliateLinks={assets.affiliateLinks || []}
-                        onSaveLink={onSaveAffiliateLink}
-                        onDeleteLink={onDeleteAffiliateLink}
-                        onImportLinks={onImportAffiliateLinks}
-                        onReloadLinks={props.onReloadLinks}
-                        onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
-                        language={settings.language}
-                    />
-                )}
-                {activeTab === 'personas' && (
-                    <PersonasDisplay
-                        personas={assets.personas || []}
-                        generatedImages={generatedImages}
-                        onSavePersona={onSavePersona}
-                        onDeletePersona={onDeletePersona}
-                        onSetPersonaImage={onSetPersonaImage}
-                        isUploadingImage={isUploadingImage}
-                        language={settings.language}
-                        onUpdatePersona={props.onUpdatePersona}
-                    />
-                )}
+                    )}
+                    {activeTab === 'mediaPlan' && (
+                        <MediaPlanDisplay 
+                            plans={assets.mediaPlans}
+                            personas={assets.personas || []}
+                            affiliateLinks={assets.affiliateLinks || []}
+                            onOpenWizard={handleOpenWizard}
+                            onGenerateImage={onGenerateImage}
+                            onSetImage={onSetImage}
+                            generatedImages={generatedImages}
+                            generatedVideos={generatedVideos}
+                            onSetVideo={onSetVideo}
+                            isGeneratingImage={isGeneratingImage}
+                            settings={settings}
+                            onExport={onExportPlan}
+                            isExporting={isExportingPlan}
+                            onRegenerateWeekImages={onRegenerateWeekImages}
+                            // New props for on-demand loading
+                            planGroupsList={mediaPlanGroupsList}
+                            onSelectPlan={onSelectPlan}
+                            activePlanId={activePlanId}
+                            onUpdatePost={onUpdatePost}
+                            onRefinePost={onRefinePost}
+                            onAssignPersonaToPlan={onAssignPersonaToPlan}
+                            // KhongMinh Props
+                            analyzingPostIds={analyzingPostIds}
+                            isAnyAnalysisRunning={isAnyAnalysisRunning}
+                            khongMinhSuggestions={khongMinhSuggestions}
+                            onAcceptSuggestion={onAcceptSuggestion}
+                            onRunKhongMinhForPost={onRunKhongMinhForPost}
+                            // On-demand prompt generation
+                            generatingPromptKeys={generatingPromptKeys}
+                            onGeneratePrompt={onGeneratePrompt}
+                            // Comment Generation
+                            onGenerateAffiliateComment={onGenerateAffiliateComment}
+                            generatingCommentPostIds={generatingCommentPostIds}
+                            // Selection and Scheduling
+                            selectedPostIds={selectedPostIds}
+                            onTogglePostSelection={onTogglePostSelection}
+                            onSelectAllPosts={onSelectAllPosts}
+                            onClearSelection={onClearSelection}
+                            onOpenScheduleModal={onOpenScheduleModal}
+                            onOpenBulkScheduleModal={onOpenBulkScheduleModal}
+                            onPostDrop={onPostDrop}
+                            onPublishPost={onPublishPost} // Pass the new prop
+                            // Bulk Actions
+                            isPerformingBulkAction={isPerformingBulkAction}
+                            onBulkGenerateImages={onBulkGenerateImages}
+                            onBulkSuggestPromotions={onBulkSuggestPromotions}
+                            onBulkGenerateComments={onBulkGenerateComments}
+                            brandFoundation={brandFoundation}
+                            />
+                    )}
+                    {activeTab === 'strategy' && (
+                        <StrategyDisplay
+                            language={settings.language}
+                            trends={assets.trends || []}
+                            ideas={assets.ideas || []}
+                            personas={assets.personas || []}
+                            affiliateLinks={assets.affiliateLinks || []}
+                            generatedImages={generatedImages}
+                            settings={settings}
+                            onSaveTrend={onSaveTrend}
+                            onDeleteTrend={onDeleteTrend}
+                            onGenerateIdeas={onGenerateIdeas}
+                            onCreatePlanFromIdea={handleOpenWizard}
+                            onGenerateContentPackage={onGenerateContentPackage}
+                            isGeneratingIdeas={isGeneratingPlan}
+                            onGenerateFacebookTrends={onGenerateTrendsFromSearch}
+                            isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
+                            productTrendToSelect={productTrendToSelect}
+                            onLoadIdeasForTrend={onLoadIdeasForTrend}
+                        />
+                    )}
+                    {activeTab === 'affiliateVault' && (
+                        <AffiliateVaultDisplay 
+                            affiliateLinks={assets.affiliateLinks || []}
+                            onSaveLink={onSaveAffiliateLink}
+                            onDeleteLink={onDeleteAffiliateLink}
+                            onImportLinks={onImportAffiliateLinks}
+                            onReloadLinks={props.onReloadLinks}
+                            onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
+                            language={settings.language}
+                        />
+                    )}
+                    {activeTab === 'personas' && (
+                        <PersonasDisplay
+                            personas={assets.personas || []}
+                            generatedImages={generatedImages}
+                            onSavePersona={onSavePersona}
+                            onDeletePersona={onDeletePersona}
+                            onSetPersonaImage={onSetPersonaImage}
+                            isUploadingImage={isUploadingImage}
+                            language={settings.language}
+                            onUpdatePersona={props.onUpdatePersona}
+                        />
+                    )}
+                </Suspense>
             </main>
             
             <ScheduleModal

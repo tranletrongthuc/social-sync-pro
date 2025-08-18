@@ -640,7 +640,7 @@ const App: React.FC = () => {
     const ensureAirtableProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
         const assets = assetsToSave || generatedAssets;
         
-        if (!success) return null;
+        if (!areCredentialsSet) return null;
 
         if (airtableBrandId) return airtableBrandId;
     

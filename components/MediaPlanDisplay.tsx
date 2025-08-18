@@ -1,7 +1,8 @@
 
 
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { MediaPlanGroup, MediaPlanPost, Settings, AffiliateLink, SchedulingPost, Persona, PostInfo, Idea } from '../types';
 import { Button, Input, Select, Switch } from './ui';
 import { ArchiveIcon, SparklesIcon, PlusIcon, CalendarIcon, CollectionIcon, TagIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, KhongMinhIcon, ChatBubbleLeftIcon, SearchIcon, PencilIcon, PhotographIcon, CheckSolidIcon, TrashIcon, ListBulletIcon, LightBulbIcon, LinkIcon, DotsVerticalIcon, ChevronDownIcon, UsersIcon } from './icons';
@@ -219,6 +220,8 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
         { id: 'comment', text: currentTexts.filter_status_comment, Icon: ChatBubbleLeftIcon },
         { id: 'image', text: currentTexts.filter_status_image, Icon: PhotographIcon },
     ];
+
+    
 
     const { planKPIs, assignedPersona } = useMemo(() => {
         if (!selectedPlan) return { planKPIs: { totalPosts: 0, platformCount: 0, postsThisWeek: 0 }, assignedPersona: null };
