@@ -82,7 +82,7 @@ export interface TextGenerationService {
     model: string,
     persona: Persona | null,
     pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; purpose?: string; },
+    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
   ) => Promise<MediaPlanGroup>;
   generateFacebookTrends: (
@@ -282,6 +282,7 @@ export const textGenerationService: TextGenerationService = {
     affiliateContentKit: string,
     model: string,
     persona: Persona | null,
+    pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
   ): Promise<MediaPlanGroup> => {
@@ -293,6 +294,7 @@ export const textGenerationService: TextGenerationService = {
         affiliateContentKit,
         model,
         persona,
+        pillarPlatform,
         options,
         selectedProduct
     );

@@ -31,7 +31,7 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     // This regex looks for a comma or opening bracket, optional whitespace,
     // then the erroneous `="` followed by a string, and a closing `"`.
     // It reconstructs it as a valid JSON string.
-    sanitized = sanitized.replace(/([,[\]\s*=\s*"([^"]*)")/g, '$1"$2"');
+    sanitized = sanitized.replace(/([,[\]\s*=\s*"([^"]*)"/g, '$1"$2"');
 
     // 3. Fix for Pinterest posts generating "infographicContent" instead of "content".
     sanitized = sanitized.replace(/"infographicContent":/g, '"content":');
@@ -828,163 +828,192 @@ export const generateContentPackage = async (
     affiliateContentKit: string,
     model: string,
     persona: Persona | null,
+    pillarPlatform: 'YouTube',
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
-    const pillarPlatform = 'YouTube';
+
+    
+    // Validate selectedProduct
+    console.log('Selected product for content package:', selectedProduct);
+
+    if (selectedProduct && !selectedProduct.id) {
+        selectedProduct = null;
+        console.log('Invalid selectedProduct provided. Resetting to null.');
+    }
+    
+    // const pillarPlatform = 'YouTube';
+    
+    // Sanitize user inputs to prevent prompt injection
+    const sanitizedIdeaTitle = idea.title.replace(/[\"\`\;]+/g, '') || 'N/A';
     const personaInstruction = persona ? `
 **KOL/KOC Persona (Crucial):**
 All content MUST be generated from the perspective of the following KOL/KOC.
-- **Nickname:** ${persona.nickName}
-- **Main Style:** ${persona.mainStyle}
-- **Field of Activity:** ${persona.activityField}
-- **Detailed Description (for image generation):** ${persona.outfitDescription}
+- **Nickname:** ${persona.nickName.replace(/[\"\`\;]+/g, '') || 'N/A'}
+- **Main Style:** ${persona.mainStyle.replace(/[\"\`\;]+/g, '') || 'N/A'}
+- **Field of Activity:** ${persona.activityField.replace(/[\"\`\;]+/g, '') || 'N/A'}
+- **Detailed Description (for image generation):** ${persona.outfitDescription.replace(/[\"\`\;]+/g, '') || 'N/A'}
 - **Tone:** The content's tone must perfectly match this persona's style.
-- **Image Prompts (VERY IMPORTANT):** Every single 'mediaPrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]". For example: "${persona.outfitDescription}, unboxing a product in a minimalist apartment...".
+- **Image Prompts (VERY IMPORTANT):** Every single 'mediaPrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona?.outfitDescription || 'N/A'}, [description of the scene]". For example: "${persona?.outfitDescription || 'N/A'}, unboxing a product in a minimalist apartment...".
 ` : '';
 
     const productInstruction = selectedProduct ? `
 **Affiliate Product to Feature (Crucial):**
-- **Product Name:** ${selectedProduct.productName}
-- **Product ID:** ${selectedProduct.id}
-- **Instruction:** This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id}".
+- **Product Name:** ${selectedProduct.productName || 'N/A'}
+- **Product ID:** ${selectedProduct.id || 'N/A'}
+- **Instruction:** This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id || 'N/A'}".
 ` : '';
 
     const customizationInstruction = `
 **Content Customization Instructions:**
-- **Tone of Voice**
-: Generate all content with a '${options.tone}' tone.
-- **Writing Style**
-: The primary style should be '${options.style}'.
-- **Post Length**
-: Adhere to a '${options.length}' post length.
+- **Tone of Voice**: Generate all content with a '${options.tone}' tone.
+- **Writing Style**: The primary style should be '${options.style}'.
+- **Post Length**: Adhere to a '${options.length}' post length.
+- **Include Emojis**: ${options.includeEmojis ? 'Yes' : 'No'}
 `;
 
-    // 1. Generate Pillar Content
-    const pillarPrompt = `
+    // Get all platforms
+    const allPlatforms: ('YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest')[] = ['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest'];
+    const repurposedPlatforms = allPlatforms.filter(p => p !== pillarPlatform);
+
+    // Single comprehensive prompt with media prompt generation
+    const combinedPrompt = `
     ${personaInstruction}
     ${productInstruction}
     ${customizationInstruction}
-    Based on the idea "${idea.title}", create a comprehensive, 'pillar' content piece for ${pillarPlatform}.
-    This should be a detailed, authoritative piece that provides significant value to the target audience: ${idea.targetAudience}.
+    Based on the idea "${sanitizedIdeaTitle}", create a comprehensive content package including:
+
+    1. PILLAR CONTENT FOR ${pillarPlatform}:
+    Create a detailed, authoritative piece for ${pillarPlatform} that provides significant value to the target audience: ${idea.targetAudience || 'N/A'}.
     - If ${pillarPlatform} is YouTube, provide a detailed video script and a separate, SEO-optimized 'description' for the YouTube description box.
     - If ${pillarPlatform} is Facebook, provide a long-form, engaging post like a mini-article.
     - If ${pillarPlatform} is Instagram, provide a detailed multi-slide carousel post concept, including content for each slide and a main caption.
     - If ${pillarPlatform} is Pinterest, provide a concept for a detailed infographic or a guide pin, including all text content needed.
     - If ${pillarPlatform} is TikTok, provide a script for a multi-part (2-3 videos) series.
-    The output must be a single JSON object with: title, content, ${pillarPlatform === 'YouTube' ? 'description, ' : ''}hashtags, and cta.
-    Language: ${language}.
-    `;
-    
-    const pillarResponse = await generateContentWithBff(
-        model, 
-        pillarPrompt,
-        { systemInstruction: affiliateContentKit, responseMimeType: 'application/json' }
-    );
-    
-    const rawPillarPost = sanitizeAndParseJson(pillarResponse);
-    const pillarPost = normalizePillarContent(rawPillarPost);
 
-
-    // 2. Generate Repurposed Content
-    const allPlatforms: ('YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest')[] = ['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest'];
-    const repurposedPlatforms = allPlatforms.filter(p => p !== pillarPlatform);
-
-    const repurposedPrompt = `
-    ${personaInstruction}
-    ${productInstruction}
-    ${customizationInstruction}
-    **Context:** The following is a large "pillar" content piece about "${idea.title}" created for ${pillarPlatform}.
-    Pillar Content: "${pillarPost.content}"
-    **Your Task:** Repurpose the core message of the pillar content into one smaller, standalone post for EACH of the following platforms: ${repurposedPlatforms.join(', ')}.
-    Each new piece must be completely rewritten and tailored for its specific platform's format and audience. They must be relevant to the original pillar content.
+    2. REPURPOSED CONTENT FOR OTHER PLATFORMS: ${repurposedPlatforms.join(', ')}
+    Repurpose the core message into one smaller, standalone post for EACH of the following platforms: ${repurposedPlatforms.join(', ')}.
+    Each new piece must be completely rewritten and tailored for its specific platform's format and audience.
     - For short-form video platforms (TikTok, Instagram), create a concise video script or reel idea.
     - For image-based platforms (Instagram, Pinterest), create a compelling caption for an image or carousel.
     - For text-based platforms (Facebook), create an engaging post that summarizes or expands on a key point from the pillar content.
     - If the pillar content is a long text post and you need to generate a YouTube idea, create a script outline for a short video based on the text.
-    The output must be an array of ${repurposedPlatforms.length} JSON objects, each with: platform (must be one of ${repurposedPlatforms.join(', ')}), contentType, title, content, hashtags, and cta.
+
+    3. MEDIA PROMPTS
+    For EACH generated post (both pillar and repurposed), generate a media prompt that:
+    - MUST start with the persona's "Detailed Description": "${persona?.outfitDescription || 'N/A'},"
+    - Followed by a comma and then a description of the scene
+    - Be highly specific and visually descriptive
+    - Match the content's theme and the platform's style
+    - Align with the persona's style and tone
+
+    The output MUST be a JSON object with:
+    {
+      "pillarContent": {
+        "title": "string",
+        "content": "string",
+        "description"?: "string",  // Only for YouTube
+        "hashtags": "string[]",
+        "cta": "string",
+        "mediaPrompt": "string"  // New field for media prompt
+      },
+      "repurposedContents": [
+        {
+          "platform": "string",  // Must be one of ${repurposedPlatforms.join(', ')}
+          "contentType": "string",
+          "title": "string",
+          "content": "string",
+          "hashtags": "string[]",
+          "cta": "string",
+          "mediaPrompt": "string"  // New field for media prompt
+        }
+      ]
+    }
     Language: ${language}.
     `;
-    
-    const repurposedResponse = await generateContentWithBff(
-        model, 
-        repurposedPrompt,
-        { systemInstruction: affiliateContentKit, responseMimeType: 'application/json' }
-    );
-    
-    const rawRepurposed = sanitizeAndParseJson(repurposedResponse);
-    let repurposedPosts: Omit<MediaPlanPost, 'id'|'status'>[] = normalizeArrayResponse(rawRepurposed, 'post');
 
-    // Normalize hashtags for each repurposed post
-    repurposedPosts = repurposedPosts.map(post => {
-        const p = { ...post };
-        if (typeof p.hashtags === 'string') {
-            p.hashtags = (p.hashtags as any).split(/[, ]+/)
-                .map((h: string) => h.trim())
-                .filter(Boolean)
-                .map((h: string) => h.startsWith('#') ? h : `#${h}`);
-        } else if (!Array.isArray(p.hashtags)) {
-            p.hashtags = [];
+    try {
+        // Single API call for all content and media prompt generation
+        const response = await generateContentWithBff(
+            model,
+            combinedPrompt,
+            { systemInstruction: affiliateContentKit, responseMimeType: 'application/json' }
+        );
+
+        const rawResponse = sanitizeAndParseJson(response);
+        
+        // Extract and validate pillar content with media prompt
+        if (!rawResponse.pillarContent) {
+            throw new Error('Missing pillar content in API response');
         }
-        return p;
-    });
 
-
-    // 3. Assemble the package into a MediaPlanGroup
-    const allPosts: Omit<MediaPlanPost, 'id'|'status'>[] = [
-        {
-            ...(pillarPost as any),
+        const pillarPost = {
+            title: rawResponse.pillarContent.title || 'Untitled',
+            content: rawResponse.pillarContent.content || '',
+            ...(rawResponse.pillarContent.description && { description: rawResponse.pillarContent.description }),
+            hashtags: Array.isArray(rawResponse.pillarContent.hashtags) ? 
+                rawResponse.pillarContent.hashtags : 
+                (typeof rawResponse.pillarContent.hashtags === 'string' ? [rawResponse.pillarContent.hashtags] : []),
+            cta: rawResponse.pillarContent.cta || '',
+            mediaPrompt: rawResponse.pillarContent.mediaPrompt || '',
             platform: pillarPlatform,
             isPillar: true,
-        },
-        ...repurposedPosts.map(p => ({
+        };
+
+        // Extract and validate repurposed contents with media prompts
+        if (!Array.isArray(rawResponse.repurposedContents)) {
+            throw new Error('Missing repurposed contents in API response');
+        }
+
+        const repurposedPosts = rawResponse.repurposedContents
+            .filter((content: any) => repurposedPlatforms.includes(content.platform))
+            .map((content: any) => ({
+                title: content.title || 'Untitled',
+                content: content.content || '',
+                contentType: content.contentType || 'text',
+                hashtags: Array.isArray(content.hashtags) ? 
+                    content.hashtags : 
+                    (typeof content.hashtags === 'string' ? [content.hashtags] : []),
+                cta: content.cta || '',
+                mediaPrompt: content.mediaPrompt || '',
+                platform: content.platform,
+                isPillar: false,
+            }));
+
+        // Combine all posts
+        const allPosts: Omit<MediaPlanPost, 'id'|'status'>[] = [
+            pillarPost,
+            ...repurposedPosts
+        ];
+
+        // Final posts with metadata
+        const finalPosts = allPosts.map(p => ({
             ...p,
-            isPillar: false,
-        }))
-    ];
+            id: crypto.randomUUID(),
+            status: 'draft',
+            promotedProductIds: (selectedProduct && selectedProduct.id) ? [selectedProduct.id] : [],
+        } as MediaPlanPost));
 
-    // 4. Generate media prompts for all posts
-    const postsWithPrompts = await Promise.all(
-        allPosts.map(async (post) => {
-            try {
-                const newPrompt = await generateMediaPromptForPost(
-                    { title: post.title, content: post.content, contentType: post.contentType },
-                    brandFoundation,
-                    language,
-                    model,
-                    persona
-                );
-                return { ...post, mediaPrompt: newPrompt };
-            } catch (e) {
-                console.error(`Failed to generate media prompt for post: ${post.title}`, e);
-                return post; // Return original post on error
-            }
-        })
-    );
+        // Create plan structure
+        const plan: MediaPlan = [{
+            week: 1,
+            theme: `Content Package: ${sanitizedIdeaTitle}`,
+            posts: finalPosts
+        }];
 
+        // Return the media plan group
+        return {
+            id: crypto.randomUUID(),
+            name: sanitizedIdeaTitle,
+            prompt: idea.description || 'N/A',
+            plan: plan,
+            source: 'content-package',
+            personaId: persona?.id || null,
+        };
 
-    const finalPosts = postsWithPrompts.map(p => ({
-        ...p,
-        id: crypto.randomUUID(),
-        status: 'draft',
-        promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
-    } as MediaPlanPost));
-
-
-    const plan: MediaPlan = [{
-        week: 1,
-        theme: `Content Package: ${idea.title}`,
-        posts: finalPosts
-    }];
-
-    return {
-        id: crypto.randomUUID(),
-        name: idea.title,
-        prompt: idea.description,
-        plan: plan,
-        source: 'content-package',
-        personaId: persona?.id,
-    };
+    } catch (error) {
+        throw new Error(`Failed to generate content package: ${error.message}`);
+    }
 };
 
 // --- NEW FACEBOOK STRATEGY FUNCTIONS ---
@@ -1141,6 +1170,11 @@ Make sure each idea is distinct and highlights different aspects of the product.
         }
     );
     
+    if (!jsonText) {
+        console.warn("Received empty response from AI when generating ideas from product. Returning empty array.");
+        return [];
+    }
+
     let ideas = sanitizeAndParseJson(jsonText);
     
     if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.ideas) {

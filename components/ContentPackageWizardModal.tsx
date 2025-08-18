@@ -123,8 +123,14 @@ const ContentPackageWizardModal: React.FC<ContentPackageWizardModalProps> = ({
   const texts = (T as any)[language] || T['English'];
 
   const handleGenerate = () => {
+    
     onGenerate(idea, selectedPersonaId, selectedProductId, { tone, style: writingStyle, length: postLength, includeEmojis });
-  };
+    console.log('Generating content package with options:', {
+        ideaId: idea.id,
+        personaId: selectedPersonaId,
+        productId: selectedProductId,
+        options: { tone, style: writingStyle, length: postLength, includeEmojis }}
+    )};
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>

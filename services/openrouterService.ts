@@ -641,7 +641,7 @@ export const generateContentPackageWithOpenRouter = async (
     model: string,
     persona: Persona | null,
     pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; },
+    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
 

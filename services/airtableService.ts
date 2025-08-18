@@ -24,6 +24,16 @@ const mapPostStatusToAirtable = (status: string): string => {
     return status.charAt(0).toUpperCase() + status.slice(1);
 };
 
+const VALID_PLATFORMS = new Set(['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest']);
+
+const normalizePlatform = (platform: string): string => {
+    if (VALID_PLATFORMS.has(platform)) {
+        return platform;
+    }
+    console.warn(`Invalid platform "${platform}" received. Defaulting to 'Facebook'.`);
+    return 'Facebook';
+};
+
 
 // --- SCHEMA DEFINITIONS ---
 
@@ -306,6 +316,12 @@ const fetchFullRecordsByFormula = async (tableName: string, formula: string, fie
 
     const response = await airtableFetch(path, {});
     return response.records || [];
+};
+
+// Public function to check if a product exists in Airtable by its link_id
+export const checkIfProductExistsInAirtable = async (productId: string): Promise<boolean> => {
+    const recordId = await getRecordIdFromCustomId(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', productId);
+    return !!recordId;
 };
 
 const sendToAirtable = async (records: { fields: Record<string, any> }[], tableName: string) => {
@@ -930,7 +946,7 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
                 title: post.title,
                 week: week.week,
                 theme: week.theme,
-                platform: post.platform,
+                platform: normalizePlatform(post.platform),
                 content_type: post.contentType,
                 content: post.content,
                 description: post.description,
@@ -957,14 +973,26 @@ export const saveMediaPlanGroup = async (group: MediaPlanGroup, imageUrls: Recor
             
             // Convert UUIDs to Airtable record IDs for the relationship field
             if (post.promotedProductIds && post.promotedProductIds.length > 0) {
-                const formula = `OR(${post.promotedProductIds.map(id => `{link_id} = '${id}'`).join(',')})`;
-                const productRecords = await fetchFullRecordsByFormula(AFFILIATE_PRODUCTS_TABLE_NAME, formula, ['link_id']);
-                const promotedProductRecordIds = productRecords.map(r => r.id);
+                // Filter out any undefined or null values
+                const validProductIds = post.promotedProductIds.filter(id => id && typeof id === 'string');
+                if (validProductIds.length !== post.promotedProductIds.length) {
+                    console.warn(`Filtered out ${post.promotedProductIds.length - validProductIds.length} invalid product IDs from promotedProductIds`);
+                }
+                
+                const promotedProductRecordIds = [];
+                for (const productId of validProductIds) {
+                    const recordId = await getRecordIdFromCustomId(AFFILIATE_PRODUCTS_TABLE_NAME, 'link_id', productId);
+                    if (recordId) {
+                        promotedProductRecordIds.push(recordId);
+                    } else {
+                        console.warn(`Could not find Airtable record for promoted product ID: ${productId}`);
+                    }
+                }
                 postFields.promoted_products = promotedProductRecordIds;
                 
                 // Make sure all provided IDs were found
-                if (productRecords.length !== post.promotedProductIds.length) {
-                    console.warn(`Mismatch in promoted product IDs for new post. Expected ${post.promotedProductIds.length}, found ${productRecords.length}`);
+                if (promotedProductRecordIds.length !== validProductIds.length) {
+                    console.warn(`Mismatch in promoted product IDs for new post. Expected ${validProductIds.length}, found ${promotedProductRecordIds.length}`);
                 }
             }
             

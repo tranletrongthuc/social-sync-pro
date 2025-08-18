@@ -550,8 +550,9 @@ app.get('/api/airtable/list-brands', async (req, res) => {
     const response = await makeAirtableRequest('GET', BRANDS_TABLE_NAME);
     
     const brands = response.records.map(record => ({
-      id: record.fields.brand_id,
-      name: record.fields.name
+      id: record.fields.brand_id, // The custom ID
+      name: record.fields.name,
+      airtableId: record.id // The Airtable record ID
     }));
     
     res.json({ brands });
@@ -702,11 +703,56 @@ app.post('/api/airtable/update-media-plan-post', async (req, res) => {
 app.post('/api/airtable/save-media-plan-group', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-media-plan-group ---');
   try {
-    const { group, imageUrls, brandId } = req.body;
-    
-    // Implementation would go here
-    res.json({ success: true });
-    console.log('--- Media plan group saved ---');
+    const { group, imageUrls, brandAirtableId } = req.body;
+
+    if (!group || !group.name || !Array.isArray(group.posts)) {
+      return res.status(400).json({ error: 'Invalid group data provided.' });
+    }
+
+    // Assuming table names in Airtable. These could also be passed from the client.
+    const POSTS_TABLE = 'Posts';
+    const GROUPS_TABLE = 'Media Plan Groups';
+
+    // 1. Create the Media Plan Group record
+    const groupRecord = {
+      fields: {
+        "Name": group.name,
+        // Link to the brand using the Airtable record ID
+        ...(brandAirtableId && { "Brand": [brandAirtableId] }),
+      }
+    };
+
+    const groupResponse = await makeAirtableRequest('POST', GROUPS_TABLE, { records: [groupRecord] });
+    if (!groupResponse.records || groupResponse.records.length === 0) {
+      throw new Error('Failed to create media plan group record in Airtable.');
+    }
+    const newGroupId = groupResponse.records[0].id;
+
+    // 2. Create the Post records in batches of 10
+    const postsToCreate = group.posts.map(post => ({
+      fields: {
+        "Title": post.title,
+        "Content": post.content,
+        "Hashtags": (post.hashtags || []).join(' '),
+        "CTA": post.cta,
+        "Media Plan Group": [newGroupId], // Link to the new group
+        ...(imageUrls && imageUrls[post.id] && { "Image URL": imageUrls[post.id] }),
+        "Status": "Draft",
+      }
+    }));
+
+    const BATCH_SIZE = 10;
+    const createdPostIds = [];
+    for (let i = 0; i < postsToCreate.length; i += BATCH_SIZE) {
+      const batch = postsToCreate.slice(i, i + BATCH_SIZE);
+      const postsResponse = await makeAirtableRequest('POST', POSTS_TABLE, { records: batch });
+      if (postsResponse.records) {
+        createdPostIds.push(...postsResponse.records.map(r => r.id));
+      }
+    }
+
+    console.log(`--- Media plan group saved with ID ${newGroupId} and ${createdPostIds.length} posts ---`);
+    res.json({ success: true, groupId: newGroupId, postIds: createdPostIds });
   } catch (error) {
     console.error('--- CRASH in /api/airtable/save-media-plan-group ---');
     console.error('Error object:', error);
@@ -904,10 +950,36 @@ app.post('/api/airtable/save-ideas', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-ideas ---');
   try {
     const { ideas } = req.body;
-    
-    // Implementation would go here
-    res.json({ success: true });
-    console.log('--- Ideas saved ---');
+
+    if (!Array.isArray(ideas) || ideas.length === 0) {
+      return res.status(400).json({ error: 'Invalid or empty ideas array provided.' });
+    }
+
+    // Assuming 'Ideas' is the table name in Airtable.
+    const IDEAS_TABLE = 'Ideas';
+
+    const recordsToCreate = ideas.map(idea => ({
+      fields: {
+        // Assuming the idea object has a 'text' field and can be linked to a brand
+        "Idea": idea.text,
+        "Status": "New",
+        ...(idea.brandAirtableId && { "Brand": [idea.brandAirtableId] }),
+      }
+    }));
+
+    const BATCH_SIZE = 10;
+    const createdIdeaIds = [];
+
+    for (let i = 0; i < recordsToCreate.length; i += BATCH_SIZE) {
+      const batch = recordsToCreate.slice(i, i + BATCH_SIZE);
+      const ideasResponse = await makeAirtableRequest('POST', IDEAS_TABLE, { records: batch });
+      if (ideasResponse.records) {
+        createdIdeaIds.push(...ideasResponse.records.map(r => r.id));
+      }
+    }
+
+    console.log(`--- ${createdIdeaIds.length} ideas saved ---`);
+    res.json({ success: true, createdIds: createdIdeaIds });
   } catch (error) {
     console.error('--- CRASH in /api/airtable/save-ideas ---');
     console.error('Error object:', error);

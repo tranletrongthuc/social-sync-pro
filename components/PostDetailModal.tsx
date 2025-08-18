@@ -454,8 +454,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
     // Handle both cases: IDs might be UUIDs or Airtable record IDs (starting with "rec")
     const acceptedProducts = props.affiliateLinks.filter(link => 
         (editedPost.promotedProductIds || []).some(id => {
-            // Direct match (both are UUIDs)
-            if (id.trim() === link.id.trim()) {
+            // Check if id and link.id are defined before calling trim
+            if (id && link.id && id.trim() === link.id.trim()) {
                 return true;
             }
             // If the promoted ID looks like an Airtable record ID, we might need to handle it differently

@@ -36,6 +36,7 @@ import {
     checkAirtableCredentials,
     fetchAffiliateLinksForBrand,
     loadIdeasForTrend,
+    checkIfProductExistsInAirtable,
 } from './services/airtableService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
 import { schedulePost as socialApiSchedulePost, directPost, SocialAccountNotConnectedError } from './services/socialApiService';
@@ -1273,7 +1274,39 @@ const App: React.FC = () => {
         if (!generatedAssets?.brandFoundation) return;
 
         const pillarPlatform = 'YouTube'; // Hardcoded
-        const selectedProduct = selectedProductId ? (generatedAssets.affiliateLinks || []).find(link => link.id === selectedProductId) ?? null : null;
+        
+        // Debug logging
+        console.log('Content package generation - input:', {
+            idea,
+            selectedProductId,
+            generatedAssets
+        });
+        
+        let selectedProduct = null;
+        if (selectedProductId && generatedAssets.affiliateLinks) {
+            selectedProduct = generatedAssets.affiliateLinks.find(link => link.id === selectedProductId) ?? null;
+        } else if (idea.productId && generatedAssets.affiliateLinks) {
+            // If no selectedProductId was passed, try to use the one from the idea
+            selectedProduct = generatedAssets.affiliateLinks.find(link => link.id === idea.productId) ?? null;
+        }
+        
+        // Validate selectedProduct
+        if (selectedProduct && !selectedProduct.id) {
+            console.warn('Selected product has no ID, setting to null:', selectedProduct);
+            selectedProduct = null;
+        }
+        
+        console.log('Content package generation - selectedProduct:', selectedProduct);
+
+        // If a product was selected, verify it exists in Airtable
+        if (selectedProduct && airtableBrandId) {
+            const productExists = await checkIfProductExistsInAirtable(selectedProduct.id);
+            if (!productExists) {
+                console.warn(`Selected product ${selectedProduct.id} not found in Airtable. Saving it now.`);
+                // Save the product to Airtable
+                await saveAffiliateLinks([selectedProduct], airtableBrandId);
+            }
+        }
 
         setLoaderContent({ 
             title: settings.language === 'Việt Nam' ? "Đang tạo Gói Nội Dung..." : "Generating Content Package...",
@@ -1302,13 +1335,40 @@ const App: React.FC = () => {
             setActivePlanId(newPackage.id);
             setActiveTab('mediaPlan');
 
+            // Save to Airtable if we have a brand ID
+            if (airtableBrandId) {
+                updateAutoSaveStatus('saving');
+                
+                // Extract image URLs from posts for saving
+                const allImageUrls: Record<string, string> = {};
+                newPackage.plan.forEach(week => {
+                    week.posts.forEach(post => {
+                        if (post.imageKey && generatedImages[post.imageKey]) {
+                            allImageUrls[post.imageKey] = generatedImages[post.imageKey];
+                        }
+                    });
+                });
+
+                await saveMediaPlanGroup(newPackage, allImageUrls, airtableBrandId);
+                updateAutoSaveStatus('saved');
+                
+                // Show success message
+                setSuccessMessage(settings.language === 'Việt Nam' ? "Gói nội dung đã được lưu thành công!" : "Content package saved successfully!");
+                setTimeout(() => setSuccessMessage(null), 4000);
+            }
+
         } catch (err) {
             console.error("Failed to generate content package:", err);
             setError(err instanceof Error ? err.message : "Failed to generate content package.");
+            
+            // Update auto-save status to error if we were saving
+            if (airtableBrandId) {
+                updateAutoSaveStatus('error');
+            }
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, dispatchAssets, setError, setLoaderContent, setActivePlanId, setActiveTab, setMediaPlanGroupsList]);
+    }, [generatedAssets, settings, dispatchAssets, setError, setLoaderContent, setActivePlanId, setActiveTab, setMediaPlanGroupsList, airtableBrandId, generatedImages, updateAutoSaveStatus, saveMediaPlanGroup]);
 
     const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
         if (!airtableBrandId) {
