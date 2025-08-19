@@ -6,7 +6,9 @@ import EnvironmentPlugin from 'vite-plugin-environment';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     return {
-      plugins: [basicSsl(), EnvironmentPlugin('all')],
+      plugins: [basicSsl(), EnvironmentPlugin([
+        'VITE_BFF_URL'
+      ])],
       server: {
         https: true,
         proxy: {

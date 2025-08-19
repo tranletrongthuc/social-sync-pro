@@ -1,17 +1,11 @@
 const express = require('express');
-// const dotenv = require('dotenv');
 require('dotenv').config();
 const cors = require('cors');
 const { GoogleGenerativeAI } = require("@google/generative-ai");
-const https = require('https');
-const selfsigned = require('selfsigned');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const FormData = require('form-data');
 
-// dotenv.config();
-
 const app = express();
-const port = process.env.PORT || 3001;
 
 // Setup CORS
 app.use(cors({
@@ -22,8 +16,8 @@ app.use(cors({
     if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1') || origin.startsWith('https://localhost') || origin.startsWith('https://127.0.0.1')) {
         return callback(null, true);
     }
-    // Also allow Vite's default development server
-    if (origin === 'https://localhost:5173') {
+    // Also allow Vercel preview URLs and your production domain
+    if (origin.endsWith('.vercel.app') || origin === 'https://socialsync.pro') { // Replace with your actual production domain
         return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -45,8 +39,6 @@ if (!process.env.GEMINI_API_KEY) {
   console.warn("GEMINI_API_KEY is not defined in the .env file. Gemini-related routes will fail.");
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
-// console.log('Gemini API key:', process.env.GEMINI_API_KEY);
 
 app.get('/', (req, res) => {
   res.send('SocialSync Pro BFF is running!');
@@ -1213,7 +1205,7 @@ app.post('/api/gemini/embed', async (req, res) => {
     }
 
     // Import the Google GenAI library
-    const { GoogleGenAI } = await import("@google/genai");
+    const { GoogleGenAI } = await import("@google/generative-ai");
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
 
     // Generate embeddings for all texts
@@ -1246,31 +1238,4 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// --- Server Startup ---
-// Generate a self-signed certificate on the fly
-const attrs = [{ name: 'commonName', value: 'localhost' }];
-const pems = selfsigned.generate(attrs, {
-  keySize: 2048,
-  days: 365,
-  algorithm: 'sha256',
-});
-
-const options = {
-  key: pems.private,
-  cert: pems.cert,
-};
-
-https.createServer(options, app).listen(port, () => {
-  console.log(`✅ BFF Server listening securely at https://localhost:${port}`);
-  console.log(`📝 Available endpoints:`);
-  console.log(`   - GET  /`);
-  console.log(`   - GET  /api/health`);
-  console.log(`   - POST /api/gemini/generate`);
-  console.log(`   - POST /api/gemini/generate-image`);
-  console.log(`   - POST /api/gemini/embed`);
-  console.log(`   - POST /api/openrouter/generate`);
-  console.log(`   - POST /api/openrouter/generate-image`);
-  console.log(`   - POST /api/cloudinary/upload`);
-  console.log(`   - POST /api/facebook/publish`);
-  console.log(`   - POST /api/airtable/request`);
-});
+module.exports = app; // Export the app for Vercel

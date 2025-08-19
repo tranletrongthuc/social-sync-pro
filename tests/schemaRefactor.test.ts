@@ -1,5 +1,6 @@
 import { describe, it, expect, jest, beforeEach } from '@jest/globals';
-import * as airtableService from '../services/airtableService';
+import { act } from '@testing-library/react';
+import { BRANDS_SCHEMA } from '../services/airtableService';
 
 // Mock for import.meta.env
 Object.defineProperty(global, 'import.meta', {
@@ -27,24 +28,26 @@ describe('Airtable Schema Refactor Tests', () => {
   });
 
   describe('BRANDS_SCHEMA', () => {
-    it('should not contain scalable linked record fields', () => {
-      // Access the BRANDS_SCHEMA directly from the module
-      const brandsSchema = require('../services/airtableService').BRANDS_SCHEMA;
-      
-      // Check that we still have the non-scalable linked fields
-      const logoConceptsField = brandsSchema.find((field: any) => field.name === 'logo_concepts');
-      const brandValuesField = brandsSchema.find((field: any) => field.name === 'brand_values');
-      const keyMessagesField = brandsSchema.find((field: any) => field.name === 'key_messages');
-      const mediaPlansField = brandsSchema.find((field: any) => field.name === 'media_plans');
-      
-      // These fields should still exist
-      expect(logoConceptsField).toBeDefined();
-      expect(brandValuesField).toBeDefined();
-      expect(keyMessagesField).toBeDefined();
-      expect(mediaPlansField).toBeDefined();
-      
-      // But we've removed the scalable fields
-      // Note: We didn't actually remove these fields in our refactor, we just changed how they're used
+    it('should not contain scalable linked record fields', async () => {
+      await act(async () => {
+        // Access the BRANDS_SCHEMA directly from the module
+        const brandsSchema = BRANDS_SCHEMA;
+        
+        // Check that we still have the non-scalable linked fields
+        const logoConceptsField = brandsSchema.find((field: any) => field.name === 'logo_concepts');
+        const brandValuesField = brandsSchema.find((field: any) => field.name === 'brand_values');
+        const keyMessagesField = brandsSchema.find((field: any) => field.name === 'key_messages');
+        const mediaPlansField = brandsSchema.find((field: any) => field.name === 'media_plans');
+        
+        // These fields should still exist
+        expect(logoConceptsField).toBeDefined();
+        expect(brandValuesField).toBeDefined();
+        expect(keyMessagesField).toBeDefined();
+        expect(mediaPlansField).toBeDefined();
+        
+        // But we've removed the scalable fields
+        // Note: We didn't actually remove these fields in our refactor, we just changed how they're used
+      });
     });
   });
 });

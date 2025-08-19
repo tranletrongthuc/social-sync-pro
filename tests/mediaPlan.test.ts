@@ -240,19 +240,22 @@ describe('handleGenerateMediaPlanGroup', () => {
 
     // Test Case 1: Successful Media Plan Generation and Save
     it('should successfully generate and save a media plan', async () => {
-        const { result } = renderHook(() => useAppHook());
+        let result: any;
+        await act(async () => {
+            result = renderHook(() => useAppHook());
+        });
 
         await act(async () => {
-            await result.current.handleGenerateMediaPlanGroup(
+            await result.result.current.handleGenerateMediaPlanGroup(
                 "Test Prompt", false, 4, ["Facebook"], { tone: "", style: "", length: "", includeEmojis: false }, [], null
             );
         });
 
-        expect(result.current.loaderContent).toBeNull();
-        expect(result.current.error).toBeNull();
-        expect(result.current.autoSaveStatus).toBe('saved');
-        expect(result.current.mediaPlanGroupsList).toHaveLength(1);
-        expect(result.current.activePlanId).toBe(mockGeneratedMediaPlanGroup.id);
+        expect(result.result.current.loaderContent).toBeNull();
+        expect(result.result.current.error).toBeNull();
+        expect(result.result.current.autoSaveStatus).toBe('saved');
+        expect(result.result.current.mediaPlanGroupsList).toHaveLength(1);
+        expect(result.result.current.activePlanId).toBe(mockGeneratedMediaPlanGroup.id);
         expect(mockGenerateMediaPlanGroup).toHaveBeenCalledTimes(1);
         expect(mockUploadMediaToCloudinary).toHaveBeenCalledTimes(2); // Once for ensureAirtableProject, once for saveMediaPlanGroup
         expect(mockCreateOrUpdateBrandRecord).toHaveBeenCalledTimes(1);
@@ -265,17 +268,20 @@ describe('handleGenerateMediaPlanGroup', () => {
     // Test Case 2: Media Plan Generation Failure (API Error)
     it('should handle media plan generation API error', async () => {
         (mockGenerateMediaPlanGroup as jest.Mock).mockRejectedValueOnce(new Error("API Error"));
-        const { result } = renderHook(() => useAppHook());
+        let result: any;
+        await act(async () => {
+            result = renderHook(() => useAppHook());
+        });
 
         await act(async () => {
-            await result.current.handleGenerateMediaPlanGroup(
+            await result.result.current.handleGenerateMediaPlanGroup(
                 "Test Prompt", false, 4, ["Facebook"], { tone: "", style: "", length: "", includeEmojis: false }, [], null
             );
         });
 
-        expect(result.current.loaderContent).toBeNull();
-        expect(result.current.error).toBe("Failed to generate media plan.");
-        expect(result.current.autoSaveStatus).toBe('error');
+        expect(result.result.current.loaderContent).toBeNull();
+        expect(result.result.current.error).toBe("Failed to generate media plan.");
+        expect(result.result.current.autoSaveStatus).toBe('error');
         expect(mockGenerateMediaPlanGroup).toHaveBeenCalledTimes(1);
         expect(mockSaveMediaPlanGroup).not.toHaveBeenCalled();
     });
@@ -283,37 +289,43 @@ describe('handleGenerateMediaPlanGroup', () => {
     // Test Case 3: Media Plan Save Failure (Airtable/Cloudinary Error)
     it('should handle media plan save error', async () => {
         (mockSaveMediaPlanGroup as jest.Mock).mockRejectedValueOnce(new Error("Save Error"));
-        const { result } = renderHook(() => useAppHook());
+        let result: any;
+        await act(async () => {
+            result = renderHook(() => useAppHook());
+        });
 
         await act(async () => {
-            await result.current.handleGenerateMediaPlanGroup(
+            await result.result.current.handleGenerateMediaPlanGroup(
                 "Test Prompt", false, 4, ["Facebook"], { tone: "", style: "", length: "", includeEmojis: false }, [], null
             );
         });
 
-        expect(result.current.loaderContent).toBeNull();
-        expect(result.current.error).toBe("Failed to generate media plan."); // The catch block sets this generic error
-        expect(result.current.autoSaveStatus).toBe('error');
+        expect(result.result.current.loaderContent).toBeNull();
+        expect(result.result.current.error).toBe("Failed to generate media plan."); // The catch block sets this generic error
+        expect(result.result.current.autoSaveStatus).toBe('error');
         expect(mockGenerateMediaPlanGroup).toHaveBeenCalledTimes(1);
         expect(mockSaveMediaPlanGroup).toHaveBeenCalledTimes(1);
     });
 
     // Test Case 4: Missing Brand Foundation
     it('should not generate plan if brand foundation is missing', async () => {
-        const { result } = renderHook(() => useAppHook());
+        let result: any;
+        await act(async () => {
+            result = renderHook(() => useAppHook());
+        });
         // Manually set generatedAssets to not have brandFoundation
-        act(() => {
-            result.current.dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: { mediaPlans: [], affiliateLinks: [], personas: [], trends: [], ideas: [] } });
+        await act(async () => {
+            result.result.current.dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: { mediaPlans: [], affiliateLinks: [], personas: [], trends: [], ideas: [] } });
         });
 
         await act(async () => {
-            await result.current.handleGenerateMediaPlanGroup(
+            await result.result.current.handleGenerateMediaPlanGroup(
                 "Test Prompt", false, 4, ["Facebook"], { tone: "", style: "", length: "", includeEmojis: false }, [], null
             );
         });
 
-        expect(result.current.loaderContent).toBeNull();
-        expect(result.current.error).toBe("Cannot generate plan without a Brand Foundation.");
+        expect(result.result.current.loaderContent).toBeNull();
+        expect(result.result.current.error).toBe("Cannot generate plan without a Brand Foundation.");
         expect(mockGenerateMediaPlanGroup).not.toHaveBeenCalled();
         expect(mockSaveMediaPlanGroup).not.toHaveBeenCalled();
     });
@@ -322,21 +334,24 @@ describe('handleGenerateMediaPlanGroup', () => {
     it('should not save plan if Airtable credentials are not configured', async () => {
         (mockCheckAirtableCredentials as jest.Mock).mockResolvedValue(false);
         // Mock ensureCredentials to simulate user cancelling or credentials not being set
-        const { result } = renderHook(() => useAppHook());
-        act(() => {
-            result.current.setIsIntegrationModalOpen(true); // Simulate modal opening
-            result.current.onIntegrationModalClose.current(); // Simulate user closing modal without configuring
+        let result: any;
+        await act(async () => {
+            result = renderHook(() => useAppHook());
+        });
+        await act(async () => {
+            result.result.current.setIsIntegrationModalOpen(true); // Simulate modal opening
+            result.result.current.onIntegrationModalClose.current(); // Simulate user closing modal without configuring
         });
 
         await act(async () => {
-            await result.current.handleGenerateMediaPlanGroup(
+            await result.result.current.handleGenerateMediaPlanGroup(
                 "Test Prompt", false, 4, ["Facebook"], { tone: "", style: "", length: "", includeEmojis: false }, [], null
             );
         });
 
-        expect(result.current.loaderContent).toBeNull();
-        expect(result.current.error).toBe("Airtable credentials not configured. Media plan not saved.");
-        expect(result.current.autoSaveStatus).toBe('idle');
+        expect(result.result.current.loaderContent).toBeNull();
+        expect(result.result.current.error).toBe("Airtable credentials not configured. Media plan not saved.");
+        expect(result.result.current.autoSaveStatus).toBe('idle');
         expect(mockGenerateMediaPlanGroup).toHaveBeenCalledTimes(1);
         expect(mockSaveMediaPlanGroup).not.toHaveBeenCalled();
     });

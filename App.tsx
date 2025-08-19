@@ -527,6 +527,7 @@ const App: React.FC = () => {
                 setSettings(configService.getAppSettings());
                 setAiModelConfig(configService.getAiModelConfig());
                 const areSet = await checkAirtableCredentials();
+                console.log('areCredentialsSet', areSet);
                 setAreCredentialsSet(areSet);
                 if (areSet) {
                     setToast({ message: 'Successfully connected to outer services.', type: 'success' });
