@@ -5,6 +5,8 @@ import EnvironmentPlugin from 'vite-plugin-environment';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const isProduction = mode === 'production';
+    
     return {
       plugins: [basicSsl(), EnvironmentPlugin({
         VITE_BFF_URL: null, // Use null to make the variable optional
@@ -17,6 +19,18 @@ export default defineConfig(({ mode }) => {
             changeOrigin: true,
             secure: false, // Allow self-signed certificates
             ws: true,
+          }
+        }
+      },
+      build: {
+        outDir: 'dist',
+        assetsDir: 'assets',
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              vendor: ['react', 'react-dom'],
+              utils: ['file-saver', 'uuid'],
+            }
           }
         }
       },

@@ -1,48 +1,37 @@
 import type { MediaPlanPost, AffiliateLink, BrandFoundation, Persona } from '../types';
 
 // Get the BFF URL from environment variables or use default
+// In production, VITE_BFF_URL should be set to your actual BFF deployment URL
 const BFF_URL = import.meta.env.VITE_BFF_URL || '';
 
 // Generic fetch helper with error handling
 export const bffFetch = async (endpoint: string, options: RequestInit = {}) => {
-  // Use relative path when proxying through Vite
+  // Use relative path when proxying through Vite in development
+  // Use full URL in production when VITE_BFF_URL is set
   const url = BFF_URL ? `${BFF_URL}${endpoint}` : endpoint;
   
-  // Retry mechanism for fetch requests
-  const maxRetries = 3;
-  let lastError: Error | null = null;
-  
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const fetchOptions: RequestInit = {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          ...options.headers,
-        },
-        mode: 'cors',
-        credentials: 'include',
-      };
-      
-      const response = await fetch(url, fetchOptions);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `BFF request failed with status ${response.status}`);
-      }
-      
-      return await response.json();
-    } catch (error) {
-      lastError = error as Error;
-      
-      // If this is the last attempt, re-throw the error
-      if (attempt === maxRetries) {
-        throw error;
-      }
-      
-      // Wait before retrying (exponential backoff)
-      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+  try {
+    const fetchOptions: RequestInit = {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      mode: 'cors',
+      credentials: 'include',
+    };
+    
+    const response = await fetch(url, fetchOptions);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `BFF request failed with status ${response.status}`);
     }
+    
+    return await response.json();
+  } catch (error) {
+    // Re-throw the error to be handled by the calling function
+    throw error;
   }
 };
 
@@ -126,11 +115,13 @@ export const generateImageWithOpenRouterBff = async (
 
 export const uploadMediaWithBff = async (
   media: Record<string, string>,
+  cloudName: string,
+  uploadPreset: string
 ): Promise<Record<string, string>> => {
   try {
     const response = await bffFetch('/api/cloudinary/upload', {
       method: 'POST',
-      body: JSON.stringify({ media }),
+      body: JSON.stringify({ media, cloudName, uploadPreset }),
     });
     
     return response.uploadedUrls;

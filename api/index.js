@@ -17,7 +17,7 @@ app.use(cors({
         return callback(null, true);
     }
     // Also allow Vercel preview URLs and your production domain
-    if (origin.endsWith('.vercel.app') || origin === 'https://social-sync-pro.vercel.app/') { // Replace with your actual production domain
+    if (origin.endsWith('.vercel.app') || origin === 'https://social-sync-pro.vercel.app') { // Replace with your actual production domain
         return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
@@ -1239,3 +1239,31 @@ app.use((err, req, res, next) => {
 });
 
 module.exports = app; // Export the app for Vercel
+
+// Simple API endpoint for Vercel
+import { config } from 'dotenv';
+config();
+
+export default function handler(request, response) {
+  const { url, method } = request;
+  
+  // Simple health check endpoint
+  if (url === '/api/health' && method === 'GET') {
+    return response.status(200).json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      services: {
+        gemini: !!process.env.GEMINI_API_KEY,
+        openrouter: !!process.env.OPENROUTER_API_KEY,
+        cloudinary: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_UPLOAD_PRESET),
+        airtable: !!(process.env.AIRTABLE_PAT && process.env.AIRTABLE_BASE_ID)
+      }
+    });
+  }
+  
+  // For all other routes, return a simple message
+  return response.status(200).json({
+    message: 'SocialSync Pro API endpoint',
+    note: 'This is a placeholder. In production, you should deploy the full BFF server separately.'
+  });
+}
