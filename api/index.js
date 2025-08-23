@@ -17,7 +17,7 @@ app.use(cors({
         return callback(null, true);
     }
     // Also allow Vercel preview URLs and your production domain
-    if (origin.endsWith('.vercel.app') || origin === 'https://socialsync.pro') { // Replace with your actual production domain
+    if (origin.endsWith('.vercel.app') || origin === 'https://social-sync-pro.vercel.app/') { // Replace with your actual production domain
         return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));
