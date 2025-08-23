@@ -41,11 +41,11 @@ if (!process.env.GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.get('/', (req, res) => {
-  res.send('SocialSync Pro BFF is running!');
+  res.send('SocialSync Pro BFF is running! This is the root of the API.');
 });
 
 // Gemini Proxy Endpoint
-app.post('/api/gemini/generate', async (req, res) => {
+app.post('/gemini/generate', async (req, res) => {
   console.log('--- Received request for /api/gemini/generate ---');
   try {
     console.log('Request body:', JSON.stringify(req.body, null, 2));
@@ -99,7 +99,7 @@ app.post('/api/gemini/generate', async (req, res) => {
 });
 
 // Gemini Image Generation Endpoint
-app.post('/api/gemini/generate-image', async (req, res) => {
+app.post('/gemini/generate-image', async (req, res) => {
   console.log('--- Received request for /api/gemini/generate-image ---');
   try {
     const { model, prompt, config } = req.body;
@@ -145,7 +145,7 @@ app.post('/api/gemini/generate-image', async (req, res) => {
 });
 
 // OpenRouter Proxy Endpoint
-app.post('/api/openrouter/generate', async (req, res) => {
+app.post('/openrouter/generate', async (req, res) => {
   console.log('--- Received request for /api/openrouter/generate ---');
   try {
     const { model, messages, responseFormat } = req.body;
@@ -205,7 +205,7 @@ app.post('/api/openrouter/generate', async (req, res) => {
 });
 
 // OpenRouter Image Generation Endpoint
-app.post('/api/openrouter/generate-image', async (req, res) => {
+app.post('/openrouter/generate-image', async (req, res) => {
   console.log('--- Received request for /api/openrouter/generate-image ---');
   try {
     const { model, messages, responseFormat } = req.body;
@@ -277,7 +277,7 @@ app.post('/api/openrouter/generate-image', async (req, res) => {
 });
 
 // Cloudinary Upload Endpoint
-app.post('/api/cloudinary/upload', async (req, res) => {
+app.post('/cloudinary/upload', async (req, res) => {
   console.log('--- Received request for /api/cloudinary/upload ---');
   try {
     const { media } = req.body;
@@ -358,7 +358,7 @@ app.post('/api/cloudinary/upload', async (req, res) => {
 });
 
 // Facebook API Proxy Endpoint
-app.post('/api/facebook/publish', async (req, res) => {
+app.post('/facebook/publish', async (req, res) => {
   console.log('--- Received request for /api/facebook/publish ---');
   try {
     const { post, imageUrl, pageId, accessToken, videoUrl } = req.body;
@@ -416,7 +416,7 @@ app.post('/api/facebook/publish', async (req, res) => {
 });
 
 // Airtable API Proxy Endpoint
-app.post('/api/airtable/request', async (req, res) => {
+app.post('/airtable/request', async (req, res) => {
   // console.log('--- Received request for /api/airtable/request ---');
   try {
     const { method = 'GET', path, body, headers = {} } = req.body;
@@ -511,7 +511,7 @@ const makeAirtableRequest = async (method, path, body = null) => {
 };
 
 // Check Airtable credentials
-app.get('/api/airtable/check-credentials', async (req, res) => {
+app.get('/airtable/check-credentials', async (req, res) => {
   console.log('--- Received request for /api/airtable/check-credentials ---');
   try {
     const { AIRTABLE_PAT, AIRTABLE_BASE_ID } = process.env;
@@ -530,7 +530,7 @@ app.get('/api/airtable/check-credentials', async (req, res) => {
 });
 
 // List brands
-app.get('/api/airtable/list-brands', async (req, res) => {
+app.get('/airtable/list-brands', async (req, res) => {
   console.log('--- Received request for /api/airtable/list-brands ---');
   try {
     const { AIRTABLE_BASE_ID } = process.env;
@@ -564,7 +564,7 @@ app.get('/api/airtable/list-brands', async (req, res) => {
 });
 
 // Create or update brand record
-app.post('/api/airtable/create-or-update-brand', async (req, res) => {
+app.post('/airtable/create-or-update-brand', async (req, res) => {
   console.log('--- Received request for /api/airtable/create-or-update-brand ---');
   try {
     const { brandInfo, colorPalette, fontRecommendations, unifiedProfile, brandId } = req.body;
@@ -596,7 +596,7 @@ app.post('/api/airtable/create-or-update-brand', async (req, res) => {
 });
 
 // Save affiliate links
-app.post('/api/airtable/save-affiliate-links', async (req, res) => {
+app.post('/airtable/save-affiliate-links', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-affiliate-links ---');
   try {
     const { links, brandId } = req.body;
@@ -612,7 +612,7 @@ app.post('/api/airtable/save-affiliate-links', async (req, res) => {
 });
 
 // Delete affiliate link
-app.post('/api/airtable/delete-affiliate-link', async (req, res) => {
+app.post('/airtable/delete-affiliate-link', async (req, res) => {
   console.log('--- Received request for /api/airtable/delete-affiliate-link ---');
   try {
     const { linkId, brandId } = req.body;
@@ -628,7 +628,7 @@ app.post('/api/airtable/delete-affiliate-link', async (req, res) => {
 });
 
 // Save persona
-app.post('/api/airtable/save-persona', async (req, res) => {
+app.post('/airtable/save-persona', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-persona ---');
   try {
     const { persona, brandId } = req.body;
@@ -644,7 +644,7 @@ app.post('/api/airtable/save-persona', async (req, res) => {
 });
 
 // Delete persona
-app.post('/api/airtable/delete-persona', async (req, res) => {
+app.post('/airtable/delete-persona', async (req, res) => {
   console.log('--- Received request for /api/airtable/delete-persona ---');
   try {
     const { personaId, brandId } = req.body;
@@ -660,7 +660,7 @@ app.post('/api/airtable/delete-persona', async (req, res) => {
 });
 
 // Assign persona to plan
-app.post('/api/airtable/assign-persona-to-plan', async (req, res) => {
+app.post('/airtable/assign-persona-to-plan', async (req, res) => {
   console.log('--- Received request for /api/airtable/assign-persona-to-plan ---');
   try {
     const { planId, personaId, updatedPosts, brandId } = req.body;
@@ -676,7 +676,7 @@ app.post('/api/airtable/assign-persona-to-plan', async (req, res) => {
 });
 
 // Update media plan post
-app.post('/api/airtable/update-media-plan-post', async (req, res) => {
+app.post('/airtable/update-media-plan-post', async (req, res) => {
   console.log('--- Received request for /api/airtable/update-media-plan-post ---');
   try {
     const { post, brandId, imageUrl, videoUrl } = req.body;
@@ -692,7 +692,7 @@ app.post('/api/airtable/update-media-plan-post', async (req, res) => {
 });
 
 // Save media plan group
-app.post('/api/airtable/save-media-plan-group', async (req, res) => {
+app.post('/airtable/save-media-plan-group', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-media-plan-group ---');
   try {
     const { group, imageUrls, brandAirtableId } = req.body;
@@ -753,7 +753,7 @@ app.post('/api/airtable/save-media-plan-group', async (req, res) => {
 });
 
 // Sync asset media
-app.post('/api/airtable/sync-asset-media', async (req, res) => {
+app.post('/airtable/sync-asset-media', async (req, res) => {
   console.log('--- Received request for /api/airtable/sync-asset-media ---');
   try {
     const { imageUrls, brandId, assets } = req.body;
@@ -769,7 +769,7 @@ app.post('/api/airtable/sync-asset-media', async (req, res) => {
 });
 
 // Bulk update post schedules
-app.post('/api/airtable/bulk-update-post-schedules', async (req, res) => {
+app.post('/airtable/bulk-update-post-schedules', async (req, res) => {
   console.log('--- Received request for /api/airtable/bulk-update-post-schedules ---');
   try {
     const { updates, brandId } = req.body;
@@ -785,7 +785,7 @@ app.post('/api/airtable/bulk-update-post-schedules', async (req, res) => {
 });
 
 // Fetch affiliate links
-app.post('/api/airtable/fetch-affiliate-links', async (req, res) => {
+app.post('/airtable/fetch-affiliate-links', async (req, res) => {
   console.log('--- Received request for /api/airtable/fetch-affiliate-links ---');
   try {
     const { brandId } = req.body;
@@ -801,7 +801,7 @@ app.post('/api/airtable/fetch-affiliate-links', async (req, res) => {
 });
 
 // Save settings
-app.post('/api/airtable/save-settings', async (req, res) => {
+app.post('/airtable/save-settings', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-settings ---');
   try {
     const { settings, brandId } = req.body;
@@ -817,7 +817,7 @@ app.post('/api/airtable/save-settings', async (req, res) => {
 });
 
 // Fetch settings
-app.post('/api/airtable/fetch-settings', async (req, res) => {
+app.post('/airtable/fetch-settings', async (req, res) => {
   console.log('--- Received request for /api/airtable/fetch-settings ---');
   try {
     const { brandId } = req.body;
@@ -833,7 +833,7 @@ app.post('/api/airtable/fetch-settings', async (req, res) => {
 });
 
 // Load project
-app.post('/api/airtable/load-project', async (req, res) => {
+app.post('/airtable/load-project', async (req, res) => {
   console.log('--- Received request for /api/airtable/load-project ---');
   try {
     const { brandId } = req.body;
@@ -854,7 +854,7 @@ app.post('/api/airtable/load-project', async (req, res) => {
 });
 
 // List media plan groups
-app.post('/api/airtable/list-media-plan-groups', async (req, res) => {
+app.post('/airtable/list-media-plan-groups', async (req, res) => {
   console.log('--- Received request for /api/airtable/list-media-plan-groups ---');
   try {
     const { brandId } = req.body;
@@ -870,7 +870,7 @@ app.post('/api/airtable/list-media-plan-groups', async (req, res) => {
 });
 
 // Load media plan
-app.post('/api/airtable/load-media-plan', async (req, res) => {
+app.post('/airtable/load-media-plan', async (req, res) => {
   console.log('--- Received request for /api/airtable/load-media-plan ---');
   try {
     const { planId, brandFoundation, language } = req.body;
@@ -890,7 +890,7 @@ app.post('/api/airtable/load-media-plan', async (req, res) => {
 });
 
 // Bulk patch posts
-app.post('/api/airtable/bulk-patch-posts', async (req, res) => {
+app.post('/airtable/bulk-patch-posts', async (req, res) => {
   console.log('--- Received request for /api/airtable/bulk-patch-posts ---');
   try {
     const { updates, brandId } = req.body;
@@ -906,7 +906,7 @@ app.post('/api/airtable/bulk-patch-posts', async (req, res) => {
 });
 
 // Save trend
-app.post('/api/airtable/save-trend', async (req, res) => {
+app.post('/airtable/save-trend', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-trend ---');
   try {
     const { trend, brandId } = req.body;
@@ -922,7 +922,7 @@ app.post('/api/airtable/save-trend', async (req, res) => {
 });
 
 // Delete trend
-app.post('/api/airtable/delete-trend', async (req, res) => {
+app.post('/airtable/delete-trend', async (req, res) => {
   console.log('--- Received request for /api/airtable/delete-trend ---');
   try {
     const { trendId, brandId } = req.body;
@@ -938,7 +938,7 @@ app.post('/api/airtable/delete-trend', async (req, res) => {
 });
 
 // Save ideas
-app.post('/api/airtable/save-ideas', async (req, res) => {
+app.post('/airtable/save-ideas', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-ideas ---');
   try {
     const { ideas } = req.body;
@@ -980,7 +980,7 @@ app.post('/api/airtable/save-ideas', async (req, res) => {
 });
 
 // Fetch admin defaults
-app.get('/api/airtable/fetch-admin-defaults', async (req, res) => {
+app.get('/airtable/fetch-admin-defaults', async (req, res) => {
   console.log('--- Received request for /api/airtable/fetch-admin-defaults ---');
   try {
     // Implementation would go here
@@ -994,7 +994,7 @@ app.get('/api/airtable/fetch-admin-defaults', async (req, res) => {
 });
 
 // Save admin defaults
-app.post('/api/airtable/save-admin-defaults', async (req, res) => {
+app.post('/airtable/save-admin-defaults', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-admin-defaults ---');
   try {
     const { settings } = req.body;
@@ -1010,7 +1010,7 @@ app.post('/api/airtable/save-admin-defaults', async (req, res) => {
 });
 
 // Load AI services
-app.get('/api/airtable/load-ai-services', async (req, res) => {
+app.get('/airtable/load-ai-services', async (req, res) => {
   console.log('--- Received request for /api/airtable/load-ai-services ---');
   try {
     // Implementation would go here
@@ -1024,7 +1024,7 @@ app.get('/api/airtable/load-ai-services', async (req, res) => {
 });
 
 // Save AI service
-app.post('/api/airtable/save-ai-service', async (req, res) => {
+app.post('/airtable/save-ai-service', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-ai-service ---');
   try {
     const { service } = req.body;
@@ -1040,7 +1040,7 @@ app.post('/api/airtable/save-ai-service', async (req, res) => {
 });
 
 // Delete AI service
-app.post('/api/airtable/delete-ai-service', async (req, res) => {
+app.post('/airtable/delete-ai-service', async (req, res) => {
   console.log('--- Received request for /api/airtable/delete-ai-service ---');
   try {
     const { serviceId } = req.body;
@@ -1056,7 +1056,7 @@ app.post('/api/airtable/delete-ai-service', async (req, res) => {
 });
 
 // Save AI model
-app.post('/api/airtable/save-ai-model', async (req, res) => {
+app.post('/airtable/save-ai-model', async (req, res) => {
   console.log('--- Received request for /api/airtable/save-ai-model ---');
   try {
     const { model } = req.body;
@@ -1072,7 +1072,7 @@ app.post('/api/airtable/save-ai-model', async (req, res) => {
 });
 
 // Delete AI model
-app.post('/api/airtable/delete-ai-model', async (req, res) => {
+app.post('/airtable/delete-ai-model', async (req, res) => {
   console.log('--- Received request for /api/airtable/delete-ai-model ---');
   try {
     const { modelId } = req.body;
@@ -1088,7 +1088,7 @@ app.post('/api/airtable/delete-ai-model', async (req, res) => {
 });
 
 // Ensure tables exist
-app.post('/api/airtable/ensure-tables', async (req, res) => {
+app.post('/airtable/ensure-tables', async (req, res) => {
   console.log('--- Received request for /api/airtable/ensure-tables ---');
   try {
     // Implementation would go here
@@ -1102,7 +1102,7 @@ app.post('/api/airtable/ensure-tables', async (req, res) => {
 });
 
 // Cloudflare Image Generation Endpoint
-app.post('/api/cloudflare/generate-image', async (req, res) => {
+app.post('/cloudflare/generate-image', async (req, res) => {
   console.log('--- Received request for /api/cloudflare/generate-image ---');
   try {
     const { prompt, model, image } = req.body;
@@ -1174,7 +1174,7 @@ app.post('/api/cloudflare/generate-image', async (req, res) => {
 });
 
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
@@ -1190,7 +1190,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Gemini Embedding Endpoint for KhongMinh service
-app.post('/api/gemini/embed', async (req, res) => {
+app.post('/gemini/embed', async (req, res) => {
   console.log('--- Received request for /api/gemini/embed ---');
   try {
     const { texts, taskTypes } = req.body;
