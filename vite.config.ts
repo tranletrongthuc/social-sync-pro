@@ -34,6 +34,9 @@ export default defineConfig(({ mode }) => {
           }
         }
       },
+      css: {
+        devSourcemap: true,
+      },
       resolve: {
         alias: {
           '@': path.resolve(__dirname, '.'),
