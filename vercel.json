@@ -1,25 +1,5 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/dist/$1"
-    }
-  ],
-  "env": {
-    "VITE_BFF_URL": "https://your-bff-url.vercel.app"
-  }
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" }
+  ]
 }
