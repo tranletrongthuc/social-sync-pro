@@ -2,7 +2,7 @@
 async function testBffConnection() {
   try {
     // Try to fetch from the BFF health endpoint
-    const response = await fetch('https://localhost:3001/api/health', {
+    const response = await fetch('/api/health', {
       method: 'GET',
       mode: 'cors',
       headers: {
