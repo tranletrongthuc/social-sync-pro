@@ -1,5 +1,5 @@
 
-import { allowCors } from './lib/cors';
+import { allowCors } from './lib/cors.js';
 
 function handler(request, response) {
   if (request.method !== 'GET') {

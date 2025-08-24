@@ -1,5 +1,5 @@
 
-import { allowCors } from '../lib/cors';
+import { allowCors } from '../lib/cors.js';
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 async function handler(request, response) {

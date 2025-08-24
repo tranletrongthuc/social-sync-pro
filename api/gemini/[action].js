@@ -1,5 +1,5 @@
 
-import { allowCors } from '../lib/cors';
+import { allowCors } from '../lib/cors.js';
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 if (!process.env.GEMINI_API_KEY) {

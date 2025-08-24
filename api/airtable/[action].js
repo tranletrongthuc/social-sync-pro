@@ -1,5 +1,5 @@
 import { makeAirtableRequest } from '../lib/airtable';
-import { allowCors } from '../lib/cors';
+import { allowCors } from '../lib/cors.js';
 
 async function handler(request, response) {
   const { action } = request.query;
