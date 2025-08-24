@@ -6,12 +6,77 @@ SocialSync Pro consists of two main components:
 1. **Frontend**: React application (this repository)
 2. **Backend-for-Frontend (BFF)**: Serverless functions that act as a secure proxy for external APIs
 
+## **Local Development Setup (Vercel)**
+
+### **1. Prerequisites**
+
+  * Node.js (version 16 or higher)
+  * npm (comes with Node.js)
+  * **Vercel CLI**
+
+### **2. Initial Setup**
+
+1.  **Clone the repository** (if you haven't already).
+2.  **Navigate into the project directory**.
+3.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+4.  **Install Vercel CLI** (if you don't have it):
+    ```bash
+    npm install -g vercel
+    ```
+5.  **Link your local project to Vercel**:
+    ```bash
+    vercel link
+    ```
+    This will connect your local codebase to the corresponding project on your Vercel dashboard.
+
+-----
+
+### **3. Environment Variables**
+
+For local development, `vercel dev` uses a `.env.local` file. This filename is standard and is automatically ignored by Git.
+
+**Option A: Create the file manually**
+
+1.  Create a file named `.env.local` in the project's root directory.
+2.  Add your secret keys to this file:
+    ```
+    VITE_GEMINI_API_KEY="your_gemini_key"
+    VITE_AIRTABLE_PAT="your_airtable_token"
+    VITE_AIRTABLE_BASE_ID="your_airtable_base_id"
+    VITE_CLOUDINARY_CLOUD_NAME="your_cloudinary_name"
+    VITE_CLOUDINARY_UPLOAD_PRESET="your_cloudinary_preset"
+    ...
+    ```
+
+**Option B: Pull from Vercel**
+If you've already added the variables to your project settings on the Vercel dashboard, you can sync them with this command:
+
+```bash
+vercel env pull .env.local
+```
+
+-----
+
+### **4. Running the Development Server**
+
+Instead of the Vite-only command, you now use the Vercel CLI to run the entire full-stack environment.
+
+1.  **Start the development server**:
+    ```bash
+    vercel dev
+    ```
+2.  The application will be available at the URL provided by the command, which is typically **`http://localhost:3000`**.
+
+This command starts a local server that simulates the Vercel production environment, running both your Vite frontend and your Serverless Functions from the `/api` directory together.
+
 ## Deploying to Vercel
 
 ### 1. Prerequisites
 
 Before deploying, you need to set up your environment variables in Vercel:
-- `VITE_BFF_URL` - The URL of your Vercel deployment (usually automatic)
 - Other environment variables for external services (see below)
 
 ### 2. Deploying the Complete Application to Vercel
@@ -45,13 +110,27 @@ The frontend makes requests to these endpoints, and Vercel routes them to the ap
 ### 4. Local Development vs Production
 
 In local development:
-- The frontend runs on Vite with a proxy to `/api` endpoints
-- API calls are handled by the Vite development server
+- The frontend runs on Vite's development server (port 5173)
+- API calls to `/api` endpoints are handled by the same development server
+- During local development, you'll need to run both the frontend and backend services
 
 In production:
 - The frontend is built and served statically
 - API calls are made directly to the Vercel serverless functions
 - Vercel automatically routes `/api/*` requests to the corresponding functions
+
+## Project Structure
+
+After cleaning up testing components, the project structure is now:
+
+```
+├── api/                 # Serverless functions (BFF)
+├── src/                 # Frontend React application
+├── index.html           # Main HTML file
+├── vite.config.ts       # Vite configuration
+├── package.json         # Project dependencies and scripts
+└── .env                 # Environment variables (not committed)
+```
 
 ## Troubleshooting
 
