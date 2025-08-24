@@ -22,15 +22,14 @@
     "docx": "8.5.0",
     "exceljs": "4.4.0",
     "file-saver": "2.0.5",
+    "form-data": "^4.0.0",
+    "formdata-node": "^6.0.3",
     "jszip": "3.10.1",
+    "node-fetch": "^3.3.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "uuid": "^11.1.0",
-    "cors": "^2.8.5",
-    "express": "^5.1.0",
-    "form-data": "^4.0.0",
-    "node-fetch": "^3.3.2",
-    "selfsigned": "^3.0.1"
+    "selfsigned": "^3.0.1",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",
@@ -40,7 +39,6 @@
     "@playwright/test": "^1.54.2",
     "@testing-library/react": "^16.3.0",
     "@types/uuid": "^10.0.0",
-    "@vitejs/plugin-basic-ssl": "^1.1.0",
     "babel-jest": "^30.0.5",
     "babel-plugin-transform-import-meta": "^2.3.3",
     "babel-plugin-transform-vite-meta-env": "^1.0.3",

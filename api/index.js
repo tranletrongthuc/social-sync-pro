@@ -1,9 +1,11 @@
-const express = require('express');
-require('dotenv').config();
-const cors = require('cors');
-const { GoogleGenerativeAI } = require("@google/generative-ai");
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-const FormData = require('form-data');
+import { config } from 'dotenv';
+config();
+
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import cors from 'cors';
+import express from 'express';
+import { FormData } from 'formdata-node';
+import fetch from 'node-fetch';
 
 const app = express();
 
@@ -25,6 +27,9 @@ app.use(cors({
   credentials: true
 }));
 
+// Handle preflight requests
+app.options('*', cors());
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -41,7 +46,10 @@ if (!process.env.GEMINI_API_KEY) {
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 app.get('/', (req, res) => {
-  res.send('SocialSync Pro BFF is running! This is the root of the API.');
+  res.status(200).json({ 
+    message: 'SocialSync Pro API is running!',
+    timestamp: new Date().toISOString()
+  });
 });
 
 // Gemini Proxy Endpoint
@@ -1175,7 +1183,7 @@ app.post('/cloudflare/generate-image', async (req, res) => {
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.json({ 
+  res.status(200).json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     services: {
@@ -1238,32 +1246,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-module.exports = app; // Export the app for Vercel
-
-// Simple API endpoint for Vercel
-import { config } from 'dotenv';
-config();
-
-export default function handler(request, response) {
-  const { url, method } = request;
-  
-  // Simple health check endpoint
-  if (url === '/api/health' && method === 'GET') {
-    return response.status(200).json({
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      services: {
-        gemini: !!process.env.GEMINI_API_KEY,
-        openrouter: !!process.env.OPENROUTER_API_KEY,
-        cloudinary: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_UPLOAD_PRESET),
-        airtable: !!(process.env.AIRTABLE_PAT && process.env.AIRTABLE_BASE_ID)
-      }
-    });
-  }
-  
-  // For all other routes, return a simple message
-  return response.status(200).json({
-    message: 'SocialSync Pro API endpoint',
-    note: 'This is a placeholder. In production, you should deploy the full BFF server separately.'
-  });
-}
+// Export the app for Vercel serverless functions
+export default app;

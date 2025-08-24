@@ -1,20 +1,19 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 import EnvironmentPlugin from 'vite-plugin-environment';
+// Import 'react' plugin nếu bạn chưa có
+import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     const isProduction = mode === 'production';
     
     return {
-      plugins: [basicSsl(), EnvironmentPlugin({
+      // Đã xóa basicSsl() và thêm plugin 'react()'
+      plugins: [react(), EnvironmentPlugin({
         
       })],
-      server: {
-        https: true,
-        
-      },
+      // Đã xóa toàn bộ khối 'server'
       build: {
         outDir: 'dist',
         assetsDir: 'assets',
