@@ -19,6 +19,8 @@ async function handler(request, response) {
     }
 
     const apiVersion = 'v23.0';
+    const fullMessage = `${post.title}\n\n${post.content}\n\n${(post.hashtags || []).join(' ')}\n\nCTA: ${post.cta}`;
+    let endpoint = '';
     const params = new URLSearchParams();
     params.append('access_token', accessToken);
 

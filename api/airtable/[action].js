@@ -1,4 +1,4 @@
-import { makeAirtableRequest } from '../lib/airtable';
+import { makeAirtableRequest } from '../lib/airtable.js';
 import { allowCors } from '../lib/cors.js';
 
 async function handler(request, response) {
