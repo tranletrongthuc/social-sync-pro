@@ -60,17 +60,26 @@ vercel env pull .env.local
 
 -----
 
-### **4. Running the Development Server**
+### 4. Running the Development Server
 
-Instead of the Vite-only command, you now use the Vercel CLI to run the entire full-stack environment.
+Before running the development server, ensure all dependencies are installed:
+```bash
+npm install
+```
 
-1.  **Start the development server**:
-    ```bash
-    vercel dev
-    ```
-2.  The application will be available at the URL provided by the command, which is typically **`http://localhost:3000`**.
+Then start the development server using Vite:
+```bash
+npm run dev
+```
 
-This command starts a local server that simulates the Vercel production environment, running both your Vite frontend and your Serverless Functions from the `/api` directory together.
+Alternatively, if you have Vercel CLI installed, you can use:
+```bash
+vercel dev
+```
+
+Note: If you encounter an error like `'vite' is not recognized as an internal or external command`, make sure you've run `npm install` to install all dependencies including Vite.
+
+The application will be available at `http://localhost:5173`
 
 ## Deploying to Vercel
 
@@ -143,6 +152,8 @@ After cleaning up testing components, the project structure is now:
 3. **Missing environment variables**: Check that all required environment variables are set in the Vercel dashboard.
 
 4. **Function timeout errors**: Vercel has execution time limits for serverless functions. Complex operations might exceed these limits.
+
+5. **'vite' is not recognized as an internal or external command**: Run `npm install` to ensure all dependencies including Vite are properly installed.
 
 ### Testing Your Deployment
 
