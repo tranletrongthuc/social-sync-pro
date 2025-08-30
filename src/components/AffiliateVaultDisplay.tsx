@@ -15,6 +15,10 @@ interface AffiliateVaultDisplayProps {
   onReloadLinks: () => void; // New prop for reloading links
   onGenerateIdeasFromProduct?: (product: AffiliateLink) => void; // New prop for generating ideas from a product
   language: string;
+  // Lazy loading props
+  isDataLoaded?: boolean;
+  onLoadData?: () => void;
+  isLoading?: boolean;
 }
 
 const emptyLink: Omit<AffiliateLink, 'id'> = {
@@ -29,7 +33,22 @@ const emptyLink: Omit<AffiliateLink, 'id'> = {
     promotionLink: '',
 };
 
-const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language }) => {
+const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language, isDataLoaded, onLoadData, isLoading }) => {
+    const [isAffiliateVaultDataLoaded, setIsAffiliateVaultDataLoaded] = useState(false);
+    const [isLoadingAffiliateVaultData, setIsLoadingAffiliateVaultData] = useState(false);
+    
+    // Load data when component mounts if not already loaded
+    useEffect(() => {
+        if (!isDataLoaded && onLoadData && !isLoading) {
+            setIsLoadingAffiliateVaultData(true);
+            onLoadData().finally(() => {
+                setIsLoadingAffiliateVaultData(false);
+                setIsAffiliateVaultDataLoaded(true);
+            });
+        } else if (isDataLoaded) {
+            setIsAffiliateVaultDataLoaded(true);
+        }
+    }, [isDataLoaded, onLoadData, isLoading]);
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');

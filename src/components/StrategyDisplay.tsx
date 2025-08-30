@@ -111,21 +111,40 @@ interface StrategyDisplayProps {
     isGeneratingTrendsFromSearch: boolean;
     productTrendToSelect?: string | null;
     onLoadIdeasForTrend?: (trendId: string) => void;
+    // Lazy loading props
+    isDataLoaded?: boolean;
+    onLoadData?: () => void;
+    isLoading?: boolean;
 }
 
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
-    const { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend } = props;
+    const { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend, isDataLoaded, onLoadData, isLoading } = props;
     
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
     const [useSearchForIdeas, setUseSearchForIdeas] = useState(false);
     const isGeminiModel = settings.textGenerationModel.startsWith('gemini-');
     const [wizardIdea, setWizardIdea] = useState<Idea | null>(null);
+    const [isStrategyHubDataLoaded, setIsStrategyHubDataLoaded] = useState(false);
+    const [isLoadingStrategyHubData, setIsLoadingStrategyHubData] = useState(false);
 
     const [industryForSearch, setIndustryForSearch] = useState('');
 
+    // Load data when component mounts if not already loaded
     useEffect(() => {
-        if (productTrendToSelect && trends.length > 0) {
+        if (!isDataLoaded && onLoadData && !isLoading) {
+            setIsLoadingStrategyHubData(true);
+            onLoadData().finally(() => {
+                setIsLoadingStrategyHubData(false);
+                setIsStrategyHubDataLoaded(true);
+            });
+        } else if (isDataLoaded) {
+            setIsStrategyHubDataLoaded(true);
+        }
+    }, [isDataLoaded, onLoadData, isLoading]);
+
+    useEffect(() => {
+        if (isStrategyHubDataLoaded && productTrendToSelect && trends.length > 0) {
             const trendToSelect = trends.find(t => t.id === productTrendToSelect);
             if (trendToSelect) {
                 setSelectedTrend(trendToSelect);
@@ -133,13 +152,13 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                     onLoadIdeasForTrend(trendToSelect.id);
                 }
             }
-        } else if (!selectedTrend && trends.length > 0) {
+        } else if (isStrategyHubDataLoaded && !selectedTrend && trends.length > 0) {
             setSelectedTrend(trends[0]);
             if (onLoadIdeasForTrend) {
                 onLoadIdeasForTrend(trends[0].id);
             }
         }
-    }, [trends, selectedTrend, productTrendToSelect, onLoadIdeasForTrend]);
+    }, [trends, productTrendToSelect, selectedTrend, onLoadIdeasForTrend, isStrategyHubDataLoaded]);
     
     const T = {
         'Việt Nam': {
@@ -243,6 +262,25 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     return (
         <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
+            {/* Loading indicator */}
+            {isLoadingStrategyHubData && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-gray-700 font-medium">Loading strategy hub data...</p>
+                    </div>
+                </div>
+            )}
+            {/* Loading indicator */}
+            {isLoadingStrategyHubData && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-gray-700 font-medium">Loading strategy hub data...</p>
+                    </div>
+                </div>
+            )}
+            
              <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                  <div>
                     <h2 className="text-3xl font-bold font-sans text-gray-900 flex items-center gap-3"><LightBulbIcon className="h-8 w-8 text-brand-green"/> Content Strategy</h2>

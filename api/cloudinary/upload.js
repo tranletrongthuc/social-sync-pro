@@ -1,6 +1,6 @@
 import { allowCors } from './lib/cors.js';
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-const FormData = require('form-data');
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 async function handler(request, response) {
   if (request.method !== 'POST') {

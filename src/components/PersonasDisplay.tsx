@@ -446,17 +446,37 @@ const PersonaCard: React.FC<PersonaCardProps> = memo(({ persona, isNew = false, 
 
 
 interface PersonasDisplayProps {
-  personas: Persona[];
-  generatedImages: Record<string, string>;
-  onSavePersona: (persona: Persona) => void;
-  onDeletePersona: (personaId: string) => void;
-  onSetPersonaImage: (personaId: string, photoId: string, dataUrl: string) => Promise<string | undefined>;
-  isUploadingImage: (key: string) => boolean;
-  language: string;
-  onUpdatePersona: (persona: Persona) => void; // New prop for updating persona after social account changes
+    personas: Persona[];
+    generatedImages: Record<string, string>;
+    onSavePersona: (persona: Persona) => void;
+    onDeletePersona: (personaId: string) => void;
+    onSetPersonaImage: (dataUrl: string, imageKey: string, personaId: string) => void;
+    isUploadingImage: (imageKey: string) => boolean;
+    language: string;
+    onUpdatePersona: (persona) => void; // New prop for updating persona after social account changes
+    // Lazy loading props
+    isDataLoaded?: boolean;
+    onLoadData?: () => void;
+    isLoading?: boolean;
 }
 
-const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language, onUpdatePersona }) => {
+const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language, onUpdatePersona, isDataLoaded, onLoadData, isLoading }) => {
+    const [isPersonasDataLoaded, setIsPersonasDataLoaded] = useState(false);
+    const [isLoadingPersonasData, setIsLoadingPersonasData] = useState(false);
+    
+    // Load data when component mounts if not already loaded
+    useEffect(() => {
+        if (!isDataLoaded && onLoadData && !isLoading) {
+            setIsLoadingPersonasData(true);
+            onLoadData().finally(() => {
+                setIsLoadingPersonasData(false);
+                setIsPersonasDataLoaded(true);
+            });
+        } else if (isDataLoaded) {
+            setIsPersonasDataLoaded(true);
+        }
+    }, [isDataLoaded, onLoadData, isLoading]);
+    
     const [newPersona, setNewPersona] = useState<Persona | null>(null);
 
     const T = {
@@ -516,6 +536,16 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
 
     return (
         <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
+            {/* Loading indicator */}
+            {isLoadingPersonasData && (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-gray-700 font-medium">Loading personas data...</p>
+                    </div>
+                </div>
+            )}
+            
             <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                  <div>
                     <h2 className="text-3xl font-bold font-sans text-gray-900 flex items-center gap-3"><UsersIcon className="h-8 w-8 text-brand-green"/> {texts.title}</h2>

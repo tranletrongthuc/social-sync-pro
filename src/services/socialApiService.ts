@@ -1,5 +1,5 @@
 import { getSocialAccountForPersona } from './socialAccountService';
-import { loadMediaPlan } from './airtableService';
+import { loadMediaPlan } from './databaseService';
 import type { MediaPlanPost } from '../types';
 
 export class SocialAccountNotConnectedError extends Error {

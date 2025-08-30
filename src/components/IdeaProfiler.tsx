@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, TextArea } from './ui';
 import { SparklesIcon, PlugIcon, UploadIcon, PlusIcon } from './icons';
-import { listBrandsFromAirtable } from '../services/airtableService';
+import { listBrandsFromDatabase } from '../services/databaseService';
 
 interface IdeaProfilerProps {
   onGenerateProfile: (idea: string) => void;
@@ -28,10 +28,10 @@ const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoadin
         setIsFetchingBrands(true);
         setError(null);
         try {
-          const fetchedBrands = await listBrandsFromAirtable();
+          const fetchedBrands = await listBrandsFromDatabase();
           setBrands(fetchedBrands);
         } catch (err) {
-          console.error("Failed to fetch brands from Airtable:", err);
+          console.error("Failed to fetch brands from Database:", err);
           setError(err instanceof Error ? err.message : "Could not fetch projects.");
         } finally {
           setIsFetchingBrands(false);

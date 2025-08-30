@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Button, Input } from './ui';
 import { TrashIcon, PencilIcon, PlusIcon } from './icons';
 import sampleAIServices from '../sampleAIServices';
-import { saveAIService, deleteAIService, saveAIModel, deleteAIModel, loadAIServices } from '../services/airtableService';
+import { saveAIService, deleteAIService, saveAIModel, deleteAIModel, loadAIServices } from '../services/databaseService';
 import { configService, AiModelConfig } from '../services/configService';
 import type { Settings } from '../types';
 import type { AIService, AIModel } from '../types';

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { Settings } from '../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
-import { fetchAdminDefaultsFromAirtable, fetchSettingsFromAirtable, saveSettingsToAirtable, loadAIServices } from '../services/airtableService';
+import { fetchAdminDefaults, fetchSettings, saveSettings, loadAIServices } from '../services/databaseService';
 import { configService } from '../services/configService';
 
 
@@ -125,7 +125,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false); // New state for saving
 
-  // Load AI services from Airtable and brand-specific settings
+  // Load AI services from Database and brand-specific settings
   useEffect(() => {
     const loadAllData = async () => {
       if (!isOpen) {
@@ -144,7 +144,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
       
       try {
         // Fetch brand-specific settings
-        const fetchedSettings = await fetchSettingsFromAirtable(brandId);
+        const fetchedSettings = await fetchSettings(brandId);
 
         if (fetchedSettings) {
           setSettings({
@@ -153,7 +153,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
         } else {
           // If no settings found for the brand, initialize with admin defaults
           console.warn(`No settings found for brand ${brandId}. Initializing with admin defaults.`);
-          const adminDefaults = await fetchAdminDefaultsFromAirtable();
+          const adminDefaults = await configService.getAdminDefaults();
           setSettings({
             ...adminDefaults,
           });
@@ -255,7 +255,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
     setError(null);
     try {
       // Save general settings
-      await saveSettingsToAirtable(settings, brandId);
+      await saveSettings(settings, brandId);
 
       // // Save AI model configuration
       // await saveAiModelConfigToAirtable({

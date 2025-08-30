@@ -7,7 +7,13 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "vercel-build": "npm run build"
+    "vercel-build": "npm run build",
+    "migrate": "node scripts/migrate-database.js",
+    "migrate:dry-run": "node scripts/migrate-database.js --dry-run",
+    "test:mongodb": "node scripts/test-mongodb-connection.js",
+    "test:mongodb:impl": "node scripts/test-mongodb-implementation.js",
+    "init:mongodb": "node scripts/init-mongodb-database.js",
+    "check:migration": "node scripts/check-migration-status.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.614.0",
@@ -21,6 +27,7 @@
     "form-data": "^4.0.0",
     "formdata-node": "^6.0.3",
     "jszip": "3.10.1",
+    "mongodb": "^6.19.0",
     "node-fetch": "^3.3.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",

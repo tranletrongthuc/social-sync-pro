@@ -1,9 +1,21 @@
-import React, { useState, Suspense } from 'react';
-import type { GeneratedAssets, MediaPlanGroup, Settings, AffiliateLink, MediaPlanPost, SchedulingPost, Persona, Trend, Idea, PostInfo } from '../types';
+import React, { useState, Suspense, useCallback, useEffect } from 'react';
+import type { 
+  GeneratedAssets, 
+  MediaPlanGroup, 
+  Settings, 
+  AffiliateLink, 
+  MediaPlanPost, 
+  SchedulingPost, 
+  Persona, 
+  Trend, 
+  Idea, 
+  PostInfo 
+} from '../types';
 import ScheduleModal from './ScheduleModal';
 import BulkScheduleModal from './BulkScheduleModal';
 import { Header, ActiveTab } from './Header';
 import { MediaPlanWizardModal } from './MediaPlanWizardModal';
+import FunnelCampaignWizard from './FunnelCampaignWizard'; // Import the new component
 
 const AssetDisplay = React.lazy(() => import('./AssetDisplay'));
 const MediaPlanDisplay = React.lazy(() => import('./MediaPlanDisplay'));
@@ -39,307 +51,460 @@ interface MainDisplayProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   // Media Plan props
-  mediaPlanGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[];
-      onSelectPlan: (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => void;
-    // New prop to pass brandFoundation
-    brandFoundation: GeneratedAssets['brandFoundation'];
+  mediaPlanGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[], personaId?: string;}[];
+  onSelectPlan: (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => void;
   activePlanId: string | null;
-  onUpdatePost: (postInfo: PostInfo, updates: Partial<MediaPlanPost>) => void;
-  onRefinePost: (postInfo: PostInfo, refinementPrompt: string) => void;
+  onUpdatePost: (postInfo: PostInfo) => void;
+  onRefinePost: (text: string) => Promise<string>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
-  // Affiliate Vault props
-  onSaveAffiliateLink: (link: AffiliateLink) => void;
-  onDeleteAffiliateLink: (linkId: string) => void;
-  onImportAffiliateLinks: (links: AffiliateLink[]) => void;
-  onReloadLinks: () => void; // New prop for reloading links
-  onGenerateIdeasFromProduct: (product: AffiliateLink) => void;
-  productTrendToSelect: string | null; // New prop to specify which product trend to select
+  // KhongMinh Props
   analyzingPostIds: Set<string>;
   isAnyAnalysisRunning: boolean;
   khongMinhSuggestions: Record<string, AffiliateLink[]>;
   onAcceptSuggestion: (postInfo: PostInfo, productId: string) => void;
   onRunKhongMinhForPost: (postInfo: PostInfo) => void;
+  // On-demand prompt generation
   generatingPromptKeys: Set<string>;
   onGeneratePrompt: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
+  // Comment Generation
   onGenerateAffiliateComment: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
   generatingCommentPostIds: Set<string>;
+  // Selection & Scheduling
   selectedPostIds: Set<string>;
   onTogglePostSelection: (postId: string) => void;
   onSelectAllPosts: (posts: PostInfo[]) => void;
   onClearSelection: () => void;
   onOpenScheduleModal: (post: SchedulingPost | null) => void;
-  onOpenBulkScheduleModal: () => void;
+  isScheduling: boolean;
+  onSchedulePost: (postInfo: SchedulingPost, scheduledAt: string) => void;
   onPostDrop: (postInfo: SchedulingPost, newDate: Date) => void;
+  schedulingPost: SchedulingPost | null;
+  onOpenBulkScheduleModal: () => void;
+  isBulkScheduleModalOpen: boolean;
+  onCloseBulkScheduleModal: () => void;
+  onBulkSchedule: (startDate: string, intervalDays: number, intervalHours: number, intervalMinutes: number) => void;
   isPerformingBulkAction: boolean;
   onBulkGenerateImages: (posts: PostInfo[]) => void;
   onBulkSuggestPromotions: (posts: PostInfo[]) => void;
   onBulkGenerateComments: (posts: PostInfo[]) => void;
-  onPublishPost: (postInfo: PostInfo) => void;
+  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
+  brandFoundation: GeneratedAssets['brandFoundation'];
+  // New prop for opening funnel wizard
+  onOpenFunnelWizard: () => void;
+  // Personas
   onSavePersona: (persona: Persona) => void;
   onDeletePersona: (personaId: string) => void;
   onSetPersonaImage: (dataUrl: string, imageKey: string, personaId: string) => void;
+  onUpdatePersona: (persona: Persona) => void;
+  // Strategy Hub
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
   onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
   onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
   onGenerateTrendsFromSearch: (industry: string) => void;
   isGeneratingTrendsFromSearch: boolean;
-  onUpdatePersona: (persona: Persona) => void;
   onLoadIdeasForTrend?: (trendId: string) => void; // New prop
+  productTrendToSelect: string | null; // New prop to specify which product trend to select
+  // Video
+  onSetVideo: (dataUrl: string, key: string, postInfo: PostInfo) => void;
+  // New Facebook Strategy Props
+  onGenerateFacebookPostIdeas: (postInfo: PostInfo) => void;
+  onAddFacebookPostIdeaToPlan: (idea: FacebookPostIdea) => void;
+  isGeneratingFacebookPostIdeas: boolean;
+  // Funnel Campaign Props
+  onCreateFunnelCampaignPlan: (plan: MediaPlanGroup) => void;
+  // Lazy loading props
+  isStrategyHubDataLoaded?: boolean;
+  onLoadStrategyHubData?: () => void;
+  isLoadingStrategyHubData?: boolean;
+  isAffiliateVaultDataLoaded?: boolean;
+  onLoadAffiliateVaultData?: () => void;
+  isLoadingAffiliateVaultData?: boolean;
+  isPersonasDataLoaded?: boolean;
+  onLoadPersonasData?: () => void;
+  isLoadingPersonasData?: boolean;
 }
 
 const MainDisplay: React.FC<MainDisplayProps> = (props) => {
-    const {
-        assets,
-        onGenerateImage,
-        onSetImage,
-        generatedImages,
-        generatedVideos,
-        onSetVideo,
-        isGeneratingImage,
-        isUploadingImage,
-        settings,
-        onExportBrandKit,
-        isExportingBrandKit,
-        onExportPlan,
-        isExportingPlan,
-        onGeneratePlan,
-        isGeneratingPlan,
-        onRegenerateWeekImages,
-        productImages,
-        onSetProductImages,
-        onSaveProject,
-        isSavingProject,
-        onStartOver,
-        autoSaveStatus,
-        onOpenSettings,
-        onOpenIntegrations,
-        activeTab,
-        setActiveTab,
-        mediaPlanGroupsList,
-        onSelectPlan,
-        activePlanId,
-        onUpdatePost,
-        onRefinePost,
-        onAssignPersonaToPlan,
-        onSaveAffiliateLink,
-        onDeleteAffiliateLink,
-        onImportAffiliateLinks,
-        productTrendToSelect,
-        brandFoundation,
-        analyzingPostIds,
-        isAnyAnalysisRunning,
-        khongMinhSuggestions,
-        onAcceptSuggestion,
-        onRunKhongMinhForPost,
-        generatingPromptKeys,
-        onGeneratePrompt,
-        onGenerateAffiliateComment,
-        generatingCommentPostIds,
-        selectedPostIds,
-        onTogglePostSelection,
-        onSelectAllPosts,
-        onClearSelection,
-        onOpenScheduleModal,
-        isScheduling,
-        onSchedulePost,
-        onPostDrop,
-        schedulingPost,
-        onOpenBulkScheduleModal,
-        isBulkScheduleModalOpen,
-        onCloseBulkScheduleModal,
-        onBulkSchedule,
-        isPerformingBulkAction,
-        onBulkGenerateImages,
-        onBulkSuggestPromotions,
-        onBulkGenerateComments,
-        onSavePersona,
-        onDeletePersona,
-        onSetPersonaImage,
-        onSaveTrend,
-        onDeleteTrend,
-        onGenerateIdeas,
-        onGenerateContentPackage,
-        onGenerateTrendsFromSearch,
-        isGeneratingTrendsFromSearch,
-        onPublishPost,
-        onUpdatePersona,
-        onLoadIdeasForTrend,
-    } = props;
+  const {
+    assets,
+    onGenerateImage,
+    onSetImage,
+    generatedImages,
+    generatedVideos,
+    onSetVideo,
+    isGeneratingImage,
+    isUploadingImage,
+    settings,
+    onExportBrandKit,
+    isExportingBrandKit,
+    onExportPlan,
+    isExportingPlan,
+    onGeneratePlan,
+    isGeneratingPlan,
+    onRegenerateWeekImages,
+    productImages,
+    onSetProductImages,
+    onSaveProject,
+    isSavingProject,
+    onStartOver,
+    autoSaveStatus,
+    onOpenSettings,
+    onOpenIntegrations,
+    activeTab,
+    setActiveTab,
+    mediaPlanGroupsList,
+    onSelectPlan,
+    activePlanId,
+    onUpdatePost,
+    onRefinePost,
+    onAssignPersonaToPlan,
+    onSaveAffiliateLink,
+    onDeleteAffiliateLink,
+    onImportAffiliateLinks,
+    productTrendToSelect,
+    brandFoundation,
+    analyzingPostIds,
+    isAnyAnalysisRunning,
+    khongMinhSuggestions,
+    onAcceptSuggestion,
+    onRunKhongMinhForPost,
+    generatingPromptKeys,
+    onGeneratePrompt,
+    onGenerateAffiliateComment,
+    generatingCommentPostIds,
+    selectedPostIds,
+    onTogglePostSelection,
+    onSelectAllPosts,
+    onClearSelection,
+    onOpenScheduleModal,
+    isScheduling,
+    onSchedulePost,
+    onPostDrop,
+    schedulingPost,
+    onOpenBulkScheduleModal,
+    isBulkScheduleModalOpen,
+    onCloseBulkScheduleModal,
+    onBulkSchedule,
+    isPerformingBulkAction,
+    onBulkGenerateImages,
+    onBulkSuggestPromotions,
+    onBulkGenerateComments,
+    onSavePersona,
+    onDeletePersona,
+    onSetPersonaImage,
+    onSaveTrend,
+    onDeleteTrend,
+    onGenerateIdeas,
+    onGenerateContentPackage,
+    onGenerateTrendsFromSearch,
+    isGeneratingTrendsFromSearch,
+    onPublishPost,
+    onUpdatePersona,
+    onLoadIdeasForTrend,
+    onCreateFunnelCampaignPlan, // New prop
+  } = props;
+  
+  const [isWizardOpen, setIsWizardOpen] = useState(false);
+  const [initialWizardPrompt, setInitialWizardPrompt] = useState('');
+  const [initialWizardProductId, setInitialWizardProductId] = useState<string | undefined>(undefined);
+  
+  // State for Funnel Campaign Wizard
+  const [isFunnelWizardOpen, setIsFunnelWizardOpen] = useState(false);
+  
+  // State for tracking which tabs have been loaded
+  const [loadedTabs, setLoadedTabs] = useState<Set<ActiveTab>>(new Set(['brandKit']));
+  
+  // State for tracking loading status of tabs
+  const [loadingTabs, setLoadingTabs] = useState<Set<ActiveTab>>(new Set());
+  
+  // Load data on demand when switching tabs
+  useEffect(() => {
+    // Load strategy hub data when switching to strategy tab
+    if (activeTab === 'strategy' && !loadedTabs.has('strategy') && props.onLoadStrategyHubData && !loadingTabs.has('strategy')) {
+      setLoadingTabs(prev => new Set(prev).add('strategy'));
+      props.onLoadStrategyHubData().then(() => {
+        // Success - mark tab as loaded
+        setLoadedTabs(prev => new Set(prev).add('strategy'));
+      }).catch((error) => {
+        // Error - don't mark tab as loaded so it can retry
+        console.error("Failed to load strategy hub data:", error);
+      }).finally(() => {
+        // Always clean up loading state
+        setLoadingTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('strategy');
+          return newSet;
+        });
+      });
+    }
     
-    const [isWizardOpen, setIsWizardOpen] = useState(false);
-    const [initialWizardPrompt, setInitialWizardPrompt] = useState('');
-    const [initialWizardProductId, setInitialWizardProductId] = useState<string | undefined>(undefined);
+    // Load affiliate vault data when switching to affiliate vault tab
+    if (activeTab === 'affiliateVault' && !loadedTabs.has('affiliateVault') && props.onLoadAffiliateVaultData && !loadingTabs.has('affiliateVault')) {
+      setLoadingTabs(prev => new Set(prev).add('affiliateVault'));
+      props.onLoadAffiliateVaultData().then(() => {
+        // Success - mark tab as loaded
+        setLoadedTabs(prev => new Set(prev).add('affiliateVault'));
+      }).catch((error) => {
+        // Error - don't mark tab as loaded so it can retry
+        console.error("Failed to load affiliate vault data:", error);
+      }).finally(() => {
+        // Always clean up loading state
+        setLoadingTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('affiliateVault');
+          return newSet;
+        });
+      });
+    }
+    
+    // Load personas data when switching to personas tab
+    if (activeTab === 'personas' && !loadedTabs.has('personas') && props.onLoadPersonasData && !loadingTabs.has('personas')) {
+      setLoadingTabs(prev => new Set(prev).add('personas'));
+      props.onLoadPersonasData().then(() => {
+        // Success - mark tab as loaded
+        setLoadedTabs(prev => new Set(prev).add('personas'));
+      }).catch((error) => {
+        // Error - don't mark tab as loaded so it can retry
+        console.error("Failed to load personas data:", error);
+      }).finally(() => {
+        // Always clean up loading state
+        setLoadingTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete('personas');
+          return newSet;
+        });
+      });
+    }
+  }, [activeTab, loadedTabs, loadingTabs, props.onLoadStrategyHubData, props.onLoadAffiliateVaultData, props.onLoadPersonasData]);
+  
+  // Function to mark a tab as loaded
+  const markTabAsLoaded = (tab: ActiveTab) => {
+    setLoadedTabs(prev => new Set(prev).add(tab));
+  };
+  
+  // Function to mark a tab as loading
+  const markTabAsLoading = (tab: ActiveTab) => {
+    setLoadingTabs(prev => new Set(prev).add(tab));
+  };
+  
+  // Function to mark a tab as finished loading
+  const markTabAsFinishedLoading = (tab: ActiveTab) => {
+    setLoadingTabs(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(tab);
+      return newSet;
+    });
+  };
 
-    const handleOpenWizard = (prompt = '', productId?: string) => {
-        setInitialWizardPrompt(prompt);
-        setInitialWizardProductId(productId);
-        // If we're opening from another tab, switch to the media plan tab
-        if (activeTab !== 'mediaPlan') {
-            setActiveTab('mediaPlan');
-        }
-        setIsWizardOpen(true);
-    };
+  const handleOpenWizard = (prompt = '', productId?: string) => {
+    setInitialWizardPrompt(prompt);
+    setInitialWizardProductId(productId);
+    // If we're opening from another tab, switch to the media plan tab
+    if (activeTab !== 'mediaPlan') {
+      setActiveTab('mediaPlan');
+    }
+    setIsWizardOpen(true);
+  };
+  
+  // Override setActiveTab to implement lazy loading
+  const handleSetActiveTab = (tab: ActiveTab) => {
+    // Mark the tab as loaded
+    markTabAsLoaded(tab);
+    
+    // Call the original setActiveTab
+    setActiveTab(tab);
+  };
+  
+  // Handler for opening the Funnel Campaign Wizard
+  const handleOpenFunnelWizard = () => {
+    setIsFunnelWizardOpen(true);
+  };
 
-    return (
-        <div className="w-full bg-white h-screen flex flex-col max-w-screen-2xl mx-auto shadow-lg border-x border-gray-200">
-            <Header 
-                activeTab={activeTab}
-                setActiveTab={setActiveTab}
-                onSaveProject={onSaveProject}
-                isSavingProject={isSavingProject}
-                autoSaveStatus={autoSaveStatus}
-                onOpenSettings={onOpenSettings}
-                onOpenIntegrations={onOpenIntegrations}
-                onStartOver={onStartOver}
-                language={settings.language}
+  return (
+    <div className="w-full bg-white h-screen flex flex-col max-w-screen-2xl mx-auto shadow-lg border-x border-gray-200">
+      <Header 
+        activeTab={activeTab}
+        setActiveTab={handleSetActiveTab}
+        onSaveProject={onSaveProject}
+        isSavingProject={isSavingProject}
+        autoSaveStatus={autoSaveStatus}
+        onOpenSettings={onOpenSettings}
+        onOpenIntegrations={onOpenIntegrations}
+        onStartOver={onStartOver}
+        language={settings.language}
+      />
+
+      <main className="flex-grow overflow-hidden">
+        <Suspense fallback={<div>Loading...</div>}>
+          {activeTab === 'brandKit' && (
+            <AssetDisplay 
+              assets={assets}
+              onGenerateImage={(prompt, key, aspectRatio) => onGenerateImage(prompt, key, aspectRatio, undefined)}
+              onSetImage={(dataUrl, key) => onSetImage(dataUrl, key, undefined)}
+              generatedImages={generatedImages}
+              isGeneratingImage={isGeneratingImage}
+              language={settings.language}
+              onExport={onExportBrandKit}
+              isExporting={isExportingBrandKit}
             />
-
-            <main className="flex-grow overflow-hidden">
-                <Suspense fallback={<div>Loading...</div>}>
-                    {activeTab === 'brandKit' && (
-                        <AssetDisplay 
-                            assets={assets}
-                            onGenerateImage={(prompt, key, aspectRatio) => onGenerateImage(prompt, key, aspectRatio, undefined)}
-                            onSetImage={(dataUrl, key) => onSetImage(dataUrl, key, undefined)}
-                            generatedImages={generatedImages}
-                            isGeneratingImage={isGeneratingImage}
-                            language={settings.language}
-                            onExport={onExportBrandKit}
-                            isExporting={isExportingBrandKit}
-                        />
-                    )}
-                    {activeTab === 'mediaPlan' && (
-                        <MediaPlanDisplay 
-                            plans={assets.mediaPlans}
-                            personas={assets.personas || []}
-                            affiliateLinks={assets.affiliateLinks || []}
-                            onOpenWizard={handleOpenWizard}
-                            onGenerateImage={onGenerateImage}
-                            onSetImage={onSetImage}
-                            generatedImages={generatedImages}
-                            generatedVideos={generatedVideos}
-                            onSetVideo={onSetVideo}
-                            isGeneratingImage={isGeneratingImage}
-                            settings={settings}
-                            onExport={onExportPlan}
-                            isExporting={isExportingPlan}
-                            onRegenerateWeekImages={onRegenerateWeekImages}
-                            // New props for on-demand loading
-                            planGroupsList={mediaPlanGroupsList}
-                            onSelectPlan={onSelectPlan}
-                            activePlanId={activePlanId}
-                            onUpdatePost={onUpdatePost}
-                            onRefinePost={onRefinePost}
-                            onAssignPersonaToPlan={onAssignPersonaToPlan}
-                            // KhongMinh Props
-                            analyzingPostIds={analyzingPostIds}
-                            isAnyAnalysisRunning={isAnyAnalysisRunning}
-                            khongMinhSuggestions={khongMinhSuggestions}
-                            onAcceptSuggestion={onAcceptSuggestion}
-                            onRunKhongMinhForPost={onRunKhongMinhForPost}
-                            // On-demand prompt generation
-                            generatingPromptKeys={generatingPromptKeys}
-                            onGeneratePrompt={onGeneratePrompt}
-                            // Comment Generation
-                            onGenerateAffiliateComment={onGenerateAffiliateComment}
-                            generatingCommentPostIds={generatingCommentPostIds}
-                            // Selection and Scheduling
-                            selectedPostIds={selectedPostIds}
-                            onTogglePostSelection={onTogglePostSelection}
-                            onSelectAllPosts={onSelectAllPosts}
-                            onClearSelection={onClearSelection}
-                            onOpenScheduleModal={onOpenScheduleModal}
-                            onOpenBulkScheduleModal={onOpenBulkScheduleModal}
-                            onPostDrop={onPostDrop}
-                            onPublishPost={onPublishPost} // Pass the new prop
-                            // Bulk Actions
-                            isPerformingBulkAction={isPerformingBulkAction}
-                            onBulkGenerateImages={onBulkGenerateImages}
-                            onBulkSuggestPromotions={onBulkSuggestPromotions}
-                            onBulkGenerateComments={onBulkGenerateComments}
-                            brandFoundation={brandFoundation}
-                            />
-                    )}
-                    {activeTab === 'strategy' && (
-                        <StrategyDisplay
-                            language={settings.language}
-                            trends={assets.trends || []}
-                            ideas={assets.ideas || []}
-                            personas={assets.personas || []}
-                            affiliateLinks={assets.affiliateLinks || []}
-                            generatedImages={generatedImages}
-                            settings={settings}
-                            onSaveTrend={onSaveTrend}
-                            onDeleteTrend={onDeleteTrend}
-                            onGenerateIdeas={onGenerateIdeas}
-                            onCreatePlanFromIdea={handleOpenWizard}
-                            onGenerateContentPackage={onGenerateContentPackage}
-                            isGeneratingIdeas={isGeneratingPlan}
-                            onGenerateFacebookTrends={onGenerateTrendsFromSearch}
-                            isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
-                            productTrendToSelect={productTrendToSelect}
-                            onLoadIdeasForTrend={onLoadIdeasForTrend}
-                        />
-                    )}
-                    {activeTab === 'affiliateVault' && (
-                        <AffiliateVaultDisplay 
-                            affiliateLinks={assets.affiliateLinks || []}
-                            onSaveLink={onSaveAffiliateLink}
-                            onDeleteLink={onDeleteAffiliateLink}
-                            onImportLinks={onImportAffiliateLinks}
-                            onReloadLinks={props.onReloadLinks}
-                            onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
-                            language={settings.language}
-                        />
-                    )}
-                    {activeTab === 'personas' && (
-                        <PersonasDisplay
-                            personas={assets.personas || []}
-                            generatedImages={generatedImages}
-                            onSavePersona={onSavePersona}
-                            onDeletePersona={onDeletePersona}
-                            onSetPersonaImage={onSetPersonaImage}
-                            isUploadingImage={isUploadingImage}
-                            language={settings.language}
-                            onUpdatePersona={props.onUpdatePersona}
-                        />
-                    )}
-                </Suspense>
-            </main>
-            
-            <ScheduleModal
-                isOpen={!!schedulingPost}
-                onClose={() => onOpenScheduleModal(null)}
-                schedulingPost={schedulingPost}
-                onSchedule={onSchedulePost}
-                isScheduling={isScheduling}
-                language={settings.language}
+          )}
+          {activeTab === 'mediaPlan' && (
+            <MediaPlanDisplay 
+              plans={assets.mediaPlans}
+              personas={assets.personas || []}
+              affiliateLinks={assets.affiliateLinks || []}
+              onOpenWizard={handleOpenWizard}
+              onGenerateImage={onGenerateImage}
+              onSetImage={onSetImage}
+              generatedImages={generatedImages}
+              generatedVideos={generatedVideos}
+              onSetVideo={onSetVideo}
+              isGeneratingImage={isGeneratingImage}
+              settings={settings}
+              onExport={onExportPlan}
+              isExporting={isExportingPlan}
+              onRegenerateWeekImages={onRegenerateWeekImages}
+              // New props for on-demand loading
+              planGroupsList={mediaPlanGroupsList}
+              onSelectPlan={onSelectPlan}
+              activePlanId={activePlanId}
+              onUpdatePost={onUpdatePost}
+              onRefinePost={onRefinePost}
+              onAssignPersonaToPlan={onAssignPersonaToPlan}
+              // KhongMinh Props
+              analyzingPostIds={analyzingPostIds}
+              isAnyAnalysisRunning={isAnyAnalysisRunning}
+              khongMinhSuggestions={khongMinhSuggestions}
+              onAcceptSuggestion={onAcceptSuggestion}
+              onRunKhongMinhForPost={onRunKhongMinhForPost}
+              // On-demand prompt generation
+              generatingPromptKeys={generatingPromptKeys}
+              onGeneratePrompt={onGeneratePrompt}
+              // Comment Generation
+              onGenerateAffiliateComment={onGenerateAffiliateComment}
+              generatingCommentPostIds={generatingCommentPostIds}
+              // Selection and Scheduling
+              selectedPostIds={selectedPostIds}
+              onTogglePostSelection={onTogglePostSelection}
+              onSelectAllPosts={onSelectAllPosts}
+              onClearSelection={onClearSelection}
+              onOpenScheduleModal={onOpenScheduleModal}
+              onOpenBulkScheduleModal={onOpenBulkScheduleModal}
+              onPostDrop={onPostDrop}
+              onPublishPost={onPublishPost} // Pass the new prop
+              // Bulk Actions
+              isPerformingBulkAction={isPerformingBulkAction}
+              onBulkGenerateImages={onBulkGenerateImages}
+              onBulkSuggestPromotions={onBulkSuggestPromotions}
+              onBulkGenerateComments={onBulkGenerateComments}
+              brandFoundation={brandFoundation}
+              // New prop for opening funnel wizard
+              onOpenFunnelWizard={handleOpenFunnelWizard}
             />
-
-            <BulkScheduleModal
-                isOpen={isBulkScheduleModalOpen}
-                onClose={onCloseBulkScheduleModal}
-                onSchedule={onBulkSchedule}
-                isScheduling={isScheduling}
-                language={settings.language}
-                selectedCount={selectedPostIds.size}
+          )}
+          {activeTab === 'strategy' && (
+            <StrategyDisplay
+              language={settings.language}
+              trends={assets.trends || []}
+              ideas={assets.ideas || []}
+              personas={assets.personas || []}
+              affiliateLinks={assets.affiliateLinks || []}
+              generatedImages={generatedImages}
+              settings={settings}
+              onSaveTrend={onSaveTrend}
+              onDeleteTrend={onDeleteTrend}
+              onGenerateIdeas={onGenerateIdeas}
+              onCreatePlanFromIdea={handleOpenWizard}
+              onGenerateContentPackage={onGenerateContentPackage}
+              isGeneratingIdeas={isGeneratingPlan}
+              onGenerateFacebookTrends={onGenerateTrendsFromSearch}
+              isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
+              productTrendToSelect={productTrendToSelect}
+              onLoadIdeasForTrend={onLoadIdeasForTrend}
+              // Lazy loading props
+              isDataLoaded={props.isStrategyHubDataLoaded}
+              onLoadData={props.onLoadStrategyHubData}
+              isLoading={props.isLoadingStrategyHubData}
             />
-
-            <MediaPlanWizardModal
-                isOpen={isWizardOpen}
-                onClose={() => { setIsWizardOpen(false); setInitialWizardPrompt(''); setInitialWizardProductId(undefined); }}
-                settings={settings}
-                onGenerate={onGeneratePlan}
-                isGenerating={isGeneratingPlan}
-                personas={assets.personas || []}
-                generatedImages={generatedImages}
-                initialPrompt={initialWizardPrompt}
-                affiliateLinks={assets.affiliateLinks || []}
-                initialProductId={initialWizardProductId}
+          )}
+          {activeTab === 'affiliateVault' && (
+            <AffiliateVaultDisplay 
+              affiliateLinks={assets.affiliateLinks || []}
+              onSaveLink={onSaveAffiliateLink}
+              onDeleteLink={onDeleteAffiliateLink}
+              onImportLinks={onImportAffiliateLinks}
+              onReloadLinks={props.onReloadLinks}
+              onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
+              language={settings.language}
+              // Lazy loading props
+              isDataLoaded={props.isAffiliateVaultDataLoaded}
+              onLoadData={props.onLoadAffiliateVaultData}
+              isLoading={props.isLoadingAffiliateVaultData}
             />
-        </div>
-    );
+          )}
+          {activeTab === 'personas' && (
+            <PersonasDisplay
+              personas={assets.personas || []}
+              generatedImages={generatedImages}
+              onSavePersona={onSavePersona}
+              onDeletePersona={onDeletePersona}
+              onSetPersonaImage={onSetPersonaImage}
+              isUploadingImage={isUploadingImage}
+              language={settings.language}
+              onUpdatePersona={props.onUpdatePersona}
+              // Lazy loading props
+              isDataLoaded={props.isPersonasDataLoaded}
+              onLoadData={props.onLoadPersonasData}
+              isLoading={props.isLoadingPersonasData}
+            />
+          )}
+        </Suspense>
+      </main>
+      
+      <ScheduleModal
+        isOpen={!!schedulingPost}
+        onClose={() => onOpenScheduleModal(null)}
+        schedulingPost={schedulingPost}
+        onSchedule={onSchedulePost}
+        isScheduling={isScheduling}
+        language={settings.language}
+      />
+
+      <BulkScheduleModal
+        isOpen={isBulkScheduleModalOpen}
+        onClose={onCloseBulkScheduleModal}
+        onSchedule={onBulkSchedule}
+        isScheduling={isScheduling}
+        language={settings.language}
+        selectedCount={selectedPostIds.size}
+      />
+
+      <MediaPlanWizardModal
+        isOpen={isWizardOpen}
+        onClose={() => { setIsWizardOpen(false); setInitialWizardPrompt(''); setInitialWizardProductId(undefined); }}
+        settings={settings}
+        onGenerate={onGeneratePlan}
+        isGenerating={isGeneratingPlan}
+        personas={assets.personas || []}
+        generatedImages={generatedImages}
+        initialPrompt={initialWizardPrompt}
+        affiliateLinks={assets.affiliateLinks || []}
+        initialProductId={initialWizardProductId}
+      />
+      
+      {/* Funnel Campaign Wizard Modal */}
+      <FunnelCampaignWizard
+        isOpen={isFunnelWizardOpen}
+        onClose={() => setIsFunnelWizardOpen(false)}
+        personas={assets.personas || []}
+        affiliateLinks={assets.affiliateLinks || []}
+        language={settings.language}
+        onCreatePlan={onCreateFunnelCampaignPlan}
+        generatedImages={generatedImages}
+      />
+    </div>
+  );
 };
 
 export default MainDisplay;

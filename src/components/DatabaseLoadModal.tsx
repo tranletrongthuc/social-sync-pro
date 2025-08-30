@@ -1,40 +1,40 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui';
 import { AirtableIcon } from './icons';
-import { listBrandsFromAirtable } from '../services/airtableService';
+import { listBrandsFromDatabase } from '../services/databaseService';
 
-interface AirtableLoadModalProps {
+interface DatabaseLoadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoadProject: (brandId: string) => Promise<void>;
   language: string;
 }
 
-const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, onLoadProject, language }) => {
+const DatabaseLoadModal: React.FC<DatabaseLoadModalProps> = ({ isOpen, onClose, onLoadProject, language }) => {
   const [brands, setBrands] = useState<{id: string, name: string}[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   const T = {
       'Việt Nam': {
-          title: "Tải từ Airtable",
+          title: "Tải từ Database",
           subtitle: "Chọn một thương hiệu để tải. Thao tác này sẽ tải bộ thương hiệu và danh sách các kế hoạch truyền thông của nó.",
           noProjects: "Không tìm thấy dự án nào trong bảng 'Brand Kit'.",
           loadButton: "Tải Thương hiệu",
           loadingButton: "Đang tải...",
           cancelButton: "Đóng",
           errorTitle: "Lỗi Kết nối",
-          envNotSetMessage: "Tích hợp Airtable chưa được cấu hình. Vui lòng cung cấp thông tin đăng nhập trong bảng Tích hợp.",
+          envNotSetMessage: "Tích hợp Database chưa được cấu hình. Vui lòng cung cấp thông tin đăng nhập trong bảng Tích hợp.",
       },
       'English': {
-          title: "Load from Airtable",
+          title: "Load from Database",
           subtitle: "Select a brand to load. This will load the brand kit and its list of media plans.",
           noProjects: "No projects found in the 'Brand Kit' table.",
           loadButton: "Load Brand",
           loadingButton: "Loading...",
           cancelButton: "Close",
           errorTitle: "Connection Error",
-          envNotSetMessage: "Airtable integration is not configured. Please provide credentials in the Integrations panel.",
+          envNotSetMessage: "Database integration is not configured. Please provide credentials in the Integrations panel.",
       }
   };
   const texts = (T as any)[language] || T['English'];
@@ -49,7 +49,7 @@ const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, 
         setError(null);
         try {
             
-            const brandList = await listBrandsFromAirtable();
+            const brandList = await listBrandsFromDatabase();
             setBrands(brandList);
 
         } catch (err) {
@@ -136,4 +136,4 @@ const AirtableLoadModal: React.FC<AirtableLoadModalProps> = ({ isOpen, onClose, 
   );
 };
 
-export default AirtableLoadModal;
+export default DatabaseLoadModal;

@@ -1,6 +1,6 @@
 
 import { allowCors } from '../lib/cors.js';
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 if (!process.env.GEMINI_API_KEY) {
   console.warn("GEMINI_API_KEY is not defined in the .env file. Gemini-related routes will fail.");

@@ -6,7 +6,7 @@ import MainDisplay from './components/MainDisplay';
 import AdminPage from './components/AdminPage';
 import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
-import AirtableLoadModal from './components/AirtableLoadModal';
+import AirtableLoadModal from './components/DatabaseLoadModal';
 import SettingsModal from './components/SettingsModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
@@ -37,11 +37,21 @@ import {
     fetchAffiliateLinksForBrand,
     loadIdeasForTrend,
     checkIfProductExistsInAirtable,
-} from './services/airtableService';
+} from './services/databaseService';
+
+// Lazy loading functions
+import {
+    loadStrategyHub,
+    loadAffiliateVault,
+    loadPersonas,
+    loadMediaPlanGroups,
+    loadMediaPlanPosts,
+    loadInitialData,
+} from './services/lazyLoadService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
 import { schedulePost as socialApiSchedulePost, directPost, SocialAccountNotConnectedError } from './services/socialApiService';
 import { getPersonaSocialAccounts } from './services/socialAccountService';
-import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, FacebookTrend, FacebookPostIdea } from './types';
+import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, FacebookTrend, FacebookPostIdea } from '../types';
 import { Button } from './components/ui';
 import { configService, AiModelConfig } from './services/configService';
 
@@ -74,7 +84,8 @@ type AssetsAction =
   | { type: 'ADD_CONTENT_PACKAGE'; payload: MediaPlanGroup }
   | { type: 'ASSIGN_PERSONA_TO_PLAN'; payload: { planId: string; personaId: string | null; } }
   | { type: 'SET_FACEBOOK_TRENDS'; payload: FacebookTrend[] }
-  | { type: 'ADD_FACEBOOK_POST_IDEAS'; payload: FacebookPostIdea[] };
+  | { type: 'ADD_FACEBOOK_POST_IDEAS'; payload: FacebookPostIdea[] }
+  | { type: 'SET_SELECTED_PLATFORMS'; payload: string[] };
 
 export const assetsReducer = (state: GeneratedAssets | null, action: AssetsAction): GeneratedAssets | null => {
     switch (action.type) {
@@ -422,7 +433,7 @@ const App: React.FC = () => {
     const [adminPassword, setAdminPassword] = useState<string>('');
     
     // Integration States
-    const [isAirtableLoadModalOpen, setIsAirtableLoadModalOpen] = useState<boolean>(false);
+    const [isDatabaseLoadModalOpen, setIsDatabaseLoadModalOpen] = useState<boolean>(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
     const [isPersonaConnectModalOpen, setIsPersonaConnectModalOpen] = useState<boolean>(false);
     const [personaToConnect, setPersonaToConnect] = useState<Persona | null>(null);
@@ -458,6 +469,92 @@ const App: React.FC = () => {
             console.log("Failed to import BFF service:", error);
         });
     }, []);
+
+    // Lazy loading callbacks for MainDisplay component
+    const handleLoadStrategyHubData = useCallback(async () => {
+        // If no brand ID, we can't load data from Airtable
+        if (!airtableBrandId) {
+            // For local projects without Airtable integration, we still want to show the UI
+            // but with empty data. The components will handle this case.
+            console.log("No Airtable brand ID, skipping strategy hub data load");
+            return Promise.resolve();
+        }
+        
+        try {
+            const { trends, ideas } = await loadStrategyHub(airtableBrandId);
+            
+            // Update the assets with the loaded data
+            dispatchAssets({ 
+                type: 'INITIALIZE_ASSETS', 
+                payload: {
+                    ...generatedAssets!,
+                    trends,
+                    ideas
+                }
+            });
+            return Promise.resolve();
+        } catch (error) {
+            console.error("Failed to load strategy hub data:", error);
+            setError(error instanceof Error ? error.message : "Could not load strategy hub data.");
+            return Promise.reject(error);
+        }
+    }, [airtableBrandId, generatedAssets, dispatchAssets, setError]);
+
+    const handleLoadAffiliateVaultData = useCallback(async () => {
+        // If no brand ID, we can't load data from Airtable
+        if (!airtableBrandId) {
+            // For local projects without Airtable integration, we still want to show the UI
+            // but with empty data. The components will handle this case.
+            console.log("No Airtable brand ID, skipping affiliate vault data load");
+            return Promise.resolve();
+        }
+        
+        try {
+            const affiliateLinks = await loadAffiliateVault(airtableBrandId);
+            
+            // Update the assets with the loaded data
+            dispatchAssets({ 
+                type: 'INITIALIZE_ASSETS', 
+                payload: {
+                    ...generatedAssets!,
+                    affiliateLinks
+                }
+            });
+            return Promise.resolve();
+        } catch (error) {
+            console.error("Failed to load affiliate vault data:", error);
+            setError(error instanceof Error ? error.message : "Could not load affiliate vault data.");
+            return Promise.reject(error);
+        }
+    }, [airtableBrandId, generatedAssets, dispatchAssets, setError]);
+
+    const handleLoadPersonasData = useCallback(async () => {
+        // If no brand ID, we can't load data from Airtable
+        if (!airtableBrandId) {
+            // For local projects without Airtable integration, we still want to show the UI
+            // but with empty data. The components will handle this case.
+            console.log("No Airtable brand ID, skipping personas data load");
+            return Promise.resolve();
+        }
+        
+        try {
+            const personas = await loadPersonas(airtableBrandId);
+            
+            // Update the assets with the loaded data
+            dispatchAssets({ 
+                type: 'INITIALIZE_ASSETS', 
+                payload: {
+                    ...generatedAssets!,
+                    personas
+                }
+            });
+            return Promise.resolve();
+        } catch (error) {
+            console.error("Failed to load personas data:", error);
+            setError(error instanceof Error ? error.message : "Could not load personas data.");
+            return Promise.reject(error);
+        }
+    }, [airtableBrandId, generatedAssets, dispatchAssets, setError]);
 
     // Set brandId in configService when it changes
     useEffect(() => {
@@ -536,7 +633,7 @@ const App: React.FC = () => {
                 }
             } catch (error) {
                 console.error("Failed to load initial configuration:", error);
-                setError("Failed to load initial configuration. Please check your Airtable setup.");
+                setError("Failed to load initial configuration. Please check your Database setup.");
             } finally {
                 setIsConfigLoaded(true);
             }
@@ -774,7 +871,7 @@ const App: React.FC = () => {
         }
     }, [settings?.language, settings?.textGenerationModel, ensureAirtableProject, executeTextGenerationWithFallback]);
 
-    const handleGenerateMediaPlanGroup = useCallback(async (
+    const handleGenerateMediaPlanGroup = useCallback((
         prompt: string, 
         useSearch: boolean, 
         totalPosts: number, 
@@ -783,108 +880,226 @@ const App: React.FC = () => {
         selectedProductId: string | null, 
         personaId: string | null
     ) => {
+        // Wrap the async logic in an async IIFE
+        (async () => {
+            if (!generatedAssets?.brandFoundation) {
+                setError("Cannot generate plan without a Brand Foundation.");
+                return;
+            }
+            
+            const planSteps = settings?.language === 'Việt Nam' ? [
+                `Phân tích mục tiêu của bạn: "${prompt.substring(0, 50)}..."`,
+                "Thiết lập chủ đề hàng tuần...",
+                "Soạn thảo bài đăng...",
+                "Tạo các hashtag hấp dẫn và CTA...",
+                "Hoàn thiện kế hoạch..."
+            ] : [
+                `Analyzing your goal: "${prompt.substring(0, 50)}..."`,
+                "Establishing weekly themes...",
+                "Drafting posts...",
+                "Generating engaging hashtags and CTAs...",
+                "Finalizing plan..."
+            ];
+
+            setLoaderContent({ title: settings?.language === 'Việt Nam' ? "Đang tạo kế hoạch truyền thông..." : "Generating media plan...", steps: planSteps });
+            setError(null);
+            try {
+                const persona = personaId ? generatedAssets.personas?.find(p => p.id === personaId) ?? null : null;
+                const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null;
+                
+                const generationTask = async (model: string) => {
+                    return textGenerationService.generateMediaPlanGroup(
+                        generatedAssets.brandFoundation,
+                        prompt,
+                        settings.language,
+                        totalPosts,
+                        useSearch,
+                        selectedPlatforms,
+                        options,
+                        settings.affiliateContentKit,
+                        model,
+                        persona,
+                        selectedProduct
+                    );
+                };
+                const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
+                
+                // Append mediaPromptSuffix to each post's mediaPrompt
+                const mediaPromptSuffix = settings.mediaPromptSuffix;
+                const updatedPlan = newGroup.plan.map(week => ({
+                    ...week,
+                    posts: week.posts.map(post => {
+                        if (post.mediaPrompt) {
+                            if (Array.isArray(post.mediaPrompt)) {
+                                // For carousel posts, append suffix to each prompt in the array
+                                return {
+                                    ...post,
+                                    mediaPrompt: post.mediaPrompt.map(prompt => prompt + mediaPromptSuffix)
+                                };
+                            } else {
+                                // For single prompts, append the suffix
+                                return {
+                                    ...post,
+                                    mediaPrompt: post.mediaPrompt + mediaPromptSuffix
+                                };
+                            }
+                        }
+                        return post;
+                    })
+                }));
+
+                const updatedGroup = {
+                    ...newGroup,
+                    plan: updatedPlan
+                };
+                
+
+                dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: updatedGroup });
+                setMediaPlanGroupsList(prev => [...prev, { id: updatedGroup.id, name: updatedGroup.name, prompt: updatedGroup.prompt, productImages: updatedGroup.productImages }]);
+                setActivePlanId(updatedGroup.id);
+                setKhongMinhSuggestions({});
+                
+                updateAutoSaveStatus('saving');
+                const brandId = await ensureAirtableProject();
+                if (!brandId) {
+                    setAutoSaveStatus('idle');
+                    setLoaderContent(null); 
+                    setError("Airtable credentials not configured. Media plan not saved.");
+                    return;
+                }
+
+                const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
+                const allImageUrls = { ...generatedImages, ...newPublicUrls };
+
+                await saveMediaPlanGroup(updatedGroup, allImageUrls, brandId);
+                setGeneratedImages(allImageUrls); 
+                updateAutoSaveStatus('saved');
+                setLoaderContent(null); 
+
+            } catch (err) {
+                console.error(err);
+                setError(err instanceof Error ? err.message : "Failed to generate media plan.");
+                updateAutoSaveStatus('error');
+                setLoaderContent(null); 
+            }
+        })();
+    }, [generatedAssets, settings, ensureAirtableProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+
+    // New handler for creating funnel campaign plans
+    const handleCreateFunnelCampaignPlan = useCallback(async (planShell: MediaPlanGroup & { wizardData?: any }) => {
         if (!generatedAssets?.brandFoundation) {
             setError("Cannot generate plan without a Brand Foundation.");
             return;
         }
-        
-        const planSteps = settings?.language === 'Việt Nam' ? [
-            `Phân tích mục tiêu của bạn: "${prompt.substring(0, 50)}..."`,
-            "Thiết lập chủ đề hàng tuần...",
-            "Soạn thảo bài đăng...",
-            "Tạo các hashtag hấp dẫn và CTA...",
-            "Hoàn thiện kế hoạch..."
-        ] : [
-            `Analyzing your goal: "${prompt.substring(0, 50)}..."`,
-            "Establishing weekly themes...",
-            "Drafting posts...",
-            "Generating engaging hashtags and CTAs...",
-            "Finalizing plan..."
-        ];
+
+        const { wizardData } = planShell;
+        if (!wizardData) {
+            setError("Funnel campaign wizard data is missing.");
+            return;
+        }
+
+        const {
+            campaignDuration,
+            primaryObjective,
+            generalGoal,
+            selectedProductId,
+            selectedPersonaId,
+        } = wizardData;
+
+        const calculateTotalPosts = () => {
+            switch (campaignDuration) {
+              case '1-week': return 7;
+              case '2-weeks': return 14;
+              case '1-month': return 30;
+              default: return 30;
+            }
+        };
+
+        const totalPosts = calculateTotalPosts();
+        const persona = selectedPersonaId ? generatedAssets.personas?.find(p => p.id === selectedPersonaId) ?? null : null;
+        const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null;
+
+        const prompt = primaryObjective === 'product' && selectedProduct 
+            ? `Generate a full ${campaignDuration} marketing funnel campaign to promote the product "${selectedProduct.productName}". The campaign should include awareness, consideration, decision, and action stages, totaling approximately ${totalPosts} posts.` 
+            : `Generate a full ${campaignDuration} marketing funnel campaign for the general goal: "${generalGoal}". The campaign should include awareness, consideration, decision, and action stages, totaling approximately ${totalPosts} posts.`;
 
         setLoaderContent({
-            title: settings?.language === 'Việt Nam' ? "Đang tạo kế hoạch truyền thông..." : "Generating media plan...",
-            steps: planSteps
+            title: "Generating Funnel Campaign...",
+            steps: [
+                "Analyzing campaign goals...",
+                "Structuring funnel stages (Awareness, Consideration, Decision)...",
+                "Generating content for each stage...",
+                "Finalizing campaign plan..."
+            ]
         });
         setError(null);
+
         try {
-            const persona = personaId ? generatedAssets.personas?.find(p => p.id === personaId) ?? null : null;
-            const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null;
-            
-            const generationTask = async (model: string) => {
+            const generationTask = (model: string) => {
                 return textGenerationService.generateMediaPlanGroup(
                     generatedAssets.brandFoundation,
                     prompt,
                     settings.language,
                     totalPosts,
-                    useSearch,
-                    selectedPlatforms,
-                    options,
+                    true, // useSearch
+                    ['Facebook', 'Instagram', 'TikTok', 'YouTube'], // Default platforms for funnel
+                    { tone: 'persuasive', style: 'storytelling', length: 'medium', includeEmojis: true }, // Default options
                     settings.affiliateContentKit,
                     model,
                     persona,
                     selectedProduct
                 );
             };
-            const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
-            
-            // Append mediaPromptSuffix to each post's mediaPrompt
-            const mediaPromptSuffix = settings.mediaPromptSuffix;
-            const updatedPlan = newGroup.plan.map(week => ({
-                ...week,
-                posts: week.posts.map(post => {
-                    if (post.mediaPrompt) {
-                        if (Array.isArray(post.mediaPrompt)) {
-                            // For carousel posts, append suffix to each prompt in the array
-                            return {
-                                ...post,
-                                mediaPrompt: post.mediaPrompt.map(prompt => prompt + mediaPromptSuffix)
-                            };
-                        } else {
-                            // For single prompts, append the suffix
-                            return {
-                                ...post,
-                                mediaPrompt: post.mediaPrompt + mediaPromptSuffix
-                            };
-                        }
-                    }
-                    return post;
-                })
-            }));
+            const newGeneratedPlan = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
 
-            const updatedGroup = {
-                ...newGroup,
-                plan: updatedPlan
+            const finalPlan: MediaPlanGroup = {
+                ...planShell,
+                prompt: prompt,
+                plan: newGeneratedPlan.plan,
+                name: newGeneratedPlan.name || planShell.name, 
             };
-            
+            delete (finalPlan as any).wizardData;
 
-            dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: updatedGroup });
-            setMediaPlanGroupsList(prev => [...prev, { id: updatedGroup.id, name: updatedGroup.name, prompt: updatedGroup.prompt, productImages: updatedGroup.productImages }]);
-            setActivePlanId(updatedGroup.id);
-            setKhongMinhSuggestions({});
+            // Add the new plan to the assets
+            dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: finalPlan });
             
+            // Update the media plan groups list
+            setMediaPlanGroupsList(prev => [...prev, { 
+                id: finalPlan.id, 
+                name: finalPlan.name, 
+                prompt: finalPlan.prompt, 
+                productImages: finalPlan.productImages,
+                source: finalPlan.source
+            }]);
+            
+            // Set the new plan as the active plan
+            setActivePlanId(finalPlan.id);
+            
+            // Save to Airtable if connected
             updateAutoSaveStatus('saving');
             const brandId = await ensureAirtableProject();
-            if (!brandId) {
-                setAutoSaveStatus('idle');
-                setLoaderContent(null); 
-                setError("Airtable credentials not configured. Media plan not saved.");
-                return;
+            if (brandId) {
+                const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
+                const allImageUrls = { ...generatedImages, ...newPublicUrls };
+                
+                await saveMediaPlanGroup(finalPlan, allImageUrls, brandId);
+                setGeneratedImages(allImageUrls);
+                updateAutoSaveStatus('saved');
+            } else {
+                updateAutoSaveStatus('idle');
             }
-
-            const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
-            const allImageUrls = { ...generatedImages, ...newPublicUrls };
-
-            await saveMediaPlanGroup(updatedGroup, allImageUrls, brandId);
-            setGeneratedImages(allImageUrls); 
-            updateAutoSaveStatus('saved');
-            setLoaderContent(null); 
-
+            
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Chiến dịch funnel đã được tạo thành công!" 
+                : "Funnel campaign created successfully!");
+            setTimeout(() => setSuccessMessage(null), 3000);
+            
         } catch (err) {
-            console.error(err);
-            setError(err instanceof Error ? err.message : "Failed to generate media plan.");
+            console.error("Failed to create funnel campaign plan:", err);
+            setError(err instanceof Error ? err.message : "Failed to create funnel campaign plan.");
             updateAutoSaveStatus('error');
-            setLoaderContent(null); 
+        } finally {
+            setLoaderContent(null);
         }
     }, [generatedAssets, settings, ensureAirtableProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
@@ -1231,7 +1446,7 @@ const App: React.FC = () => {
         dispatchAssets({ type: 'DELETE_TREND', payload: trendId });
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
-            deleteTrendFromAirtable(trendId, airtableBrandId)
+            deleteTrendFromAirtable(trendId)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }
@@ -1630,8 +1845,20 @@ const App: React.FC = () => {
             setError("Cannot load plan without brand foundation.");
             return;
         }
-        setLoaderContent({ title: `Loading Plan...`, steps: ["Fetching plan details..."] });
+        
+        // Check if the plan is already loaded
+        const existingPlan = currentAssets.mediaPlans?.find((p: MediaPlanGroup) => p.id === planId);
+        if (existingPlan && existingPlan.plan) {
+            // Plan is already loaded, just set it as active
+            setActivePlanId(planId);
+            return;
+        }
+        
+        // Plan is not loaded yet, show loading indicator and fetch it with pagination
+        setLoaderContent({ title: `Loading Plan...`, steps: ["Fetching plan details...", "Loading posts with pagination..."] });
+        setError(null);
         try {
+            // Load the first page of posts
             const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId, currentAssets.brandFoundation, settings.language);
             if (!currentAssets) {
                 throw new Error("Assets are not initialized.");
@@ -1686,33 +1913,40 @@ const App: React.FC = () => {
         setLoaderContent({ title: "Loading from Airtable...", steps: ["Connecting...", "Fetching project data...", "Loading assets..."] });
         setError(null);
         try {
-            const { assets, generatedImages: loadedImages, generatedVideos: loadedVideos, brandId: loadedBrandId } = await loadProjectFromAirtable(brandId);
+            // Step 1: Load initial project data for fast rendering
+            const { brandSummary, brandKitData } = await loadInitialData(brandId);
             
-            dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: assets });
-            setGeneratedImages(loadedImages);
-            setGeneratedVideos(loadedVideos);
-            setAirtableBrandId(loadedBrandId);
-            setCurrentStep('assets'); // Add this line to transition to the assets view
+            // Create a minimal assets object with just the brand kit data
+            const initialAssets: GeneratedAssets = {
+                brandFoundation: brandKitData.brandFoundation,
+                coreMediaAssets: brandKitData.coreMediaAssets,
+                unifiedProfileAssets: brandKitData.unifiedProfileAssets,
+                mediaPlans: [], // Will be loaded lazily
+                affiliateLinks: [], // Will be loaded lazily
+                personas: [], // Will be loaded lazily
+                trends: [], // Will be loaded lazily
+                ideas: [], // Will be loaded lazily
+                facebookTrends: [], // Will be loaded lazily
+                facebookPostIdeas: [], // Will be loaded lazily
+            };
             
-            if (assets.personas) {
-                assets.personas = assets.personas.map((p: Persona) => ({
-                    ...p,
-                    socialAccounts: getPersonaSocialAccounts(p.id),
-                }));
-            }
+            dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: initialAssets });
+            setAirtableBrandId(brandId);
+            setCurrentStep('assets');
+            setActiveTab('brandKit'); // Redirect to brandKit tab for instant rendering
 
-            const loadedPlansList = await listMediaPlanGroupsForBrand(loadedBrandId);
+            // Step 2: Load media plan groups list in background
+            const loadedPlansList = await loadMediaPlanGroups(brandId);
             setMediaPlanGroupsList(loadedPlansList);
+            
             if (loadedPlansList.length > 0) {
                 setActivePlanId(loadedPlansList[0].id);
-                // Pass the loaded plans list directly to avoid closure issues
-                await handleSelectPlan(loadedPlansList[0].id, assets, loadedPlansList);
-                setActiveTab('mediaPlan'); // Set to mediaPlan tab if there are plans
+                // We don't load the full plan data yet - that will happen lazily when the user navigates to the media plan tab
             } else {
                 setActivePlanId(null);
-                setActiveTab('brandKit'); // Set to brandKit tab if no plans
             }
-            setIsAirtableLoadModalOpen(false);
+            
+            setIsDatabaseLoadModalOpen(false);
 
         } catch (err) {
             console.error("Failed to load project from Airtable:", err);
@@ -1720,7 +1954,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [handleSelectPlan]);
+    }, []);
 
     const handleExportBrandKit = useCallback(async () => {
         if (!generatedAssets) {
@@ -2099,7 +2333,7 @@ const App: React.FC = () => {
         if (airtableBrandId) {
             updateAutoSaveStatus('saving');
             try {
-                await bulkUpdatePostSchedules(updatesForAirtable, airtableBrandId);
+                await bulkUpdatePostSchedules(updatesForAirtable);
                 updateAutoSaveStatus('saved');
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'Could not bulk schedule.');
@@ -2416,11 +2650,14 @@ const App: React.FC = () => {
                             onStartOver={handleBackToIdea}
                             autoSaveStatus={autoSaveStatus}
                             onOpenSettings={() => setIsSettingsModalOpen(true)}
+                            onOpenIntegrations={() => setIsDatabaseLoadModalOpen(true)}
                             activeTab={activeTab}
                             setActiveTab={setActiveTab}
                             // Media Plan props
                             mediaPlanGroupsList={mediaPlanGroupsList}
                             onSelectPlan={handleSelectPlan}
+                            // New prop to pass brandFoundation
+                            brandFoundation={generatedAssets?.brandFoundation}
                             activePlanId={activePlanId}
                             onUpdatePost={handleUpdatePost}
                             onRefinePost={handleRefinePost}
@@ -2442,13 +2679,13 @@ const App: React.FC = () => {
                             // Comment Generation
                             onGenerateAffiliateComment={handleGenerateAffiliateComment}
                             generatingCommentPostIds={generatingCommentPostIds}
-                             // Selection & Scheduling
+                            // Selection & Scheduling
                             selectedPostIds={selectedPostIds}
                             onTogglePostSelection={handleTogglePostSelection}
                             onSelectAllPosts={handleSelectAllPosts}
                             onClearSelection={() => setSelectedPostIds(new Set())}
                             onOpenScheduleModal={setSchedulingPost}
-                                onPublishPost={handlePublishPost}
+                            onPublishPost={handlePublishPost}
                             isScheduling={isScheduling}
                             onSchedulePost={handleSchedulePost}
                             onPostDrop={handlePostDrop}
@@ -2457,7 +2694,6 @@ const App: React.FC = () => {
                             isBulkScheduleModalOpen={isBulkScheduleModalOpen}
                             onCloseBulkScheduleModal={() => setIsBulkScheduleModalOpen(false)}
                             onBulkSchedule={handleBulkSchedule}
-                             
                             // Personas
                             onSavePersona={handleSavePersona}
                             onDeletePersona={handleDeletePersona}
@@ -2468,12 +2704,9 @@ const App: React.FC = () => {
                             onDeleteTrend={handleDeleteTrend}
                             onGenerateIdeas={handleGenerateIdeas}
                             onGenerateContentPackage={handleGenerateContentPackage}
-                            onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
-                            productTrendToSelect={productTrendToSelect}
-                            brandFoundation={generatedAssets?.brandFoundation}
                             onGenerateFacebookTrends={handleGenerateFacebookTrends}
                             isGeneratingTrendsFromSearch={isGeneratingFacebookTrends}
-                            onLoadIdeasForTrend={handleLoadIdeasForTrend} // Add this line
+                            onLoadIdeasForTrend={handleLoadIdeasForTrend}
                             // Video
                             generatedVideos={generatedVideos}
                             onSetVideo={handleSetVideo}
@@ -2481,21 +2714,33 @@ const App: React.FC = () => {
                             onGenerateFacebookPostIdeas={handleGenerateFacebookPostIdeas}
                             onAddFacebookPostIdeaToPlan={handleAddFacebookPostIdeaToPlan}
                             isGeneratingFacebookPostIdeas={isGeneratingFacebookPostIdeas}
+                            // Funnel Campaign Props
+                            onCreateFunnelCampaignPlan={handleCreateFunnelCampaignPlan}
+                            // Lazy loading props
+                            isStrategyHubDataLoaded={!!(generatedAssets?.trends && generatedAssets?.ideas)}
+                            onLoadStrategyHubData={handleLoadStrategyHubData}
+                            isLoadingStrategyHubData={false}
+                            isAffiliateVaultDataLoaded={!!generatedAssets?.affiliateLinks}
+                            onLoadAffiliateVaultData={handleLoadAffiliateVaultData}
+                            isLoadingAffiliateVaultData={false}
+                            isPersonasDataLoaded={!!generatedAssets?.personas}
+                            onLoadPersonasData={handleLoadPersonasData}
+                            isLoadingPersonasData={false}
                         />
-                         {successMessage && (
+                        {successMessage && (
                             <div className="fixed bottom-5 right-5 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in-out">
                                 {successMessage}
                             </div>
                         )}
                         {waitMessage && (
                             <div className="fixed bottom-5 left-5 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
-                                 <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+                                <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
                                 {waitMessage}
                             </div>
                         )}
                         <AirtableLoadModal 
-                            isOpen={isAirtableLoadModalOpen}
-                            onClose={() => setIsAirtableLoadModalOpen(false)}
+                            isOpen={isDatabaseLoadModalOpen}
+                            onClose={() => setIsDatabaseLoadModalOpen(false)}
                             onLoadProject={handleLoadFromAirtable}
                             language={settings.language}
                         />

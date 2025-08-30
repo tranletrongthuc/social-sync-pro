@@ -11,6 +11,8 @@ node_modules
 screenshots
 dist
 dist-ssr
+exports
+hybrid-ai-team
 *.local
 *.env
 
@@ -26,3 +28,4 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+social-sync-pro-afa76-firebase-adminsdk-fbsvc-3b5d1b4378.json
