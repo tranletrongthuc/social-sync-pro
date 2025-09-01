@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import type { GeneratedAssets, BrandFoundation, CoreMediaAssets, ColorInfo, LogoConcept, ColorPalette, FontRecommendations, UnifiedProfileAssets } from '../types';
+import type { GeneratedAssets, BrandFoundation, CoreMediaAssets, ColorInfo, LogoConcept, ColorPalette, FontRecommendations, UnifiedProfileAssets } from '../../types';
 import { Section, CopyableText, Button, HoverCopyWrapper } from './ui';
 import { DownloadIcon, SparklesIcon, ArchiveIcon, UploadIcon } from './icons';
 
@@ -33,6 +33,8 @@ const getNavItems = (language: string) => {
 
 
 const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
+    console.log("AssetDisplay rendered with props:", props);
+    
     const { assets, onGenerateImage, onSetImage, generatedImages, isGeneratingImage, language, onExport, isExporting } = props;
     const [activeSection, setActiveSection] = useState('foundation');
 

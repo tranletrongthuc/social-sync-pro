@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { AffiliateLink } from '../types';
+import type { AffiliateLink } from '../../types';
 import { Button, Input } from './ui';
 import { DotsVerticalIcon, PencilIcon, TrashIcon, LinkIcon, TagIcon, SparklesIcon } from './icons';
 

@@ -4,8 +4,8 @@ import { TrashIcon, PencilIcon, PlusIcon } from './icons';
 import sampleAIServices from '../sampleAIServices';
 import { saveAIService, deleteAIService, saveAIModel, deleteAIModel, loadAIServices } from '../services/databaseService';
 import { configService, AiModelConfig } from '../services/configService';
-import type { Settings } from '../types';
-import type { AIService, AIModel } from '../types';
+import type { Settings } from '../../types';
+import type { AIService, AIModel } from '../../types';
 
 
 // Define our own simple types instead of using Pick
@@ -45,51 +45,10 @@ const AdminPage: React.FC = () => {
   const [appSettings, setAppSettings] = useState<Settings>(configService.getAppSettings());
   const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig>(configService.getAiModelConfig());
 
-  // Load data from Airtable and configService on component mount
-  useEffect(() => {
-    const loadAllData = async () => {
-      try {
-        setLoading(true);
-        // Load AI services from Airtable (existing functionality)
-        const loadedServices = await loadAIServices();
-        setServices(loadedServices);
-
-        // Load app settings and AI model config from configService
-        const adminDefaults = await configService.getAdminDefaults();
-        setAppSettings(adminDefaults);
-        setAiModelConfig(configService.getAiModelConfig());
-
-      } catch (err) {
-        setError('Failed to load data: ' + (err instanceof Error ? err.message : 'Unknown error'));
-        console.error('Error loading data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    loadAllData();
-  }, []);
-
-  const handleAddService = async () => {
-    if (!newService.name.trim()) return;
-    
-    try {
-      const service: Omit<AIService, 'models'> = {
-        id: 'service-' + Date.now(),
-        name: newService.name,
-        description: newService.description,
-      };
-      
-      const savedService = await saveAIService(service);
-      // Add a small delay to ensure the service is properly saved in Airtable
-      await new Promise(resolve => setTimeout(resolve, 500));
-      setServices([...services, { ...service, models: [] }]);
-      setNewService({ name: '', description: '', models: [] });
-    } catch (err) {
-      setError('Failed to add AI service');
-      console.error('Error adding AI service:', err);
-    }
-  };
+  // Load data from MongoDB and configService on component mount
+        // Load AI services from MongoDB (existing functionality)
+      // Add a small delay to ensure the service is properly saved in MongoDB
+      // Save sample services to MongoDB
 
   const handleUpdateService = async () => {
     if (!editingService) return;
@@ -198,7 +157,7 @@ const AdminPage: React.FC = () => {
         id: `service-${Date.now()}-${index}`
       }));
       
-      // Save sample services to Airtable
+      // Save sample services to MongoDB
       for (const service of servicesWithIds) {
         await saveAIService(
           { id: service.id, name: service.name, description: service.description }

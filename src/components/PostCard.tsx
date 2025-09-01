@@ -4,7 +4,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Button } from './ui';
 import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, CheckCircleIcon, PencilIcon, CopyIcon, CheckSolidIcon, DotsVerticalIcon, KhongMinhIcon, ChatBubbleLeftIcon, VideoCameraIcon } from './icons';
-import type { MediaPlanPost, PostInfo } from '../types';
+import type { MediaPlanPost, PostInfo } from '../../types';
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,

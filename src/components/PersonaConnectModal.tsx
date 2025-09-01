@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from './ui';
 import { LinkIcon } from './icons';
-import { Persona } from '../types';
+import { Persona } from '../../types';
 import { connectSocialAccountToPersona } from '../services/socialAccountService'; // Assuming this is the correct import
 
 interface PersonaConnectModalProps {

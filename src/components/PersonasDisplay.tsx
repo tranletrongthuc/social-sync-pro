@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, memo, useId } from 'react';
-import type { Persona, PersonaPhoto, SocialAccount } from '../types';
+import type { Persona, PersonaPhoto, SocialAccount } from '../../types';
 import { Button, Input, TextArea } from './ui';
 import { PlusIcon, UsersIcon, SearchIcon, TrashIcon, UploadIcon, DotsVerticalIcon, PencilIcon, FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, PinterestIcon } from './icons';
 import { connectSocialAccountToPersona, disconnectSocialAccountFromPersona, handleConnectFacebookPage } from '../services/socialAccountService';
@@ -461,21 +461,27 @@ interface PersonasDisplayProps {
 }
 
 const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language, onUpdatePersona, isDataLoaded, onLoadData, isLoading }) => {
+    console.log("PersonasDisplay rendered with props:", { personas, generatedImages, isDataLoaded, isLoading });
+    
     const [isPersonasDataLoaded, setIsPersonasDataLoaded] = useState(false);
     const [isLoadingPersonasData, setIsLoadingPersonasData] = useState(false);
     
     // Load data when component mounts if not already loaded
     useEffect(() => {
+        console.log("PersonasDisplay useEffect triggered", { isDataLoaded, onLoadData, isLoading });
         if (!isDataLoaded && onLoadData && !isLoading) {
+            console.log("Loading personas data in PersonasDisplay");
             setIsLoadingPersonasData(true);
             onLoadData().finally(() => {
                 setIsLoadingPersonasData(false);
                 setIsPersonasDataLoaded(true);
+                console.log("Personas data loaded in PersonasDisplay");
             });
         } else if (isDataLoaded) {
+            console.log("Personas data already loaded in PersonasDisplay");
             setIsPersonasDataLoaded(true);
         }
-    }, [isDataLoaded, onLoadData, isLoading]);
+    }, []); // Empty dependency array to run only once
     
     const [newPersona, setNewPersona] = useState<Persona | null>(null);
 

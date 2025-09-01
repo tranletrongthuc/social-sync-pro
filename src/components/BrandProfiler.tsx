@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { BrandInfo } from '../types';
+import type { BrandInfo } from '../../types';
 import { Button, Input, TextArea } from './ui';
 import { SparklesIcon } from './icons';
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Idea, Persona, AffiliateLink } from '../types';
+import type { Idea, Persona, AffiliateLink } from '../../types';
 import { Button, Select, Switch } from './ui';
 import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UsersIcon, CheckCircleIcon, SparklesIcon } from './icons';
 import ProductSelector from './ProductSelector';

@@ -3,7 +3,7 @@
 
 
 import { generateEmbeddingsWithBff } from './bffService';
-import type { MediaPlanPost, AffiliateLink } from '../types';
+import type { MediaPlanPost, AffiliateLink } from '../../types';
 
 
 /**

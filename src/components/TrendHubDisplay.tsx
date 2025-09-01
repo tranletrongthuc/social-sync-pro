@@ -1,7 +1,7 @@
 
 
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Trend, Idea, Settings, Persona } from '../types';
+import type { Trend, Idea, Settings, Persona } from '../../types';
 import { Button, Input, TextArea, Switch } from './ui';
 import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, DotsVerticalIcon, FacebookIcon, SearchIcon, LinkIcon } from './icons';
 import ContentPackageWizardModal from './ContentPackageWizardModal';

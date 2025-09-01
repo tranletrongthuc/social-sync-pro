@@ -7,7 +7,7 @@ interface IdeaProfilerProps {
   onGenerateProfile: (idea: string) => void;
   isLoading: boolean;
   onLoadProject: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onLoadProjectFromAirtable: (brandId: string) => void;
+  onLoadProjectFromDatabase: (brandId: string) => void;
   onOpenIntegrations: () => void;
   language: string;
   setLanguage: (lang: string) => Promise<void>;
@@ -15,7 +15,7 @@ interface IdeaProfilerProps {
   areCredentialsSet: boolean;
 }
 
-const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoading, onLoadProject, onLoadProjectFromAirtable, onOpenIntegrations, language, setLanguage, integrationsVersion, areCredentialsSet }) => {
+const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoading, onLoadProject, onLoadProjectFromDatabase, onOpenIntegrations, language, setLanguage, integrationsVersion, areCredentialsSet }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [idea, setIdea] = useState('');
   const [brands, setBrands] = useState<{ id: string, name: string }[]>([]);
@@ -171,7 +171,7 @@ const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoadin
                                 {brands.map(brand => (
                                     <button 
                                         key={brand.id}
-                                        onClick={() => onLoadProjectFromAirtable(brand.id)}
+                                        onClick={() => onLoadProjectFromDatabase(brand.id)}
                                         className="p-4 bg-gray-50 rounded-lg text-left hover:bg-green-100 hover:shadow-md transition-all border border-gray-200"
                                     >
                                         <h3 className="font-bold text-dark-text">{brand.name}</h3>

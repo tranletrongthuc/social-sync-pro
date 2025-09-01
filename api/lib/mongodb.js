@@ -49,8 +49,6 @@ export async function getClientAndDb() {
   // Create a new MongoClient instance
   const client = new MongoClient(MONGODB_URI, {
     // Connection options for better performance in serverless environments
-    useUnifiedTopology: true,
-    useNewUrlParser: true,
     // Connection pool settings
     maxPoolSize: 10,
     serverSelectionTimeoutMS: 5000,

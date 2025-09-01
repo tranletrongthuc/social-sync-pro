@@ -2,6 +2,7 @@ import { allowCors } from './lib/cors.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
+import mongodbHandler from './mongodb.js';
 
 // Airtable helper
 import { makeAirtableRequest } from './lib/airtable.js';
@@ -680,63 +681,7 @@ async function handleFacebookRequest(request, response, action) {
 
 // MongoDB handler
 async function handleMongodbRequest(request, response, action) {
-  // All MongoDB endpoints are POST requests
-  if (request.method !== 'POST') {
-    return response.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  try {
-    // Dynamically import the appropriate MongoDB handler based on the action
-    let handlerModule;
-    
-    // Special handling for actions that have their own dedicated files
-    switch (action) {
-      case 'initial-load':
-        handlerModule = await import('./mongodb/initial-load.js');
-        break;
-      case 'list-media-plan-groups':
-        handlerModule = await import('./mongodb/list-media-plan-groups.js');
-        break;
-      case 'load-affiliate-vault':
-        handlerModule = await import('./mongodb/load-affiliate-vault.js');
-        break;
-      case 'load-media-plan-posts-with-pagination':
-        handlerModule = await import('./mongodb/load-media-plan-posts-with-pagination.js');
-        break;
-      case 'load-media-plan-posts':
-        handlerModule = await import('./mongodb/load-media-plan-posts.js');
-        break;
-      case 'load-personas':
-        handlerModule = await import('./mongodb/load-personas.js');
-        break;
-      case 'load-strategy-hub':
-        handlerModule = await import('./mongodb/load-strategy-hub.js');
-        break;
-      case 'affiliate-vault':
-        handlerModule = await import('./mongodb/affiliate-vault.js');
-        break;
-      case 'media-plan-posts':
-        handlerModule = await import('./mongodb/media-plan-posts.js');
-        break;
-      case 'personas':
-        handlerModule = await import('./mongodb/personas.js');
-        break;
-      case 'strategy-hub':
-        handlerModule = await import('./mongodb/strategy-hub.js');
-        break;
-      default:
-        // For all other actions, use the main [action].js file
-        handlerModule = await import('./mongodb/[action].js');
-        break;
-    }
-    
-    // Call the handler function from the imported module
-    return await handlerModule.default(request, response);
-  } catch (error) {
-    console.error(`--- CRASH in /api/mongodb/${action} ---`);
-    console.error('Error object:', error);
-    response.status(500).json({ error: `Failed to process action ${action}: ${error.message}` });
-  }
+  return mongodbHandler(request, response);
 }
 
 // Health check handler

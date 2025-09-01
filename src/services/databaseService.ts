@@ -1,16 +1,35 @@
-﻿import type { GeneratedAssets, Settings, MediaPlan, CoreMediaAssets, UnifiedProfileAssets, MediaPlanGroup, BrandFoundation, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, ColorPalette, FontRecommendations, LogoConcept, PersonaPhoto, AIService } from '../types';
+import type { GeneratedAssets, Settings, MediaPlan, CoreMediaAssets, UnifiedProfileAssets, MediaPlanGroup, BrandFoundation, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, ColorPalette, FontRecommendations, LogoConcept, PersonaPhoto, AIService } from '../../types';
 
-// Since we're migrating from Airtable to MongoDB, we'll keep the same function names
-// but implement them using fetch requests to our MongoDB-based API endpoints
+// Cache for loaded data to prevent unnecessary reloads
+const dataCache: Record<string, any> = {};
 
-// --- NEW FUNCTIONS FOR MONGODB INTEGRATION ---
+/**
+ * Clear cache for a specific brand
+ */
+export const clearCacheForBrand = (brandId: string): void => {
+  console.log("Clearing cache for brand:", brandId);
+  Object.keys(dataCache).forEach(key => {
+    if (key.includes(brandId)) {
+      delete dataCache[key];
+    }
+  });
+};
+
+/**
+ * Clear all cache
+ */
+export const clearAllCache = (): void => {
+  console.log("Clearing all cache");
+  Object.keys(dataCache).forEach(key => delete dataCache[key]);
+};
+
 
 /**
  * Fetch settings from MongoDB
  */
 const fetchSettingsFromDatabase = async (brandId: string): Promise<Settings | null> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=fetch-settings', {
+    const response = await fetch('/api/mongodb?action=fetch-settings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -35,7 +54,7 @@ const fetchSettingsFromDatabase = async (brandId: string): Promise<Settings | nu
  */
 const saveSettingsToDatabase = async (settings: Settings, brandId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-settings', {
+    const response = await fetch('/api/mongodb?action=save-settings', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -60,7 +79,7 @@ const saveSettingsToDatabase = async (settings: Settings, brandId: string): Prom
  */
 const fetchAdminDefaultsFromDatabase = async (): Promise<Settings> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=fetch-admin-defaults', {
+    const response = await fetch('/api/mongodb?action=fetch-admin-defaults', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,7 +104,7 @@ const fetchAdminDefaultsFromDatabase = async (): Promise<Settings> => {
  */
 const saveAdminDefaultsToDatabase = async (settings: Settings): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-admin-defaults', {
+    const response = await fetch('/api/mongodb?action=save-admin-defaults', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -113,23 +132,55 @@ const createOrUpdateBrandRecordInDatabase = async (
   imageUrls: Record<string, string>,
   brandId: string | null
 ): Promise<string> => {
+  console.log("createOrUpdateBrandRecordInDatabase: Function started.");
+  console.log("createOrUpdateBrandRecordInDatabase: assets (partial):", assets.brandFoundation.brandName, assets.mediaPlans.length);
+  console.log("createOrUpdateBrandRecordInDatabase: imageUrls (keys):", Object.keys(imageUrls));
+  console.log("createOrUpdateBrandRecordInDatabase: brandId:", brandId);
+
+  // Prune assets to send only necessary data
+  const prunedAssets = {
+    brandFoundation: assets.brandFoundation,
+    coreMediaAssets: {
+      colorPalette: assets.coreMediaAssets?.colorPalette || [],
+      fontRecommendations: assets.coreMediaAssets?.fontRecommendations || []
+    },
+    unifiedProfileAssets: assets.unifiedProfileAssets,
+    // Only send basic info for mediaPlans, not the full plan content
+    mediaPlans: assets.mediaPlans?.map(p => ({
+      id: p.id,
+      name: p.name,
+      prompt: p.prompt,
+      productImages: p.productImages // Assuming productImages are small and relevant
+    })) || [],
+    // Do not send affiliateLinks, personas, trends, ideas, facebookTrends, facebookPostIdeas
+    // as they are loaded separately or not needed for brand record creation/update
+  };
+
   try {
-    const response = await fetch('/api?service=mongodb&action=create-or-update-brand', {
+    console.log("createOrUpdateBrandRecordInDatabase: Making fetch call to /api/mongodb?action=create-or-update-brand");
+    console.log("createOrUpdateBrandRecordInDatabase: Request body (pruned assets, imageUrls keys, brandId):");
+    console.log(JSON.stringify({ assets: prunedAssets, imageUrls: Object.keys(imageUrls), brandId }, null, 2));
+
+    const response = await fetch('/api/mongodb?action=create-or-update-brand', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ assets, imageUrls, brandId }),
+      body: JSON.stringify({ assets: prunedAssets, imageUrls, brandId }),
     });
+    console.log("createOrUpdateBrandRecordInDatabase: Fetch call completed. Response status:", response.status);
 
     if (!response.ok) {
-      throw new Error(`Failed to create or update brand record: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`createOrUpdateBrandRecordInDatabase: Fetch response not OK. Status: ${response.status}, Text: ${errorText}`);
+      throw new Error(`Failed to create or update brand record: ${response.statusText}. Details: ${errorText}`);
     }
 
     const result = await response.json();
+    console.log("createOrUpdateBrandRecordInDatabase: Fetch call successful. Result:", result);
     return result.brandId;
   } catch (error) {
-    console.error('Failed to create or update brand record in database:', error);
+    console.error('createOrUpdateBrandRecordInDatabase: Error caught:', error);
     throw error;
   }
 };
@@ -146,11 +197,7 @@ const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
   console.log("DEBUG: Loading complete assets for brand ID:", brandId);
   
   try {
-    // We'll need to make several API calls to get all the data
-    // For now, we'll return a placeholder implementation
-    // In a full implementation, this would fetch all brand data from MongoDB
-    
-    const response = await fetch('/api?service=mongodb&action=initial-load', {
+    const response = await fetch('/api/mongodb?action=initial-load', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -164,7 +211,6 @@ const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
 
     const result = await response.json();
     
-    // Transform the result to match the expected format
     const assets: GeneratedAssets = {
       brandFoundation: result.brandKitData.brandFoundation,
       coreMediaAssets: result.brandKitData.coreMediaAssets,
@@ -195,7 +241,7 @@ const syncAssetMediaWithDatabase = async (
   assets: GeneratedAssets
 ): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=sync-asset-media', {
+    const response = await fetch('/api/mongodb?action=sync-asset-media', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -220,7 +266,7 @@ const syncAssetMediaWithDatabase = async (
  */
 const saveAffiliateLinksToDatabase = async (links: AffiliateLink[], brandId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-affiliate-links', {
+    const response = await fetch('/api/mongodb?action=save-affiliate-links', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -245,7 +291,7 @@ const saveAffiliateLinksToDatabase = async (links: AffiliateLink[], brandId: str
  */
 const fetchAffiliateLinksForBrandFromDatabase = async (brandId: string): Promise<AffiliateLink[]> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=fetch-affiliate-links', {
+    const response = await fetch('/api/mongodb?action=fetch-affiliate-links', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -270,7 +316,7 @@ const fetchAffiliateLinksForBrandFromDatabase = async (brandId: string): Promise
  */
 const deleteAffiliateLinkFromDatabase = async (linkId: string, brandId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=delete-affiliate-link', {
+    const response = await fetch('/api/mongodb?action=delete-affiliate-link', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -295,7 +341,7 @@ const deleteAffiliateLinkFromDatabase = async (linkId: string, brandId: string):
  */
 const savePersonaToDatabase = async (persona: Persona, brandId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-persona', {
+    const response = await fetch('/api/mongodb?action=save-persona', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -320,7 +366,7 @@ const savePersonaToDatabase = async (persona: Persona, brandId: string): Promise
  */
 const deletePersonaFromDatabase = async (personaId: string, brandId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=delete-persona', {
+    const response = await fetch('/api/mongodb?action=delete-persona', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -350,7 +396,7 @@ const assignPersonaToPlanInDatabase = async (
   brandId: string
 ): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=assign-persona-to-plan', {
+    const response = await fetch('/api/mongodb?action=assign-persona-to-plan', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -380,7 +426,7 @@ const updateMediaPlanPostInDatabase = async (
   videoUrl?: string
 ): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=update-media-plan-post', {
+    const response = await fetch('/api/mongodb?action=update-media-plan-post', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -409,7 +455,7 @@ const saveMediaPlanGroupToDatabase = async (
   brandId: string
 ): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-media-plan-group', {
+    const response = await fetch('/api/mongodb?action=save-media-plan-group', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -432,9 +478,11 @@ const saveMediaPlanGroupToDatabase = async (
 /**
  * Save trend to MongoDB
  */
-const saveTrendToDatabase = async (trend: Trend, brandId: string): Promise<void> => {
+const saveTrendToDatabase = async (trend: Omit<Trend, 'id'> & { id?: string }, brandId: string): Promise<string> => {
+  console.log("saveTrend called with trend:", trend, "brandId:", brandId);
+  
   try {
-    const response = await fetch('/api?service=mongodb&action=save-trend', {
+    const response = await fetch('/api/mongodb?action=save-trend', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -443,13 +491,20 @@ const saveTrendToDatabase = async (trend: Trend, brandId: string): Promise<void>
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to save trend. Status:", response.status, "Text:", errorText);
       throw new Error(`Failed to save trend: ${response.statusText}`);
     }
 
-    const result = await response.json();
-    console.log('Trend saved successfully:', result);
+    const data = await response.json();
+    console.log("Trend saved successfully with ID:", data.trendId);
+    
+    // Clear cache for this brand's strategy hub data
+    clearCacheForBrand(brandId);
+    
+    return data.trendId;
   } catch (error) {
-    console.error('Failed to save trend to database:', error);
+    console.error("Error saving trend:", error);
     throw error;
   }
 };
@@ -457,24 +512,30 @@ const saveTrendToDatabase = async (trend: Trend, brandId: string): Promise<void>
 /**
  * Delete trend from MongoDB
  */
-const deleteTrendFromDatabase = async (trendId: string): Promise<void> => {
+const deleteTrendFromDatabase = async (trendId: string, brandId: string): Promise<void> => {
+  console.log("deleteTrend called with trendId:", trendId, "brandId:", brandId);
+  
   try {
-    const response = await fetch('/api?service=mongodb&action=delete-trend', {
+    const response = await fetch('/api/mongodb?action=delete-trend', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ trendId }),
+      body: JSON.stringify({ trendId, brandId }),
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to delete trend. Status:", response.status, "Text:", errorText);
       throw new Error(`Failed to delete trend: ${response.statusText}`);
     }
 
-    const result = await response.json();
-    console.log('Trend deleted successfully:', result);
+    console.log("Trend deleted successfully");
+    
+    // Clear cache for this brand's strategy hub data
+    clearCacheForBrand(brandId);
   } catch (error) {
-    console.error('Failed to delete trend from database:', error);
+    console.error("Error deleting trend:", error);
     throw error;
   }
 };
@@ -483,8 +544,10 @@ const deleteTrendFromDatabase = async (trendId: string): Promise<void> => {
  * Save ideas to MongoDB
  */
 const saveIdeasToDatabase = async (ideas: Idea[]): Promise<void> => {
+  console.log("saveIdeas called with ideas:", ideas);
+  
   try {
-    const response = await fetch('/api?service=mongodb&action=save-ideas', {
+    const response = await fetch('/api/mongodb?action=save-ideas', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -493,13 +556,20 @@ const saveIdeasToDatabase = async (ideas: Idea[]): Promise<void> => {
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to save ideas. Status:", response.status, "Text:", errorText);
       throw new Error(`Failed to save ideas: ${response.statusText}`);
     }
 
-    const result = await response.json();
-    console.log('Ideas saved successfully:', result);
+    console.log("Ideas saved successfully");
+    
+    // Clear cache for the brand associated with these ideas
+    if (ideas.length > 0) {
+      const brandId = ideas[0].id.split('-')[0]; // Extract brandId from the first idea's ID
+      clearCacheForBrand(brandId);
+    }
   } catch (error) {
-    console.error('Failed to save ideas to database:', error);
+    console.error("Error saving ideas:", error);
     throw error;
   }
 };
@@ -509,7 +579,7 @@ const saveIdeasToDatabase = async (ideas: Idea[]): Promise<void> => {
  */
 const saveAIServiceToDatabase = async (service: { id: string; name: string; description: string }): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-ai-service', {
+    const response = await fetch('/api/mongodb?action=save-ai-service', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -534,7 +604,7 @@ const saveAIServiceToDatabase = async (service: { id: string; name: string; desc
  */
 const deleteAIServiceFromDatabase = async (serviceId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=delete-ai-service', {
+    const response = await fetch('/api/mongodb?action=delete-ai-service', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -559,7 +629,7 @@ const deleteAIServiceFromDatabase = async (serviceId: string): Promise<void> => 
  */
 const saveAIModelToDatabase = async (model: { id: string; name: string; provider: string; capabilities: string[] }, serviceId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=save-ai-model', {
+    const response = await fetch('/api/mongodb?action=save-ai-model', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -584,7 +654,7 @@ const saveAIModelToDatabase = async (model: { id: string; name: string; provider
  */
 const deleteAIModelFromDatabase = async (modelId: string): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=delete-ai-model', {
+    const response = await fetch('/api/mongodb?action=delete-ai-model', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -609,7 +679,7 @@ const deleteAIModelFromDatabase = async (modelId: string): Promise<void> => {
  */
 const loadAIServicesFromDatabase = async (): Promise<AIService[]> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=load-ai-services', {
+    const response = await fetch('/api/mongodb?action=load-ai-services', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -645,7 +715,7 @@ const listMediaPlanGroupsForBrandFromDatabase = async (brandId: string): Promise
     personaId?: string;
   }[]> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=list-media-plan-groups', {
+    const response = await fetch('/api/mongodb?action=list-media-plan-groups', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -674,7 +744,7 @@ const loadMediaPlanFromDatabase = async (planId: string): Promise<{
   videoUrls: Record<string, string>;
 }> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=load-media-plan', {
+    const response = await fetch('/api/mongodb?action=load-media-plan', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -699,7 +769,7 @@ const loadMediaPlanFromDatabase = async (planId: string): Promise<{
  */
 const bulkPatchPostsInDatabase = async (updates: { postId: string; fields: Record<string, any> }[]): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=bulk-patch-posts', {
+    const response = await fetch('/api/mongodb?action=bulk-patch-posts', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -724,7 +794,7 @@ const bulkPatchPostsInDatabase = async (updates: { postId: string; fields: Recor
  */
 const bulkUpdatePostSchedulesInDatabase = async (updates: { postId: string; scheduledAt: string; status: 'scheduled' }[]): Promise<void> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=bulk-update-post-schedules', {
+    const response = await fetch('/api/mongodb?action=bulk-update-post-schedules', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -749,7 +819,7 @@ const bulkUpdatePostSchedulesInDatabase = async (updates: { postId: string; sche
  */
 const listBrandsFromDatabase = async (): Promise<{ id: string; name: string }[]> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=list-brands', {
+    const response = await fetch('/api/mongodb?action=list-brands', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -774,7 +844,7 @@ const listBrandsFromDatabase = async (): Promise<{ id: string; name: string }[]>
  */
 const checkDatabaseCredentials = async (): Promise<boolean> => {
   try {
-    const response = await fetch('/api?service=mongodb&action=check-credentials', {
+    const response = await fetch('/api/mongodb?action=check-credentials', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -809,7 +879,7 @@ const loadProjectFromDatabase = async (brandId: string): Promise<{
     console.log(`Loading complete project for brand ID: ${brandId}`);
     
     // Make an API call to load the complete project
-    const response = await fetch('/api?service=mongodb&action=load-complete-project', {
+    const response = await fetch('/api/mongodb?action=load-complete-project', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -841,7 +911,7 @@ const checkIfProductExistsInDatabase = async (productId: string): Promise<boolea
     console.log(`Checking if product exists in database: ${productId}`);
     
     // Make an API call to check if the product exists
-    const response = await fetch('/api?service=mongodb&action=check-product-exists', {
+    const response = await fetch('/api/mongodb?action=check-product-exists', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -866,11 +936,16 @@ const checkIfProductExistsInDatabase = async (productId: string): Promise<boolea
  * Load ideas for a specific trend
  */
 const loadIdeasForTrend = async (trendId: string, brandId: string): Promise<Idea[]> => {
+  console.log("loadIdeasForTrend called with trendId:", trendId, "brandId:", brandId);
+  
+  const cacheKey = `ideas-${trendId}-${brandId}`;
+  if (dataCache[cacheKey]) {
+    console.log("Returning cached ideas data");
+    return dataCache[cacheKey];
+  }
+  
   try {
-    console.log(`Loading ideas for trend ID: ${trendId} and brand ID: ${brandId}`);
-    
-    // Make an API call to load ideas for the trend
-    const response = await fetch('/api?service=mongodb&action=load-ideas-for-trend', {
+    const response = await fetch('/api/mongodb?action=load-ideas-for-trend', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -879,17 +954,23 @@ const loadIdeasForTrend = async (trendId: string, brandId: string): Promise<Idea
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to load ideas for trend. Status:", response.status, "Text:", errorText);
       throw new Error(`Failed to load ideas for trend: ${response.statusText}`);
     }
 
-    const result = await response.json();
-    console.log(`Loaded ${result.ideas.length} ideas for trend ${trendId}`);
-    return result.ideas;
+    const data = await response.json();
+    console.log("Ideas data received from API:", data);
+    
+    // Cache the data
+    dataCache[cacheKey] = data.ideas;
+    return data.ideas;
   } catch (error) {
-    console.error('Failed to load ideas for trend from database:', error);
+    console.error("Error loading ideas for trend:", error);
     throw error;
   }
 };
+
 
 // --- NEW FUNCTIONS FOR OPTIMIZED LOADING ---
 
@@ -904,7 +985,7 @@ const loadInitialProjectData = async (brandId: string): Promise<{
     unifiedProfileAssets: UnifiedProfileAssets;
   };
 }> => {
-  const response = await fetch('/api?service=mongodb&action=initial-load', {
+  const response = await fetch('/api/mongodb?action=initial-load', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -930,7 +1011,7 @@ const loadMediaPlanGroupsList = async (brandId: string): Promise<{
   productImages?: { name: string; type: string; data: string }[];
   personaId?: string;
 }[]> => {
-  const response = await fetch('/api?service=mongodb&action=list-media-plan-groups', {
+  const response = await fetch('/api/mongodb?action=list-media-plan-groups', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -953,24 +1034,30 @@ const loadStrategyHubData = async (brandId: string): Promise<{
   trends: Trend[];
   ideas: Idea[];
 }> => {
-  const response = await fetch('/api?service=mongodb&action=strategy-hub', {
+  console.log("loadStrategyHubData called with brandId:", brandId);
+  const response = await fetch('/api/mongodb?action=strategy-hub', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json',},
     body: JSON.stringify({ brandId }),
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Failed to load strategy hub data. Status:", response.status, "Text:", errorText);
     throw new Error(`Failed to load strategy hub data: ${response.statusText}`);
   }
 
-  return await response.json();
+  const data = await response.json();
+  console.log("Strategy hub data received from API:", data);
+  return data;
 };
 
 /**
  * Load affiliate vault data
  */
 const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]> => {
-  const response = await fetch('/api?service=mongodb&action=affiliate-vault', {
+  console.log("loadAffiliateVaultData called with brandId:", brandId);
+  const response = await fetch('/api/mongodb?action=affiliate-vault', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -979,10 +1066,13 @@ const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]>
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Failed to load affiliate vault data. Status:", response.status, "Text:", errorText);
     throw new Error(`Failed to load affiliate vault data: ${response.statusText}`);
   }
 
   const { affiliateLinks } = await response.json();
+  console.log("Affiliate vault data received from API:", affiliateLinks);
   return affiliateLinks;
 };
 
@@ -990,7 +1080,8 @@ const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]>
  * Load personas data
  */
 const loadPersonasData = async (brandId: string): Promise<Persona[]> => {
-  const response = await fetch('/api?service=mongodb&action=personas', {
+  console.log("loadPersonasData called with brandId:", brandId);
+  const response = await fetch('/api/mongodb?action=personas', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -999,47 +1090,76 @@ const loadPersonasData = async (brandId: string): Promise<Persona[]> => {
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Failed to load personas data. Status:", response.status, "Text:", errorText);
     throw new Error(`Failed to load personas data: ${response.statusText}`);
   }
 
   const { personas } = await response.json();
+  console.log("Personas data received from API:", personas);
   return personas;
 };
 
 /**
  * Load media plan posts with pagination
- * Note: This implementation is for MongoDB. When migrating from Airtable,
+ * Note: This implementation is for MongoDB.
  * this should be updated to use proper database pagination for better performance.
- * @param offset - The number of records to skip
- * @param pageSize - The number of records to load
- * @param baseId - The MongoDB connection string (not used in this implementation)
- * @param tableId - The collection name (not used in this implementation)
+ * @param planId - The ID of the media plan to load posts for
+ * @param page - The page number to load (1-indexed)
+ * @param limit - The number of posts per page
  */
 const loadMediaPlanPostsWithPagination = async (
-  offset: number,
-  pageSize: number,
-  baseId: string,
-  tableId: string
+  planId: string,
+  page: number = 1,
+  limit: number = 30
 ) => {
   // This is a placeholder implementation
   // In a real implementation, this would fetch posts from MongoDB with pagination
-  console.log(`Loading posts with offset: ${offset}, pageSize: ${pageSize}, baseId: ${baseId}, tableId: ${tableId}`);
+  console.log(`Loading posts for plan ${planId}, page: ${page}, limit: ${limit}`);
   return { posts: [], total: 0 };
 };
 
 /**
- * Check if a product exists in the database by its ID
- * This is an Airtable-compatible wrapper around the MongoDB function
+ * Load a specific trend from MongoDB
+ * @param trendId - The ID of the trend to load
+ * @param brandId - The ID of the brand the trend belongs to
  */
-const checkIfProductExistsInAirtable = async (productId: string): Promise<boolean> => {
+export const loadTrend = async (trendId: string, brandId: string): Promise<Trend | null> => {
+  console.log("loadTrend called with trendId:", trendId, "brandId:", brandId);
+  
+  const cacheKey = `trend-${trendId}-${brandId}`;
+  if (dataCache[cacheKey]) {
+    console.log("Returning cached trend data");
+    return dataCache[cacheKey];
+  }
+  
   try {
-    // Use the base function but wrap it for Airtable compatibility
-    return await checkIfProductExistsInDatabase(productId);
+    const response = await fetch('/api/mongodb?action=load-trend', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ trendId, brandId }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Failed to load trend. Status:", response.status, "Text:", errorText);
+      throw new Error(`Failed to load trend: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    console.log("Trend data received from API:", data);
+    
+    // Cache the data
+    dataCache[cacheKey] = data.trend;
+    return data.trend;
   } catch (error) {
-    console.error('Failed to check if product exists in Airtable:', error);
-    return false;
+    console.error("Error loading trend:", error);
+    throw error;
   }
 };
+
 
 // Export all functions with MongoDB-specific names
 export {
@@ -1081,14 +1201,4 @@ export {
   loadAffiliateVaultData,
   loadPersonasData,
   loadMediaPlanPostsWithPagination,
-  // Aliases for backward compatibility during MongoDB migration
-  checkDatabaseCredentials as checkAirtableCredentials,
-  deleteAffiliateLinkFromDatabase as deleteAffiliateLinkFromAirtable,
-  updateMediaPlanPostInDatabase as updateMediaPlanPostInAirtable,
-  loadProjectFromDatabase as loadProjectFromAirtable,
-  deletePersonaFromDatabase as deletePersonaFromAirtable,
-  deleteTrendFromDatabase as deleteTrendFromAirtable,
-  assignPersonaToPlanInDatabase as assignPersonaToPlanInAirtable,
-  // Special case alias that wraps the database function
-  checkIfProductExistsInAirtable
 };

@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { loadMediaPlanPostsWithPagination } from '../services/databaseService';
-import type { MediaPlanPost } from '../types';
+import type { MediaPlanPost } from '../../types';
 
 /**
  * Hook to handle infinite scrolling for media plan posts

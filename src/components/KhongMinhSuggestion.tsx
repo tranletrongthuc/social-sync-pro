@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { AffiliateLink } from '../types';
+import type { AffiliateLink } from '../../types';
 import { Button } from './ui';
 import { KhongMinhIcon, LinkIcon, CheckCircleIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 

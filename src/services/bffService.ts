@@ -1,4 +1,4 @@
-import type { MediaPlanPost, AffiliateLink, BrandFoundation, Persona } from '../types';
+import type { MediaPlanPost, AffiliateLink, BrandFoundation, Persona } from '../../types';
 
 // Get the BFF URL from environment variables or use default
 // In production, VITE_BFF_URL should be set to your actual BFF deployment URL
@@ -43,7 +43,7 @@ export const generateContentWithBff = async (
   config?: any
 ): Promise<string> => {
   try {
-    const response = await bffFetch('/api/gemini/generate', {
+    const response = await bffFetch('/api/gemini?action=generate', {
       method: 'POST',
       body: JSON.stringify({ model, contents, config }),
     });
@@ -61,7 +61,7 @@ export const generateImageWithBff = async (
   config?: any
 ): Promise<string> => {
   try {
-    const response = await bffFetch('/api/gemini/generate-image', {
+    const response = await bffFetch('/api/gemini?action=generate-image', {
       method: 'POST',
       body: JSON.stringify({ model, prompt, config }),
     });
@@ -81,7 +81,7 @@ export const generateContentWithOpenRouterBff = async (
   responseFormat?: any
 ): Promise<string> => {
   try {
-    const response = await bffFetch('/api/openrouter/generate', {
+    const response = await bffFetch('/api/openrouter?action=generate', {
       method: 'POST',
       body: JSON.stringify({ model, messages, responseFormat }),
     });
@@ -99,7 +99,7 @@ export const generateImageWithOpenRouterBff = async (
   responseFormat?: any
 ): Promise<string> => {
   try {
-    const response = await bffFetch('/api/openrouter/generate-image', {
+    const response = await bffFetch('/api/openrouter?action=generate-image', {
       method: 'POST',
       body: JSON.stringify({ model, messages, responseFormat }),
     });
@@ -153,23 +153,23 @@ export const publishToFacebookWithBff = async (
   }
 };
 
-// --- Airtable API Functions ---
+// --- Database API Functions ---
 
-export const airtableRequestWithBff = async (
+export const databaseRequestWithBff = async (
   method: string,
   path: string,
   body?: any,
   headers?: Record<string, string>
 ): Promise<any> => {
   try {
-    const response = await bffFetch('/api/airtable/request', {
+    const response = await bffFetch('/api/database/request', {
       method: 'POST',
       body: JSON.stringify({ method, path, body, headers }),
     });
     
     return response;
   } catch (error) {
-    console.error(`Error calling BFF endpoint /api/airtable/request:`, error);
+    console.error(`Error calling BFF endpoint /api/database/request:`, error);
     throw error;
   }
 };
@@ -216,7 +216,7 @@ export const generateEmbeddingsWithBff = async (
   taskTypes: string[]
 ): Promise<number[][]> => {
   try {
-    const response = await bffFetch('/api/gemini/embed', {
+    const response = await bffFetch('/api/gemini?action=embed', {
       method: 'POST',
       body: JSON.stringify({ texts, taskTypes }),
     });

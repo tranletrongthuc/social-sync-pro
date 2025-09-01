@@ -6,7 +6,7 @@ import MainDisplay from './components/MainDisplay';
 import AdminPage from './components/AdminPage';
 import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
-import AirtableLoadModal from './components/DatabaseLoadModal';
+import DatabaseLoadModal from './components/DatabaseLoadModal';
 import SettingsModal from './components/SettingsModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
@@ -19,24 +19,24 @@ import { generateImageWithCloudflare } from './services/cloudflareService';
 import {
     createOrUpdateBrandRecord,
     saveAffiliateLinks,
-    deleteAffiliateLink as deleteAffiliateLinkFromAirtable,
+    deleteAffiliateLink as deleteAffiliateLinkFromDatabase,
     saveMediaPlanGroup,
-    updateMediaPlanPostInAirtable,
+    updateMediaPlanPostInDatabase as updateMediaPlanPostInDatabase,
     bulkUpdatePostSchedules,
-    loadProjectFromAirtable,
+    loadProjectFromDatabase,
     listMediaPlanGroupsForBrand,
     loadMediaPlan,
     syncAssetMedia,
     savePersona,
-    deletePersonaFromAirtable,
+    deletePersonaFromDatabase,
     saveTrend,
-    deleteTrendFromAirtable,
+    deleteTrendFromDatabase,
     saveIdeas,
-    assignPersonaToPlanInAirtable,
-    checkAirtableCredentials,
+    assignPersonaToPlanInDatabase,
+    checkDatabaseCredentials,
     fetchAffiliateLinksForBrand,
     loadIdeasForTrend,
-    checkIfProductExistsInAirtable,
+    checkIfProductExistsInDatabase,
 } from './services/databaseService';
 
 // Lazy loading functions
@@ -423,7 +423,7 @@ const App: React.FC = () => {
         totalPostsPerMonth: 30,
         mediaPromptSuffix: '',
         affiliateContentKit: '',
-        textGenerationModel: 'gemini-1.5-flash',
+        textGenerationModel: 'gemini-2.5-pro',
         imageGenerationModel: '@cf/stabilityai/stable-diffusion-xl-base-1.0'
     });
     const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig | null>(null);
@@ -440,7 +440,7 @@ const App: React.FC = () => {
     const [platformToConnect, setPlatformToConnect] = useState<string | null>(null);
     const personaConnectSuccessCallback = useRef<(() => void) | null>(null);
     const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
-    const [airtableBrandId, setAirtableBrandId] = useState<string | null>(null);
+    const [mongoBrandId, setMongoBrandId] = useState<string | null>(null);
     const [integrationsVersion, setIntegrationsVersion] = useState(0);
 
     // Auto-Save State
@@ -472,16 +472,17 @@ const App: React.FC = () => {
 
     // Lazy loading callbacks for MainDisplay component
     const handleLoadStrategyHubData = useCallback(async () => {
-        // If no brand ID, we can't load data from Airtable
-        if (!airtableBrandId) {
-            // For local projects without Airtable integration, we still want to show the UI
-            // but with empty data. The components will handle this case.
-            console.log("No Airtable brand ID, skipping strategy hub data load");
+        console.log("handleLoadStrategyHubData called");
+        // If no brand ID, we can't load data from MongoDB
+        if (!mongoBrandId) {
+            // For local projects without MongoDB integration, we still want to show the UI
+            console.log("No MongoDB brand ID, skipping strategy hub data load");
             return Promise.resolve();
         }
         
         try {
-            const { trends, ideas } = await loadStrategyHub(airtableBrandId);
+            const { trends, ideas } = await loadStrategyHub(mongoBrandId);
+            console.log("Strategy hub data loaded:", { trends, ideas });
             
             // Update the assets with the loaded data
             dispatchAssets({ 
@@ -498,19 +499,21 @@ const App: React.FC = () => {
             setError(error instanceof Error ? error.message : "Could not load strategy hub data.");
             return Promise.reject(error);
         }
-    }, [airtableBrandId, generatedAssets, dispatchAssets, setError]);
+    }, [mongoBrandId, generatedAssets, dispatchAssets, setError]);
 
     const handleLoadAffiliateVaultData = useCallback(async () => {
-        // If no brand ID, we can't load data from Airtable
-        if (!airtableBrandId) {
-            // For local projects without Airtable integration, we still want to show the UI
+        console.log("handleLoadAffiliateVaultData called");
+        // If no brand ID, we can't load data from MongoDB
+        if (!mongoBrandId) {
+            // For local projects without MongoDB integration, we still want to show the UI
             // but with empty data. The components will handle this case.
-            console.log("No Airtable brand ID, skipping affiliate vault data load");
+            console.log("No MongoDB brand ID, skipping affiliate vault data load");
             return Promise.resolve();
         }
         
         try {
-            const affiliateLinks = await loadAffiliateVault(airtableBrandId);
+            const affiliateLinks = await loadAffiliateVault(mongoBrandId);
+            console.log("Affiliate vault data loaded:", affiliateLinks);
             
             // Update the assets with the loaded data
             dispatchAssets({ 
@@ -526,19 +529,21 @@ const App: React.FC = () => {
             setError(error instanceof Error ? error.message : "Could not load affiliate vault data.");
             return Promise.reject(error);
         }
-    }, [airtableBrandId, generatedAssets, dispatchAssets, setError]);
+    }, [mongoBrandId, generatedAssets, dispatchAssets, setError]);
 
     const handleLoadPersonasData = useCallback(async () => {
-        // If no brand ID, we can't load data from Airtable
-        if (!airtableBrandId) {
-            // For local projects without Airtable integration, we still want to show the UI
+        console.log("handleLoadPersonasData called");
+        // If no brand ID, we can't load data from MongoDB
+        if (!mongoBrandId) {
+            // For local projects without MongoDB integration, we still want to show the UI
             // but with empty data. The components will handle this case.
-            console.log("No Airtable brand ID, skipping personas data load");
+            console.log("No MongoDB brand ID, skipping personas data load");
             return Promise.resolve();
         }
         
         try {
-            const personas = await loadPersonas(airtableBrandId);
+            const personas = await loadPersonas(mongoBrandId);
+            console.log("Personas data loaded:", personas);
             
             // Update the assets with the loaded data
             dispatchAssets({ 
@@ -554,12 +559,12 @@ const App: React.FC = () => {
             setError(error instanceof Error ? error.message : "Could not load personas data.");
             return Promise.reject(error);
         }
-    }, [airtableBrandId, generatedAssets, dispatchAssets, setError]);
+    }, [mongoBrandId, generatedAssets, dispatchAssets, setError]);
 
     // Set brandId in configService when it changes
     useEffect(() => {
-        if (airtableBrandId) {
-            configService.setBrandId(airtableBrandId).then(() => {
+        if (mongoBrandId) {
+            configService.setBrandId(mongoBrandId).then(() => {
                 // Update the settings state after the brand config is loaded
                 const updatedSettings = configService.getAppSettings();
                 setSettings(updatedSettings);
@@ -572,12 +577,18 @@ const App: React.FC = () => {
             setSettings(configService.getAppSettings());
             setAiModelConfig(configService.getAiModelConfig());
         }
-    }, [airtableBrandId]);
+    }, [mongoBrandId]);
 
     // Media Plan On-Demand Loading State
     const [mediaPlanGroupsList, setMediaPlanGroupsList] = useState<{id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]>([]);
     const [activePlanId, setActivePlanId] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('brandKit');
+    
+    // Add debug log for tab changes
+    const setActiveTabWithLog = (tab: ActiveTab) => {
+        console.log("Setting active tab to:", tab);
+        setActiveTab(tab);
+    };
     
     // Reset productTrendToSelect when we switch away from the strategy tab
     useEffect(() => {
@@ -623,7 +634,7 @@ const App: React.FC = () => {
                 await configService.initializeConfig();
                 setSettings(configService.getAppSettings());
                 setAiModelConfig(configService.getAiModelConfig());
-                const areSet = await checkAirtableCredentials();
+                const areSet = await checkDatabaseCredentials();
                 console.log('areCredentialsSet', areSet);
                 setAreCredentialsSet(areSet);
                 if (areSet) {
@@ -646,12 +657,14 @@ const App: React.FC = () => {
 
 
     const updateAutoSaveStatus = useCallback((status: 'saving' | 'saved' | 'error') => {
+        console.log('AutoSave status changing to:', status);
         setAutoSaveStatus(status);
         if (autoSaveTimeoutRef.current) {
             clearTimeout(autoSaveTimeoutRef.current);
         }
         if (status === 'saved' || status === 'error') {
             autoSaveTimeoutRef.current = window.setTimeout(() => {
+                console.log('AutoSave status resetting to idle');
                 setAutoSaveStatus('idle');
             }, 3000);
         }
@@ -735,46 +748,66 @@ const App: React.FC = () => {
         throw lastError || new Error("All text generation models failed.");
     }, [aiModelConfig, setSettings]);
 
-    const ensureAirtableProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
+    const ensureMongoProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
+        console.log("ensureMongoProject: Function started.");
         const assets = assetsToSave || generatedAssets;
         
-        if (!areCredentialsSet) return null;
+        if (!areCredentialsSet) {
+            console.log("ensureMongoProject: Credentials not set. Returning null.");
+            return null;
+        }
+        console.log("ensureMongoProject: Credentials are set.");
 
-        if (airtableBrandId) return airtableBrandId;
+        if (mongoBrandId) {
+            console.log("ensureMongoProject: mongoBrandId already exists:", mongoBrandId, ". Returning it.");
+            return mongoBrandId;
+        }
+        console.log("ensureMongoProject: mongoBrandId does not exist. Proceeding to create.");
     
-        if (!assets) throw new Error("Cannot create Airtable project without assets.");
+        if (!assets) {
+            console.error("ensureMongoProject: Assets are null. Throwing error.");
+            throw new Error("Cannot create MongoDB project without assets.");
+        }
     
         updateAutoSaveStatus('saving');
-        console.log("Creating new project record in Airtable...");
+        console.log("ensureMongoProject: Auto-save status set to 'saving'. Creating new project record in MongoDB...");
         
+        console.log("ensureMongoProject: Uploading media to Cloudinary.");
         const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
+        console.log("ensureMongoProject: Cloudinary upload results (newPublicUrls):", newPublicUrls);
         const allImageUrls = { ...generatedImages, ...newPublicUrls };
-
+        console.log("ensureMongoProject: Media uploaded. Calling createOrUpdateBrandRecord.");
+        console.log("ensureMongoProject: Arguments for createOrUpdateBrandRecord:", {
+            assets: assets ? { brandFoundationName: assets.brandFoundation.brandName, mediaPlansCount: assets.mediaPlans.length } : null,
+            allImageUrlsKeys: Object.keys(allImageUrls),
+            brandId: null
+        });
         const newBrandId = await createOrUpdateBrandRecord(
             assets,
             allImageUrls,
             null
         );
+        console.log("ensureMongoProject: createOrUpdateBrandRecord returned newBrandId:", newBrandId);
         
-        setAirtableBrandId(newBrandId);
+        setMongoBrandId(newBrandId);
         setGeneratedImages(allImageUrls); 
 
         if (assets.mediaPlans && assets.mediaPlans.length > 0) {
-            console.log(`Saving initial media plan...`);
+            console.log(`ensureMongoProject: Saving initial media plan...`);
             try {
                 await saveMediaPlanGroup(assets.mediaPlans[0], allImageUrls, newBrandId);
-                console.log(`Initial media plan saved successfully.`);
+                console.log(`ensureMongoProject: Initial media plan saved successfully.`);
             } catch (error) {
-                console.error(`Failed to save initial media plan:`, error);
+                console.error(`ensureMongoProject: Failed to save initial media plan:`, error);
                 setError(error instanceof Error ? error.message : "Could not save the initial media plan.");
-                // Decide if you want to throw the error, or just log it and continue
+                throw error; // Re-throw the error
             }
         }
 
-        console.log("New project record created with Brand ID:", newBrandId);
+        console.log("ensureMongoProject: New project record created with Brand ID:", newBrandId);
         updateAutoSaveStatus('saved');
         return newBrandId;
-    }, [airtableBrandId, generatedAssets, generatedImages, updateAutoSaveStatus]);
+    }, [mongoBrandId, generatedAssets, generatedImages, updateAutoSaveStatus, areCredentialsSet]);
 
     
     const handleSetProductImages = () => {
@@ -839,10 +872,12 @@ const App: React.FC = () => {
         });
         setError(null);
         try {
+            console.log("handleGenerateKit: Starting generation task.");
             const generationTask = (model: string) => {
                 return textGenerationService.generateBrandKit(info, settings.language, model);
             };
             const kit = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
+            console.log("handleGenerateKit: Generation task completed. Kit:", kit);
 
             const fullAssets: GeneratedAssets = { ...kit, affiliateLinks: [], personas: [], trends: [], ideas: [] };
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: fullAssets });
@@ -859,17 +894,22 @@ const App: React.FC = () => {
             setCurrentStep('assets');
             setActiveTab(firstPlan ? 'mediaPlan' : 'brandKit');
 
-            ensureAirtableProject(fullAssets).catch(err => {
-                console.error("Failed to auto-create Airtable project:", err);
-                setError(err instanceof Error ? err.message : "Could not create initial Airtable project.");
-            });
+            console.log("handleGenerateKit: Calling ensureMongoProject.");
+            const newBrandId = await ensureMongoProject(fullAssets);
+            console.log("handleGenerateKit: ensureMongoProject completed.");
+            if (!newBrandId) {
+                setToast({
+                    message: "Your brand kit has been generated, but could not be saved. Please configure your database connection in the Integrations panel and then save the project manually.",
+                    type: 'error'
+                });
+            }
         } catch (err) {
-            console.error(err);
+            console.error("handleGenerateKit: Error caught:", err);
             setError(err instanceof Error ? err.message : "An unknown error occurred.");
         } finally {
             setLoaderContent(null);
         }
-    }, [settings?.language, settings?.textGenerationModel, ensureAirtableProject, executeTextGenerationWithFallback]);
+    }, [settings?.language, settings?.textGenerationModel, ensureMongoProject, executeTextGenerationWithFallback]);
 
     const handleGenerateMediaPlanGroup = useCallback((
         prompt: string, 
@@ -960,11 +1000,11 @@ const App: React.FC = () => {
                 setKhongMinhSuggestions({});
                 
                 updateAutoSaveStatus('saving');
-                const brandId = await ensureAirtableProject();
+                const brandId = await ensureMongoProject();
                 if (!brandId) {
                     setAutoSaveStatus('idle');
                     setLoaderContent(null); 
-                    setError("Airtable credentials not configured. Media plan not saved.");
+                    setError("MongoDB credentials not configured. Media plan not saved.");
                     return;
                 }
 
@@ -983,7 +1023,7 @@ const App: React.FC = () => {
                 setLoaderContent(null); 
             }
         })();
-    }, [generatedAssets, settings, ensureAirtableProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [generatedAssets, settings, ensureMongoProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
     // New handler for creating funnel campaign plans
     const handleCreateFunnelCampaignPlan = useCallback(async (planShell: MediaPlanGroup & { wizardData?: any }) => {
@@ -1075,9 +1115,9 @@ const App: React.FC = () => {
             // Set the new plan as the active plan
             setActivePlanId(finalPlan.id);
             
-            // Save to Airtable if connected
+            // Save to MongoDB if connected
             updateAutoSaveStatus('saving');
-            const brandId = await ensureAirtableProject();
+            const brandId = await ensureMongoProject();
             if (brandId) {
                 const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
                 const allImageUrls = { ...generatedImages, ...newPublicUrls };
@@ -1101,7 +1141,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, ensureAirtableProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [generatedAssets, settings, ensureMongoProject, generatedImages, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
     const handleBackToIdea = useCallback(() => {
         setCurrentStep('idea');
@@ -1109,7 +1149,7 @@ const App: React.FC = () => {
         setBrandInfo(null);
         dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: null! });
         setGeneratedImages({});
-        setAirtableBrandId(null);
+        setMongoBrandId(null);
         setMediaPlanGroupsList([]);
         setActivePlanId(null);
         setError(null);
@@ -1135,7 +1175,7 @@ const App: React.FC = () => {
         const action: AssetsAction = { type: 'UPDATE_ASSET_IMAGE', payload: { oldImageKey: imageKey, newImageKey, postInfo } };
         dispatchAssets(action);
         
-        if (airtableBrandId && generatedAssets) {
+        if (mongoBrandId && generatedAssets) {
             updateAutoSaveStatus('saving');
             try {
 
@@ -1146,11 +1186,11 @@ const App: React.FC = () => {
                     if (postInfo) {
                         const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
                         const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
-                        await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
+                        await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId, publicUrl);
                     } else {
                         const updatedAssets = assetsReducer(generatedAssets, action);
                         if (updatedAssets) {
-                            await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
+                            await syncAssetMedia(publicUrls, mongoBrandId, updatedAssets);
                         }
                     }
                     setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
@@ -1165,7 +1205,7 @@ const App: React.FC = () => {
                 updateAutoSaveStatus('error');
             }
         }
-    }, [generatedAssets, airtableBrandId, updateAutoSaveStatus, setError]);
+    }, [generatedAssets, mongoBrandId, updateAutoSaveStatus, setError]);
 
     const handleSetVideo = useCallback(async (dataUrl: string, key: string, postInfo: PostInfo) => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
@@ -1178,7 +1218,7 @@ const App: React.FC = () => {
         
         dispatchAssets({ type: 'UPDATE_POST', payload: { planId: postInfo.planId, weekIndex: postInfo.weekIndex, postIndex: postInfo.postIndex, updates } });
 
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
             try {
             
@@ -1187,7 +1227,7 @@ const App: React.FC = () => {
                 const publicUrl = publicUrls[newVideoKey];
 
                 if (publicUrl) {
-                    await updateMediaPlanPostInAirtable({ ...postInfo.post, ...updates }, airtableBrandId, undefined, publicUrl);
+                    await updateMediaPlanPostInDatabase({ ...postInfo.post, ...updates }, mongoBrandId, undefined, publicUrl);
                     setGeneratedVideos(prev => ({ ...prev, ...publicUrls }));
                     updateAutoSaveStatus('saved');
                 }
@@ -1198,7 +1238,7 @@ const App: React.FC = () => {
                 updateAutoSaveStatus('error');
             }
         }
-    }, [airtableBrandId, updateAutoSaveStatus, setError]);
+    }, [mongoBrandId, updateAutoSaveStatus, setError]);
 
     const generateSingleImageCore = useCallback(async (mediaPrompt: string, settings: Settings, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
         let imagesToUse: File[] = [];
@@ -1248,7 +1288,7 @@ const App: React.FC = () => {
             const action: AssetsAction = { type: 'UPDATE_ASSET_IMAGE', payload: { oldImageKey: imageKey, newImageKey, postInfo } };
             dispatchAssets(action);
     
-            if (airtableBrandId && dataUrl.startsWith('data:image') && generatedAssets) {
+            if (mongoBrandId && dataUrl.startsWith('data:image') && generatedAssets) {
                 updateAutoSaveStatus('saving');
                 try {
                     // With BFF, we no longer need to check credentials on the frontend
@@ -1261,11 +1301,11 @@ const App: React.FC = () => {
                     if (postInfo) {
                         const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
                         const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
-                        await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId, publicUrl);
+                        await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId, publicUrl);
                     } else {
                         const updatedAssets = assetsReducer(generatedAssets, action);
                         if (updatedAssets) {
-                            await syncAssetMedia(publicUrls, airtableBrandId, updatedAssets);
+                            await syncAssetMedia(publicUrls, mongoBrandId, updatedAssets);
                         }
                     }
                     setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
@@ -1287,7 +1327,7 @@ const App: React.FC = () => {
                 return newSet;
             });
         }
-    }, [settings, airtableBrandId, generatedAssets, updateAutoSaveStatus, generateSingleImageCore]);
+    }, [settings, mongoBrandId, generatedAssets, updateAutoSaveStatus, generateSingleImageCore]);
     
     const handleGenerateMediaPrompt = useCallback(async (postInfo: PostInfo): Promise<MediaPlanPost | null> => {
         if (!('planId' in postInfo) || !generatedAssets?.brandFoundation) return null;
@@ -1320,10 +1360,10 @@ const App: React.FC = () => {
             
             const updatedPost = { ...post, ...updates };
 
-            if (airtableBrandId) {
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
                 try {
-                    await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId);
+                    await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId);
                     updateAutoSaveStatus('saved');
                 } catch (e) {
                     setError(e instanceof Error ? e.message : 'Could not save new prompt.');
@@ -1342,7 +1382,7 @@ const App: React.FC = () => {
             });
         }
         return null;
-    }, [generatedAssets, settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [generatedAssets, settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
     const handleRefinePost = useCallback(async (text: string): Promise<string> => {
         const generationTask = (model: string) => {
@@ -1362,16 +1402,12 @@ const App: React.FC = () => {
         const { planId, weekIndex, postIndex, post } = postInfo;
         dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates: post } });
 
-        if (airtableBrandId) {
-            updateAutoSaveStatus('saving');
-            updateMediaPlanPostInAirtable(postInfo.post, airtableBrandId)
+        if (mongoBrandId) {
+            updateMediaPlanPostInDatabase(postInfo.post, mongoBrandId)
                 .then(() => updateAutoSaveStatus('saved'))
-                .catch(e => {
-                    setError(e.message);
-                    updateAutoSaveStatus('error');
-                });
+                .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleGenerateAffiliateComment = useCallback(async (postInfo: PostInfo): Promise<MediaPlanPost | null> => {
         if (!generatedAssets?.brandFoundation || !('planId' in postInfo)) return null;
@@ -1406,10 +1442,10 @@ const App: React.FC = () => {
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
 
             const updatedPost = { ...post, ...updates };
-            if (airtableBrandId) {
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
                 try {
-                    await updateMediaPlanPostInAirtable(updatedPost, airtableBrandId);
+                    await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId);
                     updateAutoSaveStatus('saved');
                 } catch (e) {
                     setError(e instanceof Error ? e.message : 'Could not save new comment.');
@@ -1428,29 +1464,29 @@ const App: React.FC = () => {
             });
         }
         return null;
-    }, [generatedAssets, settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [generatedAssets, settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
     // Trend & Idea Hub Handlers
     const handleSaveTrend = useCallback((trend: Trend) => {
-        const payload = { ...trend, brandId: airtableBrandId || '' };
+        const payload = { ...trend, brandId: mongoBrandId || '' };
         dispatchAssets({ type: 'SAVE_TREND', payload });
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
-            saveTrend(payload, airtableBrandId)
+            saveTrend(payload, mongoBrandId)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleDeleteTrend = useCallback((trendId: string) => {
         dispatchAssets({ type: 'DELETE_TREND', payload: trendId });
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
-            deleteTrendFromAirtable(trendId)
+            deleteTrendFromDatabase(trendId, mongoBrandId)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleGenerateIdeas = useCallback(async (trend: Trend, useSearch: boolean) => {
         setLoaderContent({ title: "Generating Viral Ideas...", steps: ["Analyzing trend...", "Brainstorming concepts...", "Finalizing ideas..."] });
@@ -1467,11 +1503,8 @@ const App: React.FC = () => {
             
             dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
             
-            if (airtableBrandId) {
-                updateAutoSaveStatus('saving');
-                saveIdeas(newIdeas)
-                    .then(() => updateAutoSaveStatus('saved'))
-                    .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
+            if (mongoBrandId) {
+                await saveIdeas(newIdeas, mongoBrandId);
             }
         } catch (err) {
             console.error("Failed to generate ideas:", err);
@@ -1479,7 +1512,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
     
     const handleGenerateContentPackage = useCallback(async (
         idea: Idea,
@@ -1514,13 +1547,13 @@ const App: React.FC = () => {
         
         console.log('Content package generation - selectedProduct:', selectedProduct);
 
-        // If a product was selected, verify it exists in Airtable
-        if (selectedProduct && airtableBrandId) {
-            const productExists = await checkIfProductExistsInAirtable(selectedProduct.id);
+        // If a product was selected, verify it exists in MongoDB
+        if (selectedProduct && mongoBrandId) {
+            const productExists = await checkIfProductExistsInDatabase(selectedProduct.id);
             if (!productExists) {
-                console.warn(`Selected product ${selectedProduct.id} not found in Airtable. Saving it now.`);
-                // Save the product to Airtable
-                await saveAffiliateLinks([selectedProduct], airtableBrandId);
+                console.warn(`Selected product ${selectedProduct.id} not found in MongoDB. Saving it now.`);
+                // Save the product to MongoDB
+                await saveAffiliateLinks([selectedProduct], mongoBrandId);
             }
         }
 
@@ -1551,8 +1584,8 @@ const App: React.FC = () => {
             setActivePlanId(newPackage.id);
             setActiveTab('mediaPlan');
 
-            // Save to Airtable if we have a brand ID
-            if (airtableBrandId) {
+            // Save to MongoDB if we have a brand ID
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
                 
                 // Extract image URLs from posts for saving
@@ -1565,7 +1598,7 @@ const App: React.FC = () => {
                     });
                 });
 
-                await saveMediaPlanGroup(newPackage, allImageUrls, airtableBrandId);
+                await saveMediaPlanGroup(newPackage, allImageUrls, mongoBrandId);
                 updateAutoSaveStatus('saved');
                 
                 // Show success message
@@ -1578,17 +1611,17 @@ const App: React.FC = () => {
             setError(err instanceof Error ? err.message : "Failed to generate content package.");
             
             // Update auto-save status to error if we were saving
-            if (airtableBrandId) {
+            if (mongoBrandId) {
                 updateAutoSaveStatus('error');
             }
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, dispatchAssets, setError, setLoaderContent, setActivePlanId, setActiveTab, setMediaPlanGroupsList, airtableBrandId, generatedImages, updateAutoSaveStatus, saveMediaPlanGroup]);
+    }, [generatedAssets, settings, dispatchAssets, setError, setLoaderContent, setActivePlanId, setActiveTab, setMediaPlanGroupsList, mongoBrandId, generatedImages, updateAutoSaveStatus, saveMediaPlanGroup]);
 
     const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
-        if (!airtableBrandId) {
-            setError("Please save your project to Airtable before generating trends.");
+        if (!mongoBrandId) {
+            setError("Please save your project to MongoDB before generating trends.");
             return;
         }
         setIsGeneratingFacebookTrends(true);
@@ -1602,17 +1635,17 @@ const App: React.FC = () => {
             const newTrends: Trend[] = newTrendsData.map(trend => ({
                 ...trend,
                 id: crypto.randomUUID(),
-                brandId: airtableBrandId,
+                brandId: mongoBrandId,
             }));
 
             for (const trend of newTrends) {
                 dispatchAssets({ type: 'SAVE_TREND', payload: trend });
             }
             
-            // Save all new trends to Airtable in one batch
-            if (airtableBrandId) {
+            // Save all new trends to MongoDB in one batch
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
-                Promise.all(newTrends.map(trend => saveTrend(trend, airtableBrandId)))
+                Promise.all(newTrends.map(trend => saveTrend(trend, mongoBrandId)))
                     .then(() => {
                         updateAutoSaveStatus('saved');
                         setSuccessMessage(`Successfully found and saved ${newTrends.length} new trends.`);
@@ -1630,7 +1663,7 @@ const App: React.FC = () => {
         } finally {
             setIsGeneratingFacebookTrends(false);
         }
-    }, [settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
 
     // New function for generating ideas from a product
     const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
@@ -1690,7 +1723,7 @@ const App: React.FC = () => {
             if (!productTrendExists) {
                 productTrend = {
                     id: productTrendId,
-                    brandId: airtableBrandId || '',
+                    brandId: mongoBrandId || '',
                     industry: 'Product Ideas',
                     topic: `Ideas for: ${product.productName}`,
                     keywords: [product.productName, product.providerName],
@@ -1701,14 +1734,14 @@ const App: React.FC = () => {
                 };
                 dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
                 
-                if (airtableBrandId) {
+                if (mongoBrandId) {
                     updateAutoSaveStatus('saving');
                     try {
-                        await saveTrend(productTrend, airtableBrandId);
+                        await saveTrend(productTrend, mongoBrandId);
                         updateAutoSaveStatus('saved');
                     } catch (e) {
-                        console.error("Failed to save trend to Airtable:", e);
-                        setError(e instanceof Error ? e.message : "Failed to save trend to Airtable.");
+                        console.error("Failed to save trend to MongoDB:", e);
+                        setError(e instanceof Error ? e.message : "Failed to save trend to MongoDB.");
                         updateAutoSaveStatus('error');
                     }
                 }
@@ -1716,14 +1749,14 @@ const App: React.FC = () => {
                 productTrend = existingTrends.find(trend => trend.id === productTrendId)!;
             }
             
-            if (airtableBrandId) {
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
                 try {
                     await saveIdeas(newIdeas);
                     updateAutoSaveStatus('saved');
                 } catch (e) {
-                    console.error("Failed to save ideas to Airtable:", e);
-                    setError(e instanceof Error ? e.message : "Failed to save ideas to Airtable.");
+                    console.error("Failed to save ideas to MongoDB:", e);
+                    setError(e instanceof Error ? e.message : "Failed to save ideas to MongoDB.");
                     updateAutoSaveStatus('error');
                 }
             }
@@ -1750,7 +1783,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, airtableBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedAssets, setActiveTab]);
+    }, [settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedAssets, setActiveTab]);
 
     const handleSaveProjectToFile = useCallback(() => {
         if (!generatedAssets) {
@@ -1768,7 +1801,7 @@ const App: React.FC = () => {
                 settings: settings,
                 generatedImages: generatedImages,
                 generatedVideos: generatedVideos,
-                airtableBrandId: airtableBrandId,
+                mongoBrandId: mongoBrandId,
             };
 
             const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
@@ -1782,7 +1815,7 @@ const App: React.FC = () => {
         } finally {
             setIsSaving(false);
         }
-    }, [generatedAssets, settings, generatedImages, generatedVideos, airtableBrandId]);
+    }, [generatedAssets, settings, generatedImages, generatedVideos, mongoBrandId]);
 
     const handleLoadProjectFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -1803,7 +1836,7 @@ const App: React.FC = () => {
             setSettings(projectData.settings);
             setGeneratedImages(projectData.generatedImages || {});
             setGeneratedVideos(projectData.generatedVideos || {});
-            setAirtableBrandId(projectData.airtableBrandId || null);
+            setMongoBrandId(projectData.mongoBrandId || null);
             
             if (projectData.assets.personas) {
                 projectData.assets.personas = projectData.assets.personas.map((p: Persona) => ({
@@ -1859,7 +1892,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             // Load the first page of posts
-            const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId, currentAssets.brandFoundation, settings.language);
+            const { plan, imageUrls, videoUrls } = await loadMediaPlan(planId);
             if (!currentAssets) {
                 throw new Error("Assets are not initialized.");
             }
@@ -1909,8 +1942,8 @@ const App: React.FC = () => {
         }
     }, [generatedAssets, settings.language, mediaPlanGroupsList]);
 
-    const handleLoadFromAirtable = useCallback(async (brandId: string) => {
-        setLoaderContent({ title: "Loading from Airtable...", steps: ["Connecting...", "Fetching project data...", "Loading assets..."] });
+    const handleLoadFromDatabase = useCallback(async (brandId: string) => {
+        setLoaderContent({ title: "Loading from MongoDB...", steps: ["Connecting...", "Fetching project data...", "Loading assets..."] });
         setError(null);
         try {
             // Step 1: Load initial project data for fast rendering
@@ -1931,7 +1964,7 @@ const App: React.FC = () => {
             };
             
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: initialAssets });
-            setAirtableBrandId(brandId);
+            setMongoBrandId(brandId);
             setCurrentStep('assets');
             setActiveTab('brandKit'); // Redirect to brandKit tab for instant rendering
 
@@ -1949,8 +1982,8 @@ const App: React.FC = () => {
             setIsDatabaseLoadModalOpen(false);
 
         } catch (err) {
-            console.error("Failed to load project from Airtable:", err);
-            setError(err instanceof Error ? err.message : "Could not load project from Airtable.");
+            console.error("Failed to load project from MongoDB:", err);
+            setError(err instanceof Error ? err.message : "Could not load project from MongoDB.");
         } finally {
             setLoaderContent(null);
         }
@@ -2053,7 +2086,7 @@ const App: React.FC = () => {
     
         dispatchAssets({ type: 'ASSIGN_PERSONA_TO_PLAN', payload: { planId, personaId } });
     
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
             try {
                 
@@ -2061,65 +2094,65 @@ const App: React.FC = () => {
                 const updatedPlan = updatedState?.mediaPlans.find(p => p.id === planId);
                 if (updatedPlan) {
                     const allPostsInPlan = updatedPlan.plan.flatMap(w => w.posts);
-                    await assignPersonaToPlanInAirtable(planId, personaId, allPostsInPlan, airtableBrandId);
+                    await assignPersonaToPlanInDatabase(planId, personaId, allPostsInPlan, mongoBrandId);
                 }
                 updateAutoSaveStatus('saved');
             } catch (e) {
                 const message = e instanceof Error ? e.message : 'Could not assign persona.';
-                console.error("Failed to assign persona in Airtable:", e);
+                console.error("Failed to assign persona in MongoDB:", e);
                 setError(message);
                 updateAutoSaveStatus('error');
             }
         }
-    }, [generatedAssets, airtableBrandId, updateAutoSaveStatus]);
+    }, [generatedAssets, mongoBrandId, updateAutoSaveStatus]);
 
     const handleLoadIdeasForTrend = useCallback(async (trendId: string) => {
-        if (!airtableBrandId) {
-            console.warn("DEBUG: No airtableBrandId, cannot load ideas for trend");
+        if (!mongoBrandId) {
+            console.warn("DEBUG: No mongoBrandId, cannot load ideas for trend");
             return;
         }
         
         console.log("DEBUG: Loading ideas for trend ID:", trendId);
         try {
-            const ideas = await loadIdeasForTrend(trendId, airtableBrandId);
+            const ideas = await loadIdeasForTrend(trendId, mongoBrandId);
             console.log("DEBUG: Loaded ideas:", ideas);
             dispatchAssets({ type: 'ADD_IDEAS', payload: ideas });
         } catch (error) {
             console.error("DEBUG: Failed to load ideas for trend:", error);
         }
-    }, [airtableBrandId]);
+    }, [mongoBrandId]);
 
     const handleSaveAffiliateLink = useCallback((link: AffiliateLink) => {
         dispatchAssets({ type: 'ADD_OR_UPDATE_AFFILIATE_LINK', payload: link });
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
-            saveAffiliateLinks([link], airtableBrandId)
+            saveAffiliateLinks([link], mongoBrandId)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => {
                     setError(e.message);
                     updateAutoSaveStatus('error');
                 });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleDeleteAffiliateLink = useCallback((linkId: string) => {
         dispatchAssets({ type: 'DELETE_AFFILIATE_LINK', payload: linkId });
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
-            deleteAffiliateLinkFromAirtable(linkId, airtableBrandId)
+            deleteAffiliateLinkFromDatabase(linkId, mongoBrandId)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => {
                     setError(e.message);
                     updateAutoSaveStatus('error');
                 });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleImportAffiliateLinks = useCallback((links: AffiliateLink[]) => {
         dispatchAssets({ type: 'IMPORT_AFFILIATE_LINKS', payload: links });
-        if (airtableBrandId && links.length > 0) {
+        if (mongoBrandId && links.length > 0) {
             updateAutoSaveStatus('saving');
-            saveAffiliateLinks(links, airtableBrandId)
+            saveAffiliateLinks(links, mongoBrandId)
                 .then(() => {
                     updateAutoSaveStatus('saved');
                     setSuccessMessage(`${links.length} links imported successfully!`);
@@ -2130,17 +2163,17 @@ const App: React.FC = () => {
                     updateAutoSaveStatus('error');
                 });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleReloadAffiliateLinks = useCallback(async () => {
-        if (!airtableBrandId) {
-            setError("Cannot reload affiliate links: No brand selected or Airtable not connected.");
+        if (!mongoBrandId) {
+            setError("Cannot reload affiliate links: No brand selected or MongoDB not connected.");
             return;
         }
         setLoaderContent({ title: "Reloading Affiliate Links...", steps: ["Fetching latest data..."] });
         setError(null);
         try {
-            const latestAffiliateLinks = await fetchAffiliateLinksForBrand(airtableBrandId);
+            const latestAffiliateLinks = await fetchAffiliateLinksForBrand(mongoBrandId);
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: { ...generatedAssets!, affiliateLinks: latestAffiliateLinks } });
             setSuccessMessage("Affiliate links reloaded successfully!");
             setTimeout(() => setSuccessMessage(null), 3000);
@@ -2150,7 +2183,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [airtableBrandId, generatedAssets, dispatchAssets]);
+    }, [mongoBrandId, generatedAssets, dispatchAssets]);
 
     const handleAcceptSuggestion = useCallback((postInfo: PostInfo, productId: string) => {
         const currentPromotedIds = postInfo.post.promotedProductIds || [];
@@ -2213,9 +2246,9 @@ const App: React.FC = () => {
             await socialApiSchedulePost(personaId, post.platform, post, scheduledAt);
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
-            if (airtableBrandId) {
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
-                await updateMediaPlanPostInAirtable({ ...post, ...updates }, airtableBrandId);
+                await updateMediaPlanPostInDatabase({ ...post, ...updates }, mongoBrandId);
                 updateAutoSaveStatus('saved');
             }
             setSchedulingPost(null);
@@ -2225,7 +2258,7 @@ const App: React.FC = () => {
         } finally {
             setIsScheduling(false);
         }
-    }, [airtableBrandId, updateAutoSaveStatus, generatedAssets]);
+    }, [mongoBrandId, updateAutoSaveStatus, generatedAssets]);
 
     const handlePublishPost = useCallback(async (postInfo: PostInfo) => {
         const { planId, weekIndex, postIndex, post } = postInfo;
@@ -2253,9 +2286,9 @@ const App: React.FC = () => {
 
             dispatchAssets({ type: 'UPDATE_POST', payload: { planId, weekIndex, postIndex, updates } });
             
-            if (airtableBrandId) {
+            if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
-                await updateMediaPlanPostInAirtable({ ...post, ...updates }, airtableBrandId);
+                await updateMediaPlanPostInDatabase({ ...post, ...updates }, mongoBrandId);
                 updateAutoSaveStatus('saved');
             }
             setSuccessMessage(`Post published successfully! URL: ${publishedUrl}`);
@@ -2283,7 +2316,7 @@ const App: React.FC = () => {
         } finally {
             setIsScheduling(false);
         }
-    }, [airtableBrandId, updateAutoSaveStatus, generatedAssets, generatedImages, generatedVideos, setViewingPost]);
+    }, [mongoBrandId, updateAutoSaveStatus, generatedAssets, generatedImages, generatedVideos, setViewingPost]);
 
     const handlePostDrop = useCallback((postInfo: SchedulingPost, newDate: Date) => {
         const originalDate = postInfo.post.scheduledAt ? new Date(postInfo.post.scheduledAt) : new Date(newDate.setHours(10, 0, 0, 0));
@@ -2315,12 +2348,12 @@ const App: React.FC = () => {
     
         const scheduleTime = new Date(startDate);
         const updatesForState: { planId: string, weekIndex: number, postIndex: number, updates: Partial<MediaPlanPost> }[] = [];
-        const updatesForAirtable: { postId: string; scheduledAt: string; status: 'scheduled' }[] = [];
+        const updatesForDatabase: { postId: string; scheduledAt: string; status: 'scheduled' }[] = [];
     
         for (const postInfo of allPosts) {
             const currentScheduledAt = scheduleTime.toISOString();
             updatesForState.push({ ...postInfo, updates: { scheduledAt: currentScheduledAt, status: 'scheduled' } });
-            updatesForAirtable.push({ postId: postInfo.post.id, scheduledAt: currentScheduledAt, status: 'scheduled' });
+            updatesForDatabase.push({ postId: postInfo.post.id, scheduledAt: currentScheduledAt, status: 'scheduled' });
             scheduleTime.setDate(scheduleTime.getDate() + intervalDays);
             scheduleTime.setHours(scheduleTime.getHours() + intervalHours);
             scheduleTime.setMinutes(scheduleTime.getMinutes() + intervalMinutes);
@@ -2328,12 +2361,12 @@ const App: React.FC = () => {
     
         updatesForState.forEach(u => dispatchAssets({ type: 'UPDATE_POST', payload: u }));
         
-        dispatchAssets({ type: 'BULK_SCHEDULE_POSTS', payload: { updates: updatesForAirtable } });
+        dispatchAssets({ type: 'BULK_SCHEDULE_POSTS', payload: { updates: updatesForDatabase } });
     
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
             try {
-                await bulkUpdatePostSchedules(updatesForAirtable);
+                await bulkUpdatePostSchedules(updatesForDatabase);
                 updateAutoSaveStatus('saved');
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'Could not bulk schedule.');
@@ -2343,7 +2376,7 @@ const App: React.FC = () => {
     
         setSelectedPostIds(new Set());
         setIsScheduling(false);
-    }, [generatedAssets, selectedPostIds, airtableBrandId, updateAutoSaveStatus]);
+    }, [generatedAssets, selectedPostIds, mongoBrandId, updateAutoSaveStatus]);
 
     const createBulkActionHandler = (
         title: string,
@@ -2407,39 +2440,39 @@ const App: React.FC = () => {
             
             dispatchAssets({ type: 'SAVE_PERSONA', payload: personaToSave });
             
-            if (airtableBrandId) {
-                await savePersona(personaToSave, airtableBrandId);
+            if (mongoBrandId) {
+                await savePersona(personaToSave, mongoBrandId);
             }
             updateAutoSaveStatus('saved');
         } catch(e: any) {
             setError(e.message);
             updateAutoSaveStatus('error');
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleUpdatePersona = useCallback(async (persona: Persona) => {
         dispatchAssets({ type: 'SAVE_PERSONA', payload: persona });
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
             try {
-                await savePersona(persona, airtableBrandId);
+                await savePersona(persona, mongoBrandId);
                 updateAutoSaveStatus('saved');
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'Could not update persona.');
                 updateAutoSaveStatus('error');
             }
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleDeletePersona = useCallback((personaId: string) => {
         dispatchAssets({ type: 'DELETE_PERSONA', payload: personaId });
-        if (airtableBrandId) {
+        if (mongoBrandId) {
             updateAutoSaveStatus('saving');
-            deletePersonaFromAirtable(personaId, airtableBrandId)
+            deletePersonaFromDatabase(personaId, mongoBrandId)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }
-    }, [airtableBrandId, updateAutoSaveStatus]);
+    }, [mongoBrandId, updateAutoSaveStatus]);
 
     const handleSetPersonaImage = useCallback(async (personaId: string, photoId: string, dataUrl: string): Promise<string | undefined> => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
@@ -2601,7 +2634,7 @@ const App: React.FC = () => {
                         onGenerateProfile={handleGenerateProfile}
                         isLoading={!!loaderContent}
                         onLoadProject={handleLoadProjectFile}
-                        onLoadProjectFromAirtable={handleLoadFromAirtable}
+                        onLoadProjectFromDatabase={handleLoadFromDatabase}
                         language={settings.language}
                         setLanguage={setLanguage}
                         integrationsVersion={integrationsVersion}
@@ -2623,7 +2656,7 @@ const App: React.FC = () => {
             );
         case 'assets':
             if (generatedAssets) {
-                 return (
+                                  return (
                     <>
                         <MainDisplay
                             assets={generatedAssets}
@@ -2640,9 +2673,9 @@ const App: React.FC = () => {
                             onGeneratePlan={handleGenerateMediaPlanGroup}
                             isGeneratingPlan={!!loaderContent}
                             onRegenerateWeekImages={handleRegenerateWeekImages}
-                            onBulkGenerateImages={handleBulkGenerateImages}
                             onBulkSuggestPromotions={handleBulkSuggestPromotions}
                             onBulkGenerateComments={handleBulkGenerateComments}
+                            onBulkGenerateImages={handleBulkGenerateImages}
                             productImages={[]}
                             onSetProductImages={handleSetProductImages}
                             onSaveProject={handleSaveProjectToFile}
@@ -2652,7 +2685,7 @@ const App: React.FC = () => {
                             onOpenSettings={() => setIsSettingsModalOpen(true)}
                             onOpenIntegrations={() => setIsDatabaseLoadModalOpen(true)}
                             activeTab={activeTab}
-                            setActiveTab={setActiveTab}
+                            setActiveTab={setActiveTabWithLog}
                             // Media Plan props
                             mediaPlanGroupsList={mediaPlanGroupsList}
                             onSelectPlan={handleSelectPlan}
@@ -2717,13 +2750,13 @@ const App: React.FC = () => {
                             // Funnel Campaign Props
                             onCreateFunnelCampaignPlan={handleCreateFunnelCampaignPlan}
                             // Lazy loading props
-                            isStrategyHubDataLoaded={!!(generatedAssets?.trends && generatedAssets?.ideas)}
+                            isStrategyHubDataLoaded={!!(generatedAssets?.trends?.length > 0 || generatedAssets?.ideas?.length > 0)}
                             onLoadStrategyHubData={handleLoadStrategyHubData}
                             isLoadingStrategyHubData={false}
-                            isAffiliateVaultDataLoaded={!!generatedAssets?.affiliateLinks}
+                            isAffiliateVaultDataLoaded={!!(generatedAssets?.affiliateLinks?.length > 0)}
                             onLoadAffiliateVaultData={handleLoadAffiliateVaultData}
                             isLoadingAffiliateVaultData={false}
-                            isPersonasDataLoaded={!!generatedAssets?.personas}
+                            isPersonasDataLoaded={!!(generatedAssets?.personas?.length > 0)}
                             onLoadPersonasData={handleLoadPersonasData}
                             isLoadingPersonasData={false}
                         />
@@ -2738,16 +2771,16 @@ const App: React.FC = () => {
                                 {waitMessage}
                             </div>
                         )}
-                        <AirtableLoadModal 
+                        <DatabaseLoadModal 
                             isOpen={isDatabaseLoadModalOpen}
                             onClose={() => setIsDatabaseLoadModalOpen(false)}
-                            onLoadProject={handleLoadFromAirtable}
+                            onLoadProject={handleLoadFromDatabase}
                             language={settings.language}
                         />
                         <SettingsModal
                             isOpen={isSettingsModalOpen}
                             onClose={() => setIsSettingsModalOpen(false)}
-                            brandId={airtableBrandId || ''}
+                            brandId={mongoBrandId || ''}
                         />
                         
 

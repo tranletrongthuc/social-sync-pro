@@ -1,4 +1,4 @@
-import { Persona, SocialAccount, FacebookPage } from '../types';
+import { Persona, SocialAccount, FacebookPage } from '../../types';
 import { connectAndGetPageToken, publishToFacebookPage } from './facebookService';
 
 // This is a placeholder for a more robust credential storage mechanism.

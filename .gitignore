@@ -13,6 +13,7 @@ dist
 dist-ssr
 exports
 hybrid-ai-team
+hybrid_ai_team
 *.local
 *.env
 
@@ -28,4 +29,3 @@ hybrid-ai-team
 *.sw?
 .vercel
 .env*.local
-social-sync-pro-afa76-firebase-adminsdk-fbsvc-3b5d1b4378.json

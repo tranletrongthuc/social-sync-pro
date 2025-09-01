@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Settings } from '../types';
+import type { Settings } from '../../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
 import { fetchAdminDefaults, fetchSettings, saveSettings, loadAIServices } from '../services/databaseService';
@@ -258,7 +258,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
       await saveSettings(settings, brandId);
 
       // // Save AI model configuration
-      // await saveAiModelConfigToAirtable({
+      // await saveAiModelConfigToDatabase({
       //   textModelFallbackOrder: settings.textModelFallbackOrder,
       //   visionModels: settings.visionModels,
       // }, brandId);

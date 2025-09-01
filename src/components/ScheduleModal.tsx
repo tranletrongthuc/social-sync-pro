@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import type { MediaPlanPost, SchedulingPost } from '../types';
+import type { MediaPlanPost, SchedulingPost } from '../../types';
 import { Button } from './ui';
 
 interface ScheduleModalProps {

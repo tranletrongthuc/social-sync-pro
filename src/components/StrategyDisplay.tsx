@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Trend, Idea, Settings, Persona, AffiliateLink } from '../types';
+import type { Trend, Idea, Settings, Persona, AffiliateLink } from '../../types';
 import { Button, Input, TextArea, Switch, HoverCopyWrapper } from './ui';
 import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, SearchIcon, TagIcon } from './icons';
 import ContentPackageWizardModal from './ContentPackageWizardModal';
@@ -120,6 +120,8 @@ interface StrategyDisplayProps {
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
     const { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend, isDataLoaded, onLoadData, isLoading } = props;
     
+    console.log("StrategyDisplay rendered with props:", { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, isDataLoaded, isLoading });
+    
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
     const [useSearchForIdeas, setUseSearchForIdeas] = useState(false);
@@ -132,16 +134,20 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
 
     // Load data when component mounts if not already loaded
     useEffect(() => {
+        console.log("StrategyDisplay useEffect triggered", { isDataLoaded, onLoadData, isLoading });
         if (!isDataLoaded && onLoadData && !isLoading) {
+            console.log("Loading strategy hub data in StrategyDisplay");
             setIsLoadingStrategyHubData(true);
             onLoadData().finally(() => {
                 setIsLoadingStrategyHubData(false);
                 setIsStrategyHubDataLoaded(true);
+                console.log("Strategy hub data loaded in StrategyDisplay");
             });
         } else if (isDataLoaded) {
+            console.log("Strategy hub data already loaded in StrategyDisplay");
             setIsStrategyHubDataLoaded(true);
         }
-    }, [isDataLoaded, onLoadData, isLoading]);
+    }, []); // Empty dependency array to run only once
 
     useEffect(() => {
         if (isStrategyHubDataLoaded && productTrendToSelect && trends.length > 0) {
@@ -309,27 +315,26 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                         {trends.map(trend => {
                             const isProductTrend = trend.id.startsWith('product-');
                             return (
-                                <button 
-                                    key={trend.id} 
-                                    onClick={() => { 
-                                        setSelectedTrend(trend);
-                                        setEditingTrend(null);
-                                        if (onLoadIdeasForTrend) {
-                                            onLoadIdeasForTrend(trend.id);
-                                        }
-                                    }} 
-                                    className={`w-full text-left p-3 rounded-md transition-colors ${selectedTrend?.id === trend.id && !editingTrend ? 'bg-green-100' : 'hover:bg-gray-100'}`}
-                                >
-                                    <div className="flex items-start gap-2">
-                                        {isProductTrend && (
-                                            <TagIcon className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                                        )}
-                                        <div className="flex-grow min-w-0">
-                                            <p className="font-semibold text-gray-900 truncate">{trend.topic}</p>
-                                            <p className="text-xs text-gray-500 truncate">{trend.keywords ? trend.keywords.join(', ') : ''}</p>
-                                        </div>
+                                                            <button 
+                                onClick={() => { 
+                                    setSelectedTrend(trend);
+                                    setEditingTrend(null);
+                                    if (onLoadIdeasForTrend) {
+                                        onLoadIdeasForTrend(trend.id);
+                                    }
+                                }}
+                                className={`w-full text-left p-3 rounded-md transition-colors ${selectedTrend?.id === trend.id && !editingTrend ? 'bg-green-100' : 'hover:bg-gray-100'}`}
+                            >
+                                <div className="flex items-start gap-2">
+                                    {isProductTrend && (
+                                        <TagIcon className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                                    )}
+                                    <div className="flex-grow min-w-0">
+                                        <p className="font-semibold text-gray-900 truncate">{trend.topic}</p>
+                                        <p className="text-xs text-gray-500 truncate">{trend.keywords ? trend.keywords.join(', ') : ''}</p>
                                     </div>
-                                </button>
+                                </div>
+                            </button>
                             );
                         })}
                     </div>

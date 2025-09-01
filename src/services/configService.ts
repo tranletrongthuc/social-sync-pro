@@ -10,14 +10,14 @@ export class ConfigService {
         totalPostsPerMonth: 30,
         mediaPromptSuffix: '',
         affiliateContentKit: '',
-        textGenerationModel: 'gemini-1.5-flash',
+        textGenerationModel: 'gemini-2.5-pro',
         imageGenerationModel: '@cf/stabilityai/stable-diffusion-xl-base-1.0',
-        textModelFallbackOrder: ['gemini-1.5-flash', 'gemini-1.0-pro', 'gpt-3.5-turbo'],
-        visionModels: ['gemini-1.5-pro', 'gpt-4-vision-preview']
+        textModelFallbackOrder: ['gemini-2.5-flash', 'gemini-1.5-pro'],
+        visionModels: ['gemini-2.5-pro', 'gemini-2.5-flash']
     };
     private aiModelConfig: AiModelConfig = {
-        textModelFallbackOrder: ['gemini-1.5-flash', 'gemini-1.0-pro', 'gpt-3.5-turbo'],
-        visionModels: ['gemini-1.5-pro', 'gpt-4-vision-preview']
+        textModelFallbackOrder: ['gemini-2.5-flash', 'gemini-1.5-pro'],
+        visionModels: ['gemini-2.5-pro', 'gemini-2.5-flash']
     };
 
     private constructor() {}

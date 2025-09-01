@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Settings, Persona, AffiliateLink } from '../types';
+import type { Settings, Persona, AffiliateLink } from '../../types';
 import { Button, TextArea, Switch, Input, Select } from './ui';
 import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, CheckCircleIcon, SparklesIcon, UsersIcon } from './icons';
 import ProductSelector from './ProductSelector'; // Import the new component

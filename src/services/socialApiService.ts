@@ -1,6 +1,6 @@
 import { getSocialAccountForPersona } from './socialAccountService';
 import { loadMediaPlan } from './databaseService';
-import type { MediaPlanPost } from '../types';
+import type { MediaPlanPost } from '../../types';
 
 export class SocialAccountNotConnectedError extends Error {
     platform: string;
@@ -72,6 +72,6 @@ export const schedulePost = async (
 };
 
 export const getPostsByMediaPlan = async (planId: string, brandFoundation: any, language: string): Promise<MediaPlanPost[]> => {
-    const { plan } = await loadMediaPlan(planId, brandFoundation, language);
+    const { plan } = await loadMediaPlan(planId);
     return plan.flatMap(week => week.posts);
 };

@@ -1,5 +1,4 @@
-
-import { allowCors } from '../lib/cors.js';
+import { allowCors } from './lib/cors.js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 if (!process.env.GEMINI_API_KEY) {
@@ -18,7 +17,7 @@ async function handler(request, response) {
 
       console.log('--- Received request for /api/gemini/generate ---');
       try {
-        console.log('Request body:', JSON.stringify(request.body, null, 2));
+        // console.log('Request body:', JSON.stringify(request.body, null, 2));
         const { model, contents, config } = request.body;
 
         if (!model || !contents) {

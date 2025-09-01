@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { generateContentWithBff, generateImageWithBff } from './bffService';
-import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../types';
+import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../../types';
+
 
 export const sanitizeAndParseJson = (jsonText: string) => {
     // This function attempts to fix common JSON errors produced by AI models.
@@ -18,7 +19,8 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     }
 
     // Remove any markdown code block markers if present
-    const markdownMatch = sanitized.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    const markdownRegex = /```(?:json)?\s*\n?([\s\S]*?)(?:\n?\s*```|$)/;
+    const markdownMatch = sanitized.match(markdownRegex);
     if (markdownMatch && markdownMatch[1]) {
         sanitized = markdownMatch[1];
     }
@@ -31,7 +33,7 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     // This regex looks for a comma or opening bracket, optional whitespace,
     // then the erroneous `="` followed by a string, and a closing `"`.
     // It reconstructs it as a valid JSON string.
-    sanitized = sanitized.replace(/([,[\]\s*=\s*"([^"]*)"/g, '$1"$2"');
+    sanitized = sanitized.replace(/([,[\]]\s*)"=([^"]*)"/g, '$1"$2"');
 
     // 3. Fix for Pinterest posts generating "infographicContent" instead of "content".
     sanitized = sanitized.replace(/"infographicContent":/g, '"content":');
@@ -39,7 +41,7 @@ export const sanitizeAndParseJson = (jsonText: string) => {
     // 4. Fix for hashtags missing an opening quote, e.g., [... , #tag"] or [#tag"]
     // This looks for a comma/bracket followed by whitespace, then a #, then captures the tag content, and the closing quote.
     // It then reconstructs it with the opening quote.
-    sanitized = sanitized.replace(/([,[\]\s*)#([^\"]+)(")/g, '$1"#$2$3');
+    sanitized = sanitized.replace(/([,[\]\s])#([^"\]\s]+)(")/g, '$1"#$2$3');
 
     // 5. Removed risky unescaped quote sanitizer. Relying on responseMimeType: "application/json".
     // sanitized = sanitized.replace(/(?<![[\]{\s:,])"(?![\]s,}\]:])/g, '"');
@@ -502,7 +504,7 @@ ${personaInstruction}
 
 Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
 - **Name**
-: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").
+: Create a concise, meaningful, and easy-to-understand title for this entire plan. The title should summarize the main goal of the plan. For example: "Q3 Product Launch for Eco-Friendly Sneakers", "Summer Skincare Campaign for Oily Skin", "Engagement Boost for YouTube Channel".
 - **Plan Structure**
 : The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
 - **Content**
@@ -573,9 +575,23 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
         }),
     }));
 
+    const generateFallbackTitle = (userPrompt: string, selectedProduct: AffiliateLink | null, persona: Persona | null): string => {
+        if (selectedProduct) {
+            let title = `Promotion: ${selectedProduct.productName}`;
+            if (persona) {
+                title += ` ft. ${persona.nickName}`;
+            }
+            return title;
+        }
+        if (persona) {
+            return `Plan for ${persona.nickName}: ${userPrompt.substring(0, 30)}...`;
+        }
+        return userPrompt.substring(0, 50);
+    }
+
     return {
         id: crypto.randomUUID(),
-        name: (planName && planName !== 'Untitled Plan') ? planName : (selectedProduct ? `Promotion Plan: ${selectedProduct.productName}` : userPrompt.substring(0, 30)),
+        name: (planName && planName !== 'Untitled Plan') ? planName : generateFallbackTitle(userPrompt, selectedProduct, persona),
         prompt: userPrompt,
         plan: planWithEnhancements,
         source: 'wizard',

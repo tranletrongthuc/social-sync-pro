@@ -33,7 +33,8 @@ import type {
   BrandFoundation, 
   FacebookTrend, 
   FacebookPostIdea 
-} from '../types';
+} from '../../types';
+import { ConfigService } from './configService';
 
 // Unified interface for all text generation functions
 export interface TextGenerationService {
@@ -163,21 +164,58 @@ const openRouterService: TextGenerationService = {
   generateIdeasFromProduct: generateIdeasFromProductWithOpenRouter
 };
 
+// Generic function to handle API calls with fallback
+async function withFallback<T>(
+  fn: (model: string) => Promise<T>,
+  initialModel: string
+): Promise<T> {
+  const configService = ConfigService.getInstance();
+  const fallbackModels = configService.getAiModelConfig().textModelFallbackOrder || [];
+  const modelsToTry = [initialModel, ...fallbackModels];
+
+  let lastError: any;
+
+  for (const model of modelsToTry) {
+    try {
+      return await fn(model);
+    } catch (error: any) {
+      lastError = error;
+      // Check for 503 Service Unavailable or similar errors
+      if (error.message.includes('503') || error.message.toLowerCase().includes('overloaded')) {
+        console.warn(`Model ${model} is overloaded. Trying next model...`);
+        continue; // Try the next model
+      }
+      // For other errors, fail immediately
+      throw error;
+    }
+  }
+
+  // If all models fail, throw the last recorded error
+  throw lastError;
+}
+
+
 // Unified service that selects the appropriate implementation based on the model
 export const textGenerationService: TextGenerationService = {
   refinePostContent: async (postText: string, model: string): Promise<string> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.refinePostContent(postText, model);
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      return service.refinePostContent(postText, currentModel);
+    }, model);
   },
   
   generateBrandProfile: async (idea: string, language: string, model: string): Promise<BrandInfo> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateBrandProfile(idea, language, model);
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      return service.generateBrandProfile(idea, language, currentModel);
+    }, model);
   },
   
   generateBrandKit: async (brandInfo: BrandInfo, language: string, model: string): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateBrandKit(brandInfo, language, model);
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      return service.generateBrandKit(brandInfo, language, currentModel);
+    }, model);
   },
   
   generateMediaPlanGroup: async (
@@ -193,16 +231,14 @@ export const textGenerationService: TextGenerationService = {
     persona: Persona | null,
     selectedProduct: AffiliateLink | null
   ): Promise<MediaPlanGroup> => {
-    // Google models can use search functionality, OpenRouter models cannot
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    const actualUseSearch = isGoogleModel(model) ? useSearch : false;
-    
-    // Add type checking to ensure selectedPlatforms is an array
-    if (!Array.isArray(selectedPlatforms)) {
-      throw new Error(`selectedPlatforms must be an array, got ${typeof selectedPlatforms}: ${JSON.stringify(selectedPlatforms)}`);
-    }
-    
-    if (isGoogleModel(model)) {
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      const actualUseSearch = isGoogleModel(currentModel) ? useSearch : false;
+      
+      if (!Array.isArray(selectedPlatforms)) {
+        throw new Error(`selectedPlatforms must be an array, got ${typeof selectedPlatforms}: ${JSON.stringify(selectedPlatforms)}`);
+      }
+      
       return service.generateMediaPlanGroup(
         brandFoundation,
         userPrompt,
@@ -212,26 +248,11 @@ export const textGenerationService: TextGenerationService = {
         selectedPlatforms,
         options,
         affiliateContentKitSystemInstruction,
-        model,
+        currentModel,
         persona,
         selectedProduct
       );
-    } else {
-      // For OpenRouter, we need to include the useSearch parameter (even though it's not used)
-      return (service as any).generateMediaPlanGroup(
-        brandFoundation,
-        userPrompt,
-        language,
-        totalPosts,
-        false, // useSearch - OpenRouter doesn't use this parameter
-        selectedPlatforms,
-        options,
-        affiliateContentKitSystemInstruction,
-        model,
-        persona,
-        selectedProduct
-      );
-    }
+    }, model);
   },
   
   generateMediaPromptForPost: async (
@@ -242,8 +263,10 @@ export const textGenerationService: TextGenerationService = {
     persona: Persona | null,
     mediaPromptSuffix: string
   ): Promise<string | string[]> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateMediaPromptForPost(postContent, brandFoundation, language, model, persona, mediaPromptSuffix);
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      return service.generateMediaPromptForPost(postContent, brandFoundation, language, currentModel, persona, mediaPromptSuffix);
+    }, model);
   },
   
   generateAffiliateComment: async (
@@ -253,8 +276,10 @@ export const textGenerationService: TextGenerationService = {
     language: string,
     model: string
   ): Promise<string> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateAffiliateComment(post, products, brandFoundation, language, model);
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      return service.generateAffiliateComment(post, products, brandFoundation, language, currentModel);
+    }, model);
   },
   
   generateViralIdeas: async (
@@ -263,16 +288,11 @@ export const textGenerationService: TextGenerationService = {
     useSearch: boolean,
     model: string
   ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    // Google models can use search functionality, OpenRouter models cannot
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    const actualUseSearch = isGoogleModel(model) ? useSearch : false;
-    
-    if (isGoogleModel(model)) {
-      return service.generateViralIdeas(trend, language, actualUseSearch, model);
-    } else {
-      // For OpenRouter, we need to pass all arguments, but useSearch is ignored.
-      return service.generateViralIdeas(trend, language, false, model);
-    }
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      const actualUseSearch = isGoogleModel(currentModel) ? useSearch : false;
+      return service.generateViralIdeas(trend, language, actualUseSearch, currentModel);
+    }, model);
   },
   
   generateContentPackage: async (
@@ -286,18 +306,22 @@ export const textGenerationService: TextGenerationService = {
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
   ): Promise<MediaPlanGroup> => {
-    // Use BFF for content generation to keep API keys secure
-    return googleService.generateContentPackage(
-        idea,
-        brandFoundation,
-        language,
-        affiliateContentKit,
-        model,
-        persona,
-        pillarPlatform,
-        options,
-        selectedProduct
-    );
+    return withFallback((currentModel) => {
+      if (!isGoogleModel(currentModel)) {
+        throw new Error('Content package generation is not supported with OpenRouter models');
+      }
+      return googleService.generateContentPackage(
+          idea,
+          brandFoundation,
+          language,
+          affiliateContentKit,
+          currentModel,
+          persona,
+          pillarPlatform,
+          options,
+          selectedProduct
+      );
+    }, model);
   },
   
   generateFacebookTrends: async (
@@ -305,11 +329,12 @@ export const textGenerationService: TextGenerationService = {
     language: string,
     model: string
   ): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
-    // Only Google models support Facebook trend generation
-    if (!isGoogleModel(model)) {
-      throw new Error('Facebook trend generation is not supported with OpenRouter models');
-    }
-    return googleService.generateFacebookTrends(industry, language, model);
+    return withFallback((currentModel) => {
+      if (!isGoogleModel(currentModel)) {
+        throw new Error('Facebook trend generation is not supported with OpenRouter models');
+      }
+      return googleService.generateFacebookTrends(industry, language, currentModel);
+    }, model);
   },
   
   generatePostsForFacebookTrend: async (
@@ -317,11 +342,12 @@ export const textGenerationService: TextGenerationService = {
     language: string,
     model: string
   ): Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]> => {
-    // Only Google models support Facebook post generation
-    if (!isGoogleModel(model)) {
-      throw new Error('Facebook post generation is not supported with OpenRouter models');
-    }
-    return googleService.generatePostsForFacebookTrend(trend, language, model);
+    return withFallback((currentModel) => {
+      if (!isGoogleModel(currentModel)) {
+        throw new Error('Facebook post generation is not supported with OpenRouter models');
+      }
+      return googleService.generatePostsForFacebookTrend(trend, language, currentModel);
+    }, model);
   },
   
   generateIdeasFromProduct: async (
@@ -329,7 +355,9 @@ export const textGenerationService: TextGenerationService = {
     language: string,
     model: string
   ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    const service = isGoogleModel(model) ? googleService : openRouterService;
-    return service.generateIdeasFromProduct(product, language, model);
+    return withFallback((currentModel) => {
+      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
+      return service.generateIdeasFromProduct(product, language, currentModel);
+    }, model);
   }
 };

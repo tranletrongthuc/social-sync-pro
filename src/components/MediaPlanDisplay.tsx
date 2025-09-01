@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { MediaPlanGroup, MediaPlanPost, Settings, AffiliateLink, SchedulingPost, Persona, PostInfo, Idea } from '../types';
+import type { MediaPlanGroup, MediaPlanPost, Settings, AffiliateLink, SchedulingPost, Persona, PostInfo, Idea } from '../../types';
 import { Button, Input, Select } from './ui';
 import { 
   ArchiveIcon, 
@@ -89,6 +89,8 @@ interface MediaPlanDisplayProps {
 }
 
 const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
+  console.log("MediaPlanDisplay rendered with props:", props);
+  
   const { 
     plans, 
     personas, 
@@ -271,8 +273,9 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
         setViewingPost(prev => prev ? { ...prev, post: updatedPost } : null);
       }
     } else {
-      // Post was not found (e.g., plan changed), close the modal
-      setViewingPost(null);
+      // Post was not found (e.g., plan changed), but we don't close the modal
+      // to prevent it from disappearing unexpectedly.
+      // The user can close it manually.
     }
   }, [plans, viewingPost]);
 

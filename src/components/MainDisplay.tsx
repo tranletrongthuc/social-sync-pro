@@ -10,7 +10,7 @@ import type {
   Trend, 
   Idea, 
   PostInfo 
-} from '../types';
+} from '../../types';
 import ScheduleModal from './ScheduleModal';
 import BulkScheduleModal from './BulkScheduleModal';
 import { Header, ActiveTab } from './Header';
@@ -220,11 +220,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   
   // Load data on demand when switching tabs
   useEffect(() => {
+    console.log("Tab switching useEffect triggered", { activeTab, loadedTabs, loadingTabs });
+    
     // Load strategy hub data when switching to strategy tab
     if (activeTab === 'strategy' && !loadedTabs.has('strategy') && props.onLoadStrategyHubData && !loadingTabs.has('strategy')) {
+      console.log("Loading strategy hub data...");
       setLoadingTabs(prev => new Set(prev).add('strategy'));
       props.onLoadStrategyHubData().then(() => {
         // Success - mark tab as loaded
+        console.log("Strategy hub data loaded successfully");
         setLoadedTabs(prev => new Set(prev).add('strategy'));
       }).catch((error) => {
         // Error - don't mark tab as loaded so it can retry
@@ -241,9 +245,11 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     
     // Load affiliate vault data when switching to affiliate vault tab
     if (activeTab === 'affiliateVault' && !loadedTabs.has('affiliateVault') && props.onLoadAffiliateVaultData && !loadingTabs.has('affiliateVault')) {
+      console.log("Loading affiliate vault data...");
       setLoadingTabs(prev => new Set(prev).add('affiliateVault'));
       props.onLoadAffiliateVaultData().then(() => {
         // Success - mark tab as loaded
+        console.log("Affiliate vault data loaded successfully");
         setLoadedTabs(prev => new Set(prev).add('affiliateVault'));
       }).catch((error) => {
         // Error - don't mark tab as loaded so it can retry
@@ -260,9 +266,11 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     
     // Load personas data when switching to personas tab
     if (activeTab === 'personas' && !loadedTabs.has('personas') && props.onLoadPersonasData && !loadingTabs.has('personas')) {
+      console.log("Loading personas data...");
       setLoadingTabs(prev => new Set(prev).add('personas'));
       props.onLoadPersonasData().then(() => {
         // Success - mark tab as loaded
+        console.log("Personas data loaded successfully");
         setLoadedTabs(prev => new Set(prev).add('personas'));
       }).catch((error) => {
         // Error - don't mark tab as loaded so it can retry
@@ -277,6 +285,68 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
       });
     }
   }, [activeTab, loadedTabs, loadingTabs, props.onLoadStrategyHubData, props.onLoadAffiliateVaultData, props.onLoadPersonasData]);
+  
+  // Also load data when the component mounts if we're on a tab that needs data
+  useEffect(() => {
+    console.log("Mount useEffect triggered", { activeTab, loadedTabs, loadingTabs });
+    
+    // Only run this once when the component mounts
+    if (loadedTabs.size === 1 && loadedTabs.has('brandKit')) {
+      // Load strategy hub data if we start on the strategy tab
+      if (activeTab === 'strategy' && !loadedTabs.has('strategy') && props.onLoadStrategyHubData && !loadingTabs.has('strategy')) {
+        console.log("Loading strategy hub data on mount...");
+        setLoadingTabs(prev => new Set(prev).add('strategy'));
+        props.onLoadStrategyHubData().then(() => {
+          console.log("Strategy hub data loaded successfully on mount");
+          setLoadedTabs(prev => new Set(prev).add('strategy'));
+        }).catch((error) => {
+          console.error("Failed to load strategy hub data on mount:", error);
+        }).finally(() => {
+          setLoadingTabs(prev => {
+            const newSet = new Set(prev);
+            newSet.delete('strategy');
+            return newSet;
+          });
+        });
+      }
+      
+      // Load affiliate vault data if we start on the affiliate vault tab
+      if (activeTab === 'affiliateVault' && !loadedTabs.has('affiliateVault') && props.onLoadAffiliateVaultData && !loadingTabs.has('affiliateVault')) {
+        console.log("Loading affiliate vault data on mount...");
+        setLoadingTabs(prev => new Set(prev).add('affiliateVault'));
+        props.onLoadAffiliateVaultData().then(() => {
+          console.log("Affiliate vault data loaded successfully on mount");
+          setLoadedTabs(prev => new Set(prev).add('affiliateVault'));
+        }).catch((error) => {
+          console.error("Failed to load affiliate vault data on mount:", error);
+        }).finally(() => {
+          setLoadingTabs(prev => {
+            const newSet = new Set(prev);
+            newSet.delete('affiliateVault');
+            return newSet;
+          });
+        });
+      }
+      
+      // Load personas data if we start on the personas tab
+      if (activeTab === 'personas' && !loadedTabs.has('personas') && props.onLoadPersonasData && !loadingTabs.has('personas')) {
+        console.log("Loading personas data on mount...");
+        setLoadingTabs(prev => new Set(prev).add('personas'));
+        props.onLoadPersonasData().then(() => {
+          console.log("Personas data loaded successfully on mount");
+          setLoadedTabs(prev => new Set(prev).add('personas'));
+        }).catch((error) => {
+          console.error("Failed to load personas data on mount:", error);
+        }).finally(() => {
+          setLoadingTabs(prev => {
+            const newSet = new Set(prev);
+            newSet.delete('personas');
+            return newSet;
+          });
+        });
+      }
+    }
+  }, []); // Empty dependency array to run only once on mount
   
   // Function to mark a tab as loaded
   const markTabAsLoaded = (tab: ActiveTab) => {
@@ -309,7 +379,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   
   // Override setActiveTab to implement lazy loading
   const handleSetActiveTab = (tab: ActiveTab) => {
-    // Mark the tab as loaded
+    // Mark the tab as loaded (will trigger data loading in useEffect)
     markTabAsLoaded(tab);
     
     // Call the original setActiveTab
@@ -423,9 +493,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               productTrendToSelect={productTrendToSelect}
               onLoadIdeasForTrend={onLoadIdeasForTrend}
               // Lazy loading props
-              isDataLoaded={props.isStrategyHubDataLoaded}
+              isDataLoaded={loadedTabs.has('strategy')}
               onLoadData={props.onLoadStrategyHubData}
-              isLoading={props.isLoadingStrategyHubData}
+              isLoading={loadingTabs.has('strategy')}
             />
           )}
           {activeTab === 'affiliateVault' && (
@@ -438,9 +508,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
               language={settings.language}
               // Lazy loading props
-              isDataLoaded={props.isAffiliateVaultDataLoaded}
+              isDataLoaded={loadedTabs.has('affiliateVault')}
               onLoadData={props.onLoadAffiliateVaultData}
-              isLoading={props.isLoadingAffiliateVaultData}
+              isLoading={loadingTabs.has('affiliateVault')}
             />
           )}
           {activeTab === 'personas' && (
@@ -454,9 +524,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               language={settings.language}
               onUpdatePersona={props.onUpdatePersona}
               // Lazy loading props
-              isDataLoaded={props.isPersonasDataLoaded}
+              isDataLoaded={loadedTabs.has('personas')}
               onLoadData={props.onLoadPersonasData}
-              isLoading={props.isLoadingPersonasData}
+              isLoading={loadingTabs.has('personas')}
             />
           )}
         </Suspense>

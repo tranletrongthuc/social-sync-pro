@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo } from '../types';
+import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo } from '../../types';
 import { Button, Input, TextArea, HoverCopyWrapper } from './ui';
 import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
@@ -451,14 +451,14 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
     };
     
     // Match promoted products with affiliate links
-    // Handle both cases: IDs might be UUIDs or Airtable record IDs (starting with "rec")
+    
     const acceptedProducts = props.affiliateLinks.filter(link => 
         (editedPost.promotedProductIds || []).some(id => {
             // Check if id and link.id are defined before calling trim
             if (id && link.id && id.trim() === link.id.trim()) {
                 return true;
             }
-            // If the promoted ID looks like an Airtable record ID, we might need to handle it differently
+            // If the promoted ID looks like a MongoDB record ID, we might need to handle it differently
             // But since we've fixed the saving logic, this should be rare
             return false;
         })

@@ -26,20 +26,24 @@ const TabButton: React.FC<{
     activeTab: ActiveTab;
     onClick: (tabId: ActiveTab) => void;
 }> = ({ tabId, text, icon, activeTab, onClick }) => (
-    <button
-        onClick={() => onClick(tabId)}
-        className={`flex shrink-0 items-center gap-2 px-3 py-3 text-sm font-medium transition-colors focus:outline-none whitespace-nowrap ${
-            activeTab === tabId
-            ? 'border-b-2 border-gray-800 text-gray-800'
-            : 'text-gray-500 hover:text-gray-900 border-b-2 border-transparent'
-        }`}
+    <button       
+        onClick={() => {
+        console.log("Tab button clicked:", tabId);
+        onClick(tabId);
+    }}
+    className={`flex shrink-0 items-center gap-2 px-3 py-3 text-sm font-medium transition-colors focus:outline-none whitespace-nowrap ${
+        activeTab === tabId
+        ? 'border-b-2 border-gray-800 text-gray-800' 
+        : 'text-gray-500 hover:text-gray-900 border-b-2 border-transparent'
+    }`}
     >
         {icon}
         {text}
-    </button>
-);
+        </button>
+    );
 
 const AutoSaveIndicator: React.FC<{ status: HeaderProps['autoSaveStatus'], language: string }> = ({ status, language }) => {
+    console.log('AutoSaveIndicator rendering with status:', status);
     const T = { 
         'Việt Nam': { saving: 'Đang lưu...', saved: 'Đã lưu', error: 'Lỗi lưu' }, 
         'English': { saving: 'Saving...', saved: 'All changes saved', error: 'Save error' }
@@ -73,7 +77,7 @@ const AutoSaveIndicator: React.FC<{ status: HeaderProps['autoSaveStatus'], langu
             );
             break;
         default:
-            return <div className="w-44 text-right">&nbsp;</div>; // Keep space for layout consistency
+            return <div className="w-44 h-6 text-right">&nbsp;</div>; // Keep space for layout consistency
     }
     
     return (

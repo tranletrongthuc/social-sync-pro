@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from './ui';
-import { AirtableIcon } from './icons';
+import { DatabaseIcon } from './icons';
 import { listBrandsFromDatabase } from '../services/databaseService';
 
 interface DatabaseLoadModalProps {
@@ -83,7 +83,7 @@ const DatabaseLoadModal: React.FC<DatabaseLoadModalProps> = ({ isOpen, onClose, 
   
   if (!isOpen) return null;
 
-  const hasCredentials = !!(window as any).process.env.AIRTABLE_PAT && !!(window as any).process.env.AIRTABLE_BASE_ID;
+  const hasCredentials = !!(window as any).process.env.MONGODB_URI;
   
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={resetAndClose}>
@@ -91,7 +91,7 @@ const DatabaseLoadModal: React.FC<DatabaseLoadModalProps> = ({ isOpen, onClose, 
         <div className="flex justify-between items-start mb-6">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-              <AirtableIcon className="h-8 w-8 text-sky-500" />
+              <DatabaseIcon className="h-8 w-8 text-sky-500" />
               {texts.title}
             </h2>
             <p className="text-gray-500 mt-1 font-serif">{texts.subtitle}</p>

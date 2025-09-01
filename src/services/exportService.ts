@@ -1,7 +1,7 @@
 
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, VerticalAlign, AlignmentType, BorderStyle, ShadingType } from 'docx';
 import ExcelJS from 'exceljs';
-import type { GeneratedAssets, ColorInfo, MediaPlan, MediaPlanGroup } from '../types';
+import type { GeneratedAssets, ColorInfo, MediaPlan, MediaPlanGroup } from '../../types';
 
 const getTranslation = (language: string) => {
     const translations = {

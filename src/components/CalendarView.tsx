@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState } from 'react';
-import type { MediaPlan, SchedulingPost, MediaPlanPost, PostInfo } from '../types';
+import type { MediaPlan, SchedulingPost, MediaPlanPost, PostInfo } from '../../types';
 import { ChevronLeftIcon, ChevronRightIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon } from './icons';
 
 interface CalendarViewProps {

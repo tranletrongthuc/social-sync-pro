@@ -1,6 +1,16 @@
-import { getClientAndDb } from '../lib/mongodb.js';
-import { allowCors } from '../lib/cors.js';
+import { getClientAndDb } from './lib/mongodb.js';
+import { allowCors } from './lib/cors.js';
 import { ObjectId } from 'mongodb';
+
+// Helper function to create a filter based on ID validity
+function createIdFilter(id, fieldName = '_id') {
+  if (ObjectId.isValid(id)) {
+    return { [fieldName]: new ObjectId(id) };
+  } else {
+    // If not a valid ObjectId, use the id as a string field
+    return { [fieldName === '_id' ? 'id' : fieldName]: id };
+  }
+}
 
 async function handler(request, response) {
   const { action } = request.query;
@@ -22,7 +32,7 @@ async function handler(request, response) {
           // Update the media plan with the persona
           const mediaPlansCollection = db.collection('mediaPlanGroups');
           const result = await mediaPlansCollection.updateOne(
-            { _id: new ObjectId(planId) },
+            createIdFilter(planId),
             { $set: { personaId: personaId } }
           );
           
@@ -31,7 +41,7 @@ async function handler(request, response) {
             const postsCollection = db.collection('mediaPlanPosts');
             for (const post of updatedPosts) {
               await postsCollection.updateOne(
-                { _id: new ObjectId(post.id) },
+                createIdFilter(post.id),
                 { $set: { mediaPrompt: post.mediaPrompt } }
               );
             }
@@ -53,7 +63,7 @@ async function handler(request, response) {
           const postsCollection = db.collection('mediaPlanPosts');
           const bulkOperations = updates.map(update => ({
             updateOne: {
-              filter: { _id: new ObjectId(update.postId) },
+              filter: createIdFilter(update.postId),
               update: { $set: update.fields }
             }
           }));
@@ -76,7 +86,7 @@ async function handler(request, response) {
           const postsCollection = db.collection('mediaPlanPosts');
           const bulkOperations = updates.map(update => ({
             updateOne: {
-              filter: { _id: new ObjectId(update.postId) },
+              filter: createIdFilter(update.postId),
               update: { 
                 $set: { 
                   scheduledAt: update.scheduledAt,
@@ -118,40 +128,61 @@ async function handler(request, response) {
 
       case 'create-or-update-brand':
         console.log('--- Received request for /api/mongodb/create-or-update-brand ---');
+        console.log('Request body:', JSON.stringify(request.body, null, 2));
         try {
-          const { assets, imageUrls, brandId } = request.body;
+          const { assets, imageUrls, brandId } = request.body; // brandId is a string from client
           
           const brandsCollection = db.collection('brands');
           
-          // Prepare brand document
           const brandDocument = {
-            brandId: brandId || new ObjectId().toString(),
-            name: assets.brandFoundation.brandName,
-            mission: assets.brandFoundation.mission,
-            usp: assets.brandFoundation.usp,
-            targetAudience: assets.brandFoundation.targetAudience,
-            personality: assets.brandFoundation.personality,
-            colorPalette: assets.coreMediaAssets.colorPalette,
-            fontRecommendations: assets.coreMediaAssets.fontRecommendations,
-            unifiedProfileAssets: assets.unifiedProfileAssets,
-            updatedAt: new Date()
+            name: assets.brandFoundation?.brandName || '',
+            mission: assets.brandFoundation?.mission || '',
+            usp: assets.brandFoundation?.usp || '',
+            targetAudience: assets.brandFoundation?.targetAudience || '',
+            personality: assets.brandFoundation?.personality || '',
+            colorPalette: assets.coreMediaAssets?.colorPalette || [],
+            fontRecommendations: assets.coreMediaAssets?.fontRecommendations || [],
+            unifiedProfileAssets: assets.unifiedProfileAssets || {},
+            updatedAt: new Date(),
           };
           
-          // If brandId exists, update; otherwise create new
           if (brandId) {
-            await brandsCollection.updateOne(
-              { brandId: brandId },
+            console.log('Attempting to update existing brand with brandId:', brandId);
+            let objectId;
+            try {
+              objectId = new ObjectId(brandId);
+            } catch (err) {
+              console.error('Invalid brandId format:', brandId);
+              return response.status(400).json({ error: 'Invalid brand ID format' });
+            }
+            // Update existing brand. Assume brandId is the string representation of _id
+            const updateResult = await brandsCollection.updateOne(
+              { _id: objectId },
               { $set: brandDocument }
             );
+            console.log('Update result:', updateResult);
+            response.status(200).json({ brandId: brandId });
           } else {
-            await brandsCollection.insertOne(brandDocument);
+            console.log('Attempting to create new brand.');
+            // Create new brand
+            const newBrandObjectId = new ObjectId();
+            const newBrandId = newBrandObjectId.toString();
+            const fullDocument = {
+                ...brandDocument,
+                _id: newBrandObjectId,
+                brandId: newBrandId, // custom id field
+                createdAt: new Date()
+            };
+            const insertResult = await brandsCollection.insertOne(fullDocument);
+            console.log('Insert result:', insertResult);
+            response.status(200).json({ brandId: newBrandId });
           }
           
-          response.status(200).json({ brandId: brandDocument.brandId });
           console.log('--- Brand created or updated ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/create-or-update-brand ---');
-          throw error;
+          console.error('Error object:', error);
+          response.status(500).json({ error: `Failed to create or update brand: ${error.message}` });
         }
         break;
 
@@ -161,10 +192,9 @@ async function handler(request, response) {
           const { linkId, brandId } = request.body;
           
           const affiliateProductsCollection = db.collection('affiliateProducts');
-          const result = await affiliateProductsCollection.deleteOne({ 
-            _id: new ObjectId(linkId),
-            brandId: brandId
-          });
+          const result = await affiliateProductsCollection.deleteOne(
+            createIdFilter(linkId)
+          );
           
           response.status(200).json({ success: result.deletedCount > 0 });
           console.log('--- Affiliate link deleted ---');
@@ -180,7 +210,9 @@ async function handler(request, response) {
           const { modelId } = request.body;
           
           const aiModelsCollection = db.collection('aiModels');
-          const result = await aiModelsCollection.deleteOne({ _id: new ObjectId(modelId) });
+          const result = await aiModelsCollection.deleteOne(
+            createIdFilter(modelId)
+          );
           
           response.status(200).json({ success: result.deletedCount > 0 });
           console.log('--- AI model deleted ---');
@@ -228,16 +260,27 @@ async function handler(request, response) {
       case 'delete-trend':
         console.log('--- Received request for /api/mongodb/delete-trend ---');
         try {
-          const { trendId } = request.body;
-          
-          const trendsCollection = db.collection('trends');
-          const result = await trendsCollection.deleteOne({ _id: new ObjectId(trendId) });
-          
-          response.status(200).json({ success: result.deletedCount > 0 });
-          console.log('--- Trend deleted ---');
+            const { trendId, brandId } = request.body;
+
+            if (!trendId || !brandId) {
+                return response.status(400).json({ error: 'Missing trendId or brandId in request body' });
+            }
+            
+            // Delete trend from MongoDB
+            const trendsCollection = db.collection('trends');
+            const result = await trendsCollection.deleteOne({ _id: new ObjectId(trendId), brandId: brandId });
+            
+            // Also delete associated ideas
+            const ideasCollection = db.collection('ideas');
+            await ideasCollection.deleteMany({ trendId: trendId });
+
+            response.status(200).json({ success: true });
+            console.log('--- Trend deleted successfully ---');
+
         } catch (error) {
-          console.error('--- CRASH in /api/mongodb/delete-trend ---');
-          throw error;
+            console.error('--- CRASH in /api/mongodb/delete-trend ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to delete trend: ${error.message}` });
         }
         break;
 
@@ -372,25 +415,36 @@ async function handler(request, response) {
       case 'list-media-plan-groups':
         console.log('--- Received request for /api/mongodb/list-media-plan-groups ---');
         try {
-          const { brandId } = request.body;
-          
-          const mediaPlanGroupsCollection = db.collection('mediaPlanGroups');
-          const planRecords = await mediaPlanGroupsCollection.find({ brandId: brandId }).toArray();
-          
-          const groups = planRecords.map(record => ({
-            id: record._id.toString(),
-            name: record.name,
-            prompt: record.prompt,
-            source: record.source,
-            productImages: record.productImages || [],
-            personaId: record.personaId
-          }));
-          
-          response.status(200).json({ groups });
-          console.log('--- Media plan groups list sent to client ---');
+            const { brandId } = request.body;
+
+            console.log('Loading list media plan groups for brandId: ', brandId)
+
+            if (!brandId) {
+                return response.status(400).json({ error: 'Missing brandId in request body' });
+            }
+            
+            // Fetch media plan groups data from MongoDB
+            const collection = db.collection('mediaPlanGroups');
+            const planRecords = await collection.find({ brandId: brandId }).toArray();
+            
+            // Transform MongoDB records to match the expected API response format
+            const groups = planRecords.map((record) => ({
+                id: record.id || record._id.toString(), // Use the stored id or fallback to ObjectId string
+                name: record.name,
+                prompt: record.prompt,
+                source: record.source,
+                productImages: record.productImages || [],
+                personaId: record.personaId
+            }));
+
+            response.status(200).json({ groups });
+            console.log('--- Media plan groups list sent to client ---');
+
         } catch (error) {
-          console.error('--- CRASH in /api/mongodb/list-media-plan-groups ---');
-          response.status(500).json({ error: `Failed to fetch media plan groups from MongoDB: ${error.message}` });
+            console.error('--- CRASH in /api/mongodb/list-media-plan-groups ---');
+            console.error('Error object:', error);
+            
+            response.status(500).json({ error: `Failed to fetch media plan groups from MongoDB: ${error.message}` });
         }
         break;
 
@@ -570,34 +624,49 @@ async function handler(request, response) {
           const { links, brandId } = request.body;
           
           const affiliateProductsCollection = db.collection('affiliateProducts');
-          
-          // Prepare bulk operations
-          const bulkOperations = links.map(link => ({
-            updateOne: {
-              filter: { 
-                _id: new ObjectId(link.id),
-                brandId: brandId
-              },
-              update: { 
-                $set: {
-                  productId: link.productId,
-                  productName: link.productName,
-                  price: link.price,
-                  salesVolume: link.salesVolume,
-                  providerName: link.providerName,
-                  commissionRate: link.commissionRate,
-                  commissionValue: link.commissionValue,
-                  productLink: link.productLink,
-                  promotionLink: link.promotionLink,
-                  brandId: brandId,
-                  updatedAt: new Date()
-                }
-              },
-              upsert: true
+          const bulkOperations = [];
+
+          for (const link of links) {
+            const linkDocument = {
+                productId: link.productId,
+                productName: link.productName,
+                price: link.price,
+                salesVolume: link.salesVolume,
+                providerName: link.providerName,
+                commissionRate: link.commissionRate,
+                commissionValue: link.commissionValue,
+                productLink: link.productLink,
+                promotionLink: link.promotionLink,
+                brandId: brandId,
+                updatedAt: new Date()
+            };
+
+            if (link.id && ObjectId.isValid(link.id)) { // Update existing
+                bulkOperations.push({
+                    updateOne: {
+                        filter: { _id: new ObjectId(link.id), brandId: brandId },
+                        update: { $set: linkDocument }
+                    }
+                });
+            } else { // Insert new
+                const newLinkObjectId = new ObjectId();
+                const newLinkId = newLinkObjectId.toString();
+                const newLinkDocument = {
+                    ...linkDocument,
+                    _id: newLinkObjectId,
+                    id: newLinkId,
+                };
+                bulkOperations.push({
+                    insertOne: {
+                        document: newLinkDocument
+                    }
+                });
             }
-          }));
-          
-          const result = await affiliateProductsCollection.bulkWrite(bulkOperations);
+          }
+        
+          if (bulkOperations.length > 0) {
+            await affiliateProductsCollection.bulkWrite(bulkOperations);
+          }
           
           response.status(200).json({ success: true });
           console.log('--- Affiliate links saved ---');
@@ -629,12 +698,19 @@ async function handler(request, response) {
               { _id: new ObjectId(model.id) },
               { $set: modelDocument }
             );
+            response.status(200).json({ id: model.id });
           } else {
-            const result = await aiModelsCollection.insertOne(modelDocument);
-            model.id = result.insertedId.toString();
+            const newModelObjectId = new ObjectId();
+            const newModelId = newModelObjectId.toString();
+            const fullModelDocument = {
+                ...modelDocument,
+                _id: newModelObjectId,
+                id: newModelId
+            };
+            await aiModelsCollection.insertOne(fullModelDocument);
+            response.status(200).json({ id: newModelId });
           }
           
-          response.status(200).json({ id: model.id });
           console.log('--- AI model saved ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/save-ai-model ---');
@@ -662,12 +738,19 @@ async function handler(request, response) {
               { _id: new ObjectId(service.id) },
               { $set: serviceDocument }
             );
+            response.status(200).json({ id: service.id });
           } else {
-            const result = await aiServicesCollection.insertOne(serviceDocument);
-            service.id = result.insertedId.toString();
+            const newServiceObjectId = new ObjectId();
+            const newServiceId = newServiceObjectId.toString();
+            const fullServiceDocument = {
+                ...serviceDocument,
+                _id: newServiceObjectId,
+                id: newServiceId
+            };
+            await aiServicesCollection.insertOne(fullServiceDocument);
+            response.status(200).json({ id: newServiceId });
           }
           
-          response.status(200).json({ id: service.id });
           console.log('--- AI service saved ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/save-ai-service ---');
@@ -681,32 +764,42 @@ async function handler(request, response) {
           const { ideas } = request.body;
           
           const ideasCollection = db.collection('ideas');
-          
-          // Process in batches
-          const batchSize = 10;
-          for (let i = 0; i < ideas.length; i += batchSize) {
-            const batch = ideas.slice(i, i + batchSize);
-            
-            // Prepare bulk operations
-            const bulkOperations = batch.map(idea => ({
-              updateOne: {
-                filter: { 
-                  _id: new ObjectId(idea.id)
-                },
-                update: { 
-                  $set: {
-                    title: idea.title,
-                    description: idea.description,
-                    targetAudience: idea.targetAudience,
-                    productId: idea.productId,
-                    trendId: idea.trendId,
-                    updatedAt: new Date()
-                  }
-                },
-                upsert: true
-              }
-            }));
-            
+          const bulkOperations = [];
+
+          for (const idea of ideas) {
+            const ideaDocument = {
+                title: idea.title,
+                description: idea.description,
+                targetAudience: idea.targetAudience,
+                productId: idea.productId,
+                trendId: idea.trendId,
+                updatedAt: new Date()
+            };
+
+            if (idea.id && ObjectId.isValid(idea.id)) { // Update existing
+                bulkOperations.push({
+                    updateOne: {
+                        filter: { _id: new ObjectId(idea.id) },
+                        update: { $set: ideaDocument }
+                    }
+                });
+            } else { // Insert new
+                const newIdeaObjectId = new ObjectId();
+                const newIdeaId = newIdeaObjectId.toString();
+                const newIdeaDocument = {
+                    ...ideaDocument,
+                    _id: newIdeaObjectId,
+                    id: newIdeaId,
+                };
+                bulkOperations.push({
+                    insertOne: {
+                        document: newIdeaDocument
+                    }
+                });
+            }
+          }
+        
+          if (bulkOperations.length > 0) {
             await ideasCollection.bulkWrite(bulkOperations);
           }
           
@@ -724,49 +817,58 @@ async function handler(request, response) {
           const { group, imageUrls, brandId } = request.body;
           
           const mediaPlanGroupsCollection = db.collection('mediaPlanGroups');
+          const postsCollection = db.collection('mediaPlanPosts');
+          
+          // ✅ Generate a valid ObjectId and use its string form as the ID
+          const groupObjectId = new ObjectId(); // 12-byte ObjectId
+          const groupId = groupObjectId.toString(); // → "664f8d2b9e8c0c23f456789a" (24-char hex)
           
           // Prepare group document
+          // ✅ Use the SAME ObjectId value for _id and id
           const groupDocument = {
+            _id: groupObjectId,     // ← MongoDB _id (ObjectId type)
+            id: groupId,            // ← Your "custom" ID (string, but same value)
             name: group.name,
             prompt: group.prompt,
             source: group.source,
             productImages: group.productImages || [],
-            brandId: brandId,
+            brandId,
             personaId: group.personaId,
             updatedAt: new Date()
           };
-          
-          // If group.id exists, update; otherwise create new
-          let groupId;
-          if (group.id) {
-            await mediaPlanGroupsCollection.updateOne(
-              { _id: new ObjectId(group.id) },
-              { $set: groupDocument }
-            );
-            groupId = group.id;
-          } else {
-            const result = await mediaPlanGroupsCollection.insertOne(groupDocument);
-            groupId = result.insertedId.toString();
-          }
+
+          await mediaPlanGroupsCollection.insertOne(groupDocument);
           
           // Save posts if they exist
-          if (group.plan && group.plan.length > 0) {
-            const postsCollection = db.collection('mediaPlanPosts');
+          if (group.plan && Array.isArray(group.plan) && group.plan.length > 0) {
             
             // Flatten plan into posts
             const allPosts = [];
             group.plan.forEach(week => {
-              week.posts.forEach(post => {
-                allPosts.push({
-                  ...post,
-                  mediaPlanId: groupId,
-                  week: week.week,
-                  theme: week.theme,
-                  brandId: brandId,
-                  imageUrl: post.imageKey ? imageUrls[post.imageKey] : null,
-                  videoUrl: post.videoKey ? imageUrls[post.videoKey] : null
+              // Make sure week has the expected structure
+              if (week && week.week !== undefined && week.theme && Array.isArray(week.posts)) {
+                week.posts.forEach((post, postIndex) => {
+                  // Validate post.id before creating ObjectId
+                  const postId = new ObjectId(); // Generate new ObjectId for post
+                  const postIdStr = postId.toString();
+                  
+                  allPosts.push({
+                    ...post,
+                    _id: postId,                    // ← ObjectId for post _id
+                    id: postIdStr,                  // ← Optional: string version
+                    mediaPlanId: groupId,           // ← String ID referencing group's _id
+                    week: week.week,
+                    theme: week.theme,
+                    brandId: brandId,
+                    imageUrl: post.imageKey ? imageUrls[post.imageKey] : null,
+                    videoUrl: post.videoKey ? imageUrls[post.videoKey] : null,
+                    postOrder: postIndex, // Add post order for proper sorting
+                    updatedAt: new Date()
+                  });
                 });
-              });
+              } else {
+                console.warn('Skipping invalid week structure:', week);
+              }
             });
             
             // Process posts in batches
@@ -777,9 +879,7 @@ async function handler(request, response) {
               // Prepare bulk operations
               const bulkOperations = batch.map(post => ({
                 updateOne: {
-                  filter: { 
-                    _id: new ObjectId(post.id)
-                  },
+                  filter: { _id: post._id },
                   update: { 
                     $set: {
                       title: post.title,
@@ -806,8 +906,9 @@ async function handler(request, response) {
                       status: post.status || 'draft',
                       isPillar: post.isPillar,
                       brandId: brandId,
-                      mediaPlanId: groupId,
+                      mediaPlanId: post.mediaPlanId, // Use the ObjectId for database consistency
                       promotedProductIds: post.promotedProductIds || [],
+                      postOrder: post.postOrder,
                       updatedAt: new Date()
                     }
                   },
@@ -823,6 +924,8 @@ async function handler(request, response) {
           console.log('--- Media plan group saved ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/save-media-plan-group ---');
+          console.error('Error details:', error);
+          //response.status(500).json({ error: 'Failed to save media plan group' });
           throw error;
         }
         break;
@@ -852,12 +955,19 @@ async function handler(request, response) {
               { _id: new ObjectId(persona.id) },
               { $set: personaDocument }
             );
+            response.status(200).json({ id: persona.id });
           } else {
-            const result = await personasCollection.insertOne(personaDocument);
-            persona.id = result.insertedId.toString();
+            const newPersonaObjectId = new ObjectId();
+            const newPersonaId = newPersonaObjectId.toString();
+            const fullPersonaDocument = {
+                ...personaDocument,
+                _id: newPersonaObjectId,
+                id: newPersonaId
+            };
+            await personasCollection.insertOne(fullPersonaDocument);
+            response.status(200).json({ id: newPersonaId });
           }
           
-          response.status(200).json({ id: persona.id });
           console.log('--- Persona saved ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/save-persona ---');
@@ -926,12 +1036,19 @@ async function handler(request, response) {
               { _id: new ObjectId(trend.id) },
               { $set: trendDocument }
             );
+            response.status(200).json({ id: trend.id });
           } else {
-            const result = await trendsCollection.insertOne(trendDocument);
-            trend.id = result.insertedId.toString();
+            const newTrendObjectId = new ObjectId();
+            const newTrendId = newTrendObjectId.toString();
+            const fullTrendDocument = {
+                ...trendDocument,
+                _id: newTrendObjectId,
+                id: newTrendId
+            };
+            await trendsCollection.insertOne(fullTrendDocument);
+            response.status(200).json({ id: newTrendId });
           }
           
-          response.status(200).json({ id: trend.id });
           console.log('--- Trend saved ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/save-trend ---');
@@ -953,7 +1070,7 @@ async function handler(request, response) {
               .map(logo => ({
                 updateOne: {
                   filter: { 
-                    _id: new ObjectId(logo.id),
+                    ...createIdFilter(logo.id),
                     brandId: brandId
                   },
                   update: { 
@@ -1024,7 +1141,7 @@ async function handler(request, response) {
             videoKey: post.videoKey,
             videoUrl: videoUrl,
             mediaOrder: post.mediaOrder ? post.mediaOrder.join(',') : undefined,
-            sources: post.sources?.map(s => `${s.title}:${s.uri}`) || [],
+            sources: (post.sources || []).map(s => `${s.title}:${s.uri}`) || [],
             scheduledAt: post.scheduledAt,
             publishedAt: post.publishedAt,
             publishedUrl: post.publishedUrl,
@@ -1043,7 +1160,7 @@ async function handler(request, response) {
           
           // Update the post
           await postsCollection.updateOne(
-            { _id: new ObjectId(post.id) },
+            createIdFilter(post.id),
             { $set: postDocument }
           );
           
@@ -1074,26 +1191,34 @@ async function handler(request, response) {
       case 'load-ideas-for-trend':
         console.log('--- Received request for /api/mongodb/load-ideas-for-trend ---');
         try {
-          const { trendId, brandId } = request.body;
-          
-          const ideasCollection = db.collection('ideas');
-          const ideaRecords = await ideasCollection.find({ trendId: trendId }).toArray();
-          
-          const ideas = ideaRecords.map((record) => ({
-            id: record._id.toString(),
-            trendId: record.trendId,
-            title: record.title,
-            description: record.description,
-            targetAudience: record.targetAudience,
-            productId: record.productId,
-            ...record // Include any other fields that might be in the record
-          }));
-          
-          response.status(200).json({ ideas });
-          console.log('--- Ideas for trend loaded ---');
+            const { trendId, brandId } = request.body;
+
+            if (!trendId || !brandId) {
+                return response.status(400).json({ error: 'Missing trendId or brandId in request body' });
+            }
+            
+            // Fetch ideas data from MongoDB
+            const ideasCollection = db.collection('ideas');
+            const ideaRecords = await ideasCollection.find({ trendId: trendId }).toArray();
+            
+            // Transform MongoDB records to match the expected API response format
+            const ideas = ideaRecords.map((record) => ({
+                id: record._id.toString(),
+                trendId: record.trendId,
+                title: record.title,
+                description: record.description,
+                targetAudience: record.targetAudience,
+                productId: record.productId,
+                ...record // Include any other fields that might be in the record
+            }));
+
+            response.status(200).json({ ideas });
+            console.log('--- Ideas data sent to client ---');
+
         } catch (error) {
-          console.error('--- CRASH in /api/mongodb/load-ideas-for-trend ---');
-          throw error;
+            console.error('--- CRASH in /api/mongodb/load-ideas-for-trend ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load ideas for trend: ${error.message}` });
         }
         break;
 
@@ -1246,14 +1371,547 @@ async function handler(request, response) {
           throw error;
         }
         break;
+    
+    case 'initial-load':
+        console.log('--- Received request for /api/mongodb/initial-load ---');
+        try {
+            const { brandId } = request.body;
+
+            if (!brandId) {
+            return response.status(400).json({ error: 'Missing brandId in request body' });
+            }
+            
+            // Fetch the brand record
+            const brandsCollection = db.collection('brands');
+            const brandRecord = await brandsCollection.findOne({ brandId: brandId });
+            
+            if (!brandRecord) {
+            return response.status(404).json({ error: `Brand with ID ${brandId} not found.` });
+            }
+
+            // Fetch brand summary data for instant rendering
+            const brandSummary = {
+            id: brandRecord.brandId,
+            name: brandRecord.name,
+            logoUrl: brandRecord.logoUrl // Assuming there's a logoUrl field
+            };
+
+            // Fetch complete brand foundation data (for BrandKitView)
+            const brandValuesCollection = db.collection('brandValues');
+            const keyMessagesCollection = db.collection('keyMessages');
+            const logoConceptsCollection = db.collection('logoConcepts');
+            
+            const brandValueRecords = await brandValuesCollection.find({ brandId: brandId }).toArray();
+            const keyMessageRecords = await keyMessagesCollection.find({ brandId: brandId }).toArray();
+            const logoConceptRecords = await logoConceptsCollection.find({ brandId: brandId }).toArray();
+
+            const brandValues = brandValueRecords.map((record) => record.text);
+            const keyMessages = keyMessageRecords.map((record) => record.text);
+            const logoConcepts = logoConceptRecords.map((record) => ({
+            id: record._id.toString(),
+            style: record.style,
+            prompt: record.prompt,
+            imageKey: record.imageKey,
+            }));
+
+            const brandFoundation = {
+            brandName: brandRecord.name,
+            mission: brandRecord.mission,
+            values: brandValues,
+            targetAudience: brandRecord.targetAudience,
+            personality: brandRecord.personality,
+            keyMessaging: keyMessages,
+            usp: brandRecord.usp,
+            };
+
+            const coreMediaAssets = {
+            logoConcepts,
+            colorPalette: brandRecord.colorPalette || {},
+            fontRecommendations: brandRecord.fontRecommendations || {},
+            };
+
+            const unifiedProfileAssets = brandRecord.unifiedProfileAssets || {};
+
+            const brandKitData = {
+            brandFoundation,
+            coreMediaAssets,
+            unifiedProfileAssets
+            };
+
+            // Return both summary and brand kit data for instant rendering of BrandKitView
+            response.status(200).json({
+            brandSummary,
+            brandKitData
+            });
+            console.log('--- Initial load data sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/initial-load ---');
+            console.error('Error name:', error.name);
+            console.error('Error message:', error.message);
+            console.error('Error stack:', error.stack);
+            response.status(500).json({ error: `Failed to load initial data: ${error.message}`, details: error.message });
+        }
+        break;
+    
+    case 'load-affiliate-vault':
+        console.log('--- Received request for /api/mongodb/load-affiliate-vault ---');
+        try {
+            const { brandId } = request.body;
+
+            if (!brandId) {
+                return response.status(400).json({ error: 'Missing brandId in request body' });
+            }
+            
+            // Fetch affiliate links data from MongoDB
+            const collection = db.collection('affiliateProducts');
+            const linkRecords = await collection.find({ brandId: brandId }).toArray();
+            
+            // Transform MongoDB records to match the expected API response format
+            const affiliateLinks = linkRecords.map((record) => ({
+                id: record._id.toString(),
+                productId: record.productId,
+                productName: record.productName,
+                price: record.price,
+                salesVolume: record.salesVolume,
+                providerName: record.providerName,
+                commissionRate: record.commissionRate,
+                commissionValue: record.commissionValue,
+                productLink: record.productLink,
+                promotionLink: record.promotionLink,
+                product_avatar: record.productAvatar,
+                product_description: record.productDescription,
+                features: record.features || [],
+                use_cases: record.useCases || [],
+                customer_reviews: record.customerReviews,
+                product_rating: record.productRating,
+                product_image_links: record.productImageLinks || [],
+                ...record // Include any other fields that might be in the record
+            }));
+
+            response.status(200).json({ affiliateLinks });
+            console.log('--- Affiliate vault data sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/load-affiliate-vault ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load affiliate vault data: ${error.message}` });
+        }
+        break;
+
+    case 'load-media-plan-posts-with-pagination':
+        console.log('--- Received request for /api/mongodb/load-media-plan-posts-with-pagination ---');
+        try {
+            const { planId, page = 1, limit = 30 } = request.body;
+
+            if (!planId) {
+                return response.status(400).json({ error: 'Missing planId in request body' });
+            }
+
+            // Calculate offset for pagination
+            const offset = (page - 1) * limit;
+            
+            // Fetch posts for the specific media plan with pagination
+            const collection = db.collection('mediaPlanPosts');
+            const allPostRecords = await collection.find({ mediaPlanId: planId }).toArray();
+            
+            // Group posts by week and theme
+            const weeksMap = new Map();
+            
+            allPostRecords.forEach(record => {
+                const weekNum = record.week || 1;
+                const theme = record.theme || 'Untitled Week';
+                
+                if (!weeksMap.has(weekNum)) {
+                    weeksMap.set(weekNum, {
+                        week: weekNum,
+                        theme: theme,
+                        posts: []
+                    });
+                }
+                
+                // Add post to the appropriate week
+                weeksMap.get(weekNum).posts.push({
+                    id: record._id.toString(),
+                    platform: record.platform,
+                    contentType: record.contentType,
+                    title: record.title,
+                    content: record.content,
+                    description: record.description,
+                    hashtags: record.hashtags || [],
+                    cta: record.cta,
+                    mediaPrompt: record.mediaPrompt,
+                    script: record.script,
+                    imageKey: record.imageKey,
+                    videoKey: record.videoKey,
+                    mediaOrder: record.mediaOrder || [],
+                    sources: record.sources || [],
+                    promotedProductIds: record.promotedProductIds || [],
+                    scheduledAt: record.scheduledAt,
+                    publishedAt: record.publishedAt,
+                    publishedUrl: record.publishedUrl,
+                    autoComment: record.autoComment,
+                    status: record.status || 'draft',
+                    isPillar: record.isPillar,
+                    week: record.week,
+                    postOrder: record.postOrder
+                });
+            });
+            
+            // Convert map to array and sort by week number
+            const allWeeks = Array.from(weeksMap.values()).sort((a, b) => a.week - b.week);
+            
+            // Flatten all posts for pagination
+            const allPosts = allWeeks.flatMap(week => 
+                week.posts.map(post => ({ ...post, week: week.week, theme: week.theme }))
+            );
+            
+            // Apply pagination
+            const paginatedPosts = allPosts.slice(offset, offset + limit);
+            
+            // Extract image and video URLs
+            const imageUrls = {};
+            const videoUrls = {};
+            
+            allPostRecords.forEach(record => {
+                if (record.imageKey && record.imageUrl) {
+                    imageUrls[record.imageKey] = record.imageUrl;
+                }
+                if (record.videoKey && record.videoUrl) {
+                    videoUrls[record.videoKey] = record.videoUrl;
+                }
+            });
+
+            response.status(200).json({
+                plan: allWeeks, // Return complete plan structure
+                imageUrls,
+                videoUrls,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(allPosts.length / limit),
+                    totalPosts: allPosts.length,
+                    hasNextPage: offset + limit < allPosts.length,
+                    hasPrevPage: page > 1
+                }
+            });
+            console.log('--- Media plan posts with pagination sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/load-media-plan-posts-with-pagination ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load media plan posts: ${error.message}` });
+        }
+        break;
+
+    case 'load-media-plan-posts':
+        console.log('--- Received request for /api/mongodb/load-media-plan-posts ---');
+        try {
+            const { planId } = request.body;
+
+            if (!planId) {
+                return response.status(400).json({ error: 'Missing planId in request body' });
+            }
+            
+            // Fetch posts for the specific media plan
+            const collection = db.collection('mediaPlanPosts');
+            const postRecords = await collection.find({ mediaPlanId: planId }).toArray();
+            
+            // Group posts by week and theme
+            const weeksMap = new Map();
+            
+            postRecords.forEach(record => {
+                const weekNum = record.week || 1;
+                const theme = record.theme || 'Untitled Week';
+                
+                if (!weeksMap.has(weekNum)) {
+                    weeksMap.set(weekNum, {
+                        week: weekNum,
+                        theme: theme,
+                        posts: []
+                    });
+                }
+                
+                // Add post to the appropriate week
+                weeksMap.get(weekNum).posts.push({
+                    id: record._id.toString(),
+                    platform: record.platform,
+                    contentType: record.contentType,
+                    title: record.title,
+                    content: record.content,
+                    description: record.description,
+                    hashtags: record.hashtags || [],
+                    cta: record.cta,
+                    mediaPrompt: record.mediaPrompt,
+                    script: record.script,
+                    imageKey: record.imageKey,
+                    videoKey: record.videoKey,
+                    mediaOrder: record.mediaOrder || [],
+                    sources: record.sources || [],
+                    promotedProductIds: record.promotedProductIds || [],
+                    scheduledAt: record.scheduledAt,
+                    publishedAt: record.publishedAt,
+                    publishedUrl: record.publishedUrl,
+                    autoComment: record.autoComment,
+                    status: record.status || 'draft',
+                    isPillar: record.isPillar,
+                    week: record.week,
+                    postOrder: record.postOrder
+                });
+            });
+            
+            // Convert map to array and sort by week number
+            const plan = Array.from(weeksMap.values()).sort((a, b) => a.week - b.week);
+            
+            // Extract image and video URLs
+            const imageUrls = {};
+            const videoUrls = {};
+            
+            postRecords.forEach(record => {
+                if (record.imageKey && record.imageUrl) {
+                    imageUrls[record.imageKey] = record.imageUrl;
+                }
+                if (record.videoKey && record.videoUrl) {
+                    videoUrls[record.videoKey] = record.videoUrl;
+                }
+            });
+
+            response.status(200).json({
+                plan,
+                imageUrls,
+                videoUrls
+            });
+            console.log('--- Media plan posts sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/load-media-plan-posts ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load media plan posts: ${error.message}` });
+        }
+        break;
+
+    case 'load-personas':
+        console.log('--- Received request for /api/mongodb/load-personas ---');
+        try {
+            const { brandId } = request.body;
+
+            if (!brandId) {
+                return response.status(400).json({ error: 'Missing brandId in request body' });
+            }
+            
+            // Fetch personas data from MongoDB
+            const collection = db.collection('personas');
+            const personaRecords = await collection.find({ brandId: brandId }).toArray();
+            
+            // Transform MongoDB records to match the expected API response format
+            // Convert _id to id and remove _id field
+            const personas = personaRecords.map((record) => ({
+                id: record._id.toString(),
+                nickName: record.nickName,
+                mainStyle: record.mainStyle,
+                activityField: record.activityField,
+                outfitDescription: record.outfitDescription,
+                avatarImageKey: record.avatarImageKey,
+                avatarImageUrl: record.avatarImageUrl,
+                photos: record.photos || [], // Will be populated on client side if needed
+                socialAccounts: record.socialAccounts || [], // Will be populated on client side if needed
+                ...record // Include any other fields that might be in the record
+            }));
+
+            response.status(200).json({ personas });
+            console.log('--- Personas data sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/load-personas ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load personas data: ${error.message}` });
+        }
+        break;
+
+    case 'load-strategy-hub':
+        console.log('--- Received request for /api/mongodb/load-strategy-hub ---');
+        try {
+            const { brandId } = request.body;
+
+            if (!brandId) {
+                return response.status(400).json({ error: 'Missing brandId in request body' });
+            }
+            
+            // Fetch trends data from MongoDB
+            const trendsCollection = db.collection('trends');
+            const trendRecords = await trendsCollection.find({ brandId: brandId }).toArray();
+            
+            // Transform MongoDB records to match the expected API response format
+            const trends = trendRecords.map((record) => ({
+                id: record._id.toString(),
+                brandId: record.brandId,
+                industry: record.industry,
+                topic: record.topic,
+                keywords: record.keywords || [],
+                links: record.links || [],
+                notes: record.notes,
+                analysis: record.analysis,
+                createdAt: record.createdAt,
+                ...record // Include any other fields that might be in the record
+            }));
+
+            // Fetch ideas data (only for existing trends)
+            const trendIds = trendRecords.map(r => r._id.toString());
+            let ideas = [];
+            
+            if (trendIds.length > 0) {
+                const ideasCollection = db.collection('ideas');
+                const ideaRecords = await ideasCollection.find({ trendId: { $in: trendIds } }).toArray();
+                
+                // Transform MongoDB records to match the expected API response format
+                ideas = ideaRecords.map((record) => ({
+                    id: record._id.toString(),
+                    trendId: record.trendId,
+                    title: record.title,
+                    description: record.description,
+                    targetAudience: record.targetAudience,
+                    productId: record.productId,
+                    ...record // Include any other fields that might be in the record
+                }));
+            }
+
+            response.status(200).json({ trends, ideas });
+            console.log('--- Strategy hub data sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/load-strategy-hub ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load strategy hub data: ${error.message}` });
+        }
+        break;
+
+    case 'load-trend':
+        console.log('--- Received request for /api/mongodb/load-trend ---');
+        try {
+            const { trendId, brandId } = request.body;
+
+            if (!trendId || !brandId) {
+                return response.status(400).json({ error: 'Missing trendId or brandId in request body' });
+            }
+            
+            // Fetch trend data from MongoDB
+            const trendsCollection = db.collection('trends');
+            const trendRecord = await trendsCollection.findOne({ _id: trendId, brandId: brandId });
+            
+            if (!trendRecord) {
+                return response.status(404).json({ error: 'Trend not found' });
+            }
+            
+            // Transform MongoDB record to match the expected API response format
+            const trend = {
+                id: trendRecord._id.toString(),
+                brandId: trendRecord.brandId,
+                industry: trendRecord.industry,
+                topic: trendRecord.topic,
+                keywords: trendRecord.keywords || [],
+                links: trendRecord.links || [],
+                notes: trendRecord.notes,
+                analysis: trendRecord.analysis,
+                createdAt: trendRecord.createdAt,
+                ...trendRecord // Include any other fields that might be in the record
+            };
+
+            response.status(200).json({ trend });
+            console.log('--- Trend data sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/load-trend ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load trend: ${error.message}` });
+        }
+        break;
+
+    case 'media-plan-posts':
+        console.log('--- Received request for /api/mongodb/media-plan-posts ---');
+        try {
+            const { planId, page = 1, limit = 30 } = request.body;
+
+            if (!planId) {
+                return response.status(400).json({ error: 'Missing planId in request body' });
+            }
+
+            // Calculate offset for pagination
+            const offset = (page - 1) * limit;
+            
+            // Fetch posts for the specific media plan with pagination
+            const collection = db.collection('mediaPlanPosts');
+            const allPostRecords = await collection.find({ mediaPlanId: planId }).toArray();
+            
+            // Sort posts by week and then by post order if available
+            allPostRecords.sort((a, b) => {
+                const weekA = a.week || 0;
+                const weekB = b.week || 0;
+                if (weekA !== weekB) return weekA - weekB;
+                
+                // If week is the same, sort by post order or creation date
+                const orderA = a.postOrder || new Date(a.createdTime || 0).getTime();
+                const orderB = b.postOrder || new Date(b.createdTime || 0).getTime();
+                return orderA - orderB;
+            });
+            
+            // Apply pagination
+            const paginatedPosts = allPostRecords.slice(offset, offset + limit);
+            
+            const posts = paginatedPosts.map((record) => ({
+                id: record._id.toString(),
+                platform: record.platform,
+                contentType: record.contentType,
+                title: record.title,
+                content: record.content,
+                description: record.description,
+                hashtags: record.hashtags || [],
+                cta: record.cta,
+                mediaPrompt: record.mediaPrompt,
+                script: record.script,
+                imageKey: record.imageKey,
+                videoKey: record.videoKey,
+                mediaOrder: record.mediaOrder || [],
+                sources: record.sources || [],
+                promotedProductIds: record.promotedProductIds || [],
+                scheduledAt: record.scheduledAt,
+                publishedAt: record.publishedAt,
+                publishedUrl: record.publishedUrl,
+                autoComment: record.autoComment,
+                status: record.status,
+                isPillar: record.isPillar,
+                week: record.week,
+                postOrder: record.postOrder,
+                ...record // Include any other fields that might be in the record
+            }));
+
+            response.status(200).json({
+                posts,
+                pagination: {
+                    currentPage: page,
+                    totalPages: Math.ceil(allPostRecords.length / limit),
+                    totalPosts: allPostRecords.length,
+                    hasNextPage: offset + limit < allPostRecords.length,
+                    hasPrevPage: page > 1
+                }
+            });
+            console.log('--- Media plan posts sent to client ---');
+
+        } catch (error) {
+            console.error('--- CRASH in /api/mongodb/media-plan-posts ---');
+            console.error('Error object:', error);
+            response.status(500).json({ error: `Failed to load media plan posts: ${error.message}` });
+        }
+        break;
 
       default:
         response.status(400).json({ error: `Unknown action: ${action}` });
     }
   } catch (error) {
     console.error('--- CRASH in /api/mongodb/[action] ---');
+    console.error('Action:', action);
     console.error('Error object:', error);
-    response.status(500).json({ error: `Failed to process action ${action}: ${error.message}` });
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    response.status(500).json({ error: `Failed to process action ${action}: ${error.message}`, details: error.toString() });
   }
 }
 

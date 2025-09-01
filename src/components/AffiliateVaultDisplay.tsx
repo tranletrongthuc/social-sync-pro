@@ -2,7 +2,7 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 
 import ExcelJS, { Cell } from 'exceljs';
-import type { AffiliateLink } from '../types';
+import type { AffiliateLink } from '../../types';
 import { Button, Input, Select } from './ui';
 import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, CashIcon, ScaleIcon, CollectionIcon, SparklesIcon, LinkIcon } from './icons';
 import ProductCard from './ProductCard';
@@ -34,21 +34,27 @@ const emptyLink: Omit<AffiliateLink, 'id'> = {
 };
 
 const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language, isDataLoaded, onLoadData, isLoading }) => {
+    console.log("AffiliateVaultDisplay rendered with props:", { affiliateLinks, isDataLoaded, isLoading });
+    
     const [isAffiliateVaultDataLoaded, setIsAffiliateVaultDataLoaded] = useState(false);
     const [isLoadingAffiliateVaultData, setIsLoadingAffiliateVaultData] = useState(false);
     
     // Load data when component mounts if not already loaded
     useEffect(() => {
+        console.log("AffiliateVaultDisplay useEffect triggered", { isDataLoaded, onLoadData, isLoading });
         if (!isDataLoaded && onLoadData && !isLoading) {
+            console.log("Loading affiliate vault data in AffiliateVaultDisplay");
             setIsLoadingAffiliateVaultData(true);
             onLoadData().finally(() => {
                 setIsLoadingAffiliateVaultData(false);
                 setIsAffiliateVaultDataLoaded(true);
+                console.log("Affiliate vault data loaded in AffiliateVaultDisplay");
             });
         } else if (isDataLoaded) {
+            console.log("Affiliate vault data already loaded in AffiliateVaultDisplay");
             setIsAffiliateVaultDataLoaded(true);
         }
-    }, [isDataLoaded, onLoadData, isLoading]);
+    }, []); // Empty dependency array to run only once
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
@@ -72,7 +78,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             noResults: "Không tìm thấy kết quả",
             noResultsDesc: "Hãy thử một tìm kiếm khác hoặc thêm một liên kết mới.",
             // Confirm
-            confirmDeleteMessage: "Bạn có chắc chắn muốn xóa liên kết này không? Hành động này không thể hoàn tác và sẽ xóa bản ghi khỏi Airtable nếu được kết nối.",
+            confirmDeleteMessage: "Bạn có chắc chắn muốn xóa liên kết này không? Hành động này không thể hoàn tác và sẽ xóa bản ghi khỏi MongoDB nếu được kết nối.",
             // KPIs
             totalLinks: "Tổng số liên kết",
             totalComm: "Tổng hoa hồng",
@@ -94,7 +100,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             noResults: "No results found",
             noResultsDesc: "Try a different search or add a new link.",
             // Confirm
-            confirmDeleteMessage: "Are you sure you want to delete this link? This cannot be undone and will remove the record from Airtable if connected.",
+            confirmDeleteMessage: "Are you sure you want to delete this link? This cannot be undone and will remove the record from MongoDB if connected.",
             // KPIs
             totalLinks: "Total Links",
             totalComm: "Total Commission",

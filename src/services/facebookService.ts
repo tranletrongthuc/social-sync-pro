@@ -1,4 +1,4 @@
-import type { MediaPlanPost, FacebookLoginResponse, FacebookPage } from '../types';
+import type { MediaPlanPost, FacebookLoginResponse, FacebookPage } from '../../types';
 import { publishToFacebookWithBff } from './bffService';
 
 declare const FB: any; // Declare the FB object from the SDK

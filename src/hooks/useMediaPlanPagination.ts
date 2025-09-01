@@ -1,5 +1,4 @@
 import { useCallback } from 'react';
-import { MediaPlanPost, PostInfo } from '../types';
 import { loadMediaPlanPostsWithPagination } from '../services/databaseService';
 
 /**

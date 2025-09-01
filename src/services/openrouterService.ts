@@ -1,6 +1,6 @@
 import { sanitizeAndParseJson, normalizeMediaPlanGroupResponse, normalizePillarContent, normalizeArrayResponse } from './geminiService';
 import { generateContentWithOpenRouterBff, generateImageWithOpenRouterBff } from './bffService';
-import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Idea, PostStatus } from '../types';
+import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Idea, PostStatus } from '../../types';
 
 // Remove the openrouterFetch function and all direct API calls
 // All OpenRouter requests will now go through the BFF
@@ -255,7 +255,7 @@ ${personaInstruction}
             - **Emojis**: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."} 
 
 Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
-- **Name**: First, create a short, descriptive title for this entire plan based on the User's Goal (e.g., "Q3 Product Launch", "Summer Eco-Friendly Campaign").
+- **Name**: Create a concise, meaningful, and easy-to-understand title for this entire plan. The title should summarize the main goal of the plan. For example: "Q3 Product Launch for Eco-Friendly Sneakers", "Summer Skincare Campaign for Oily Skin", "Engagement Boost for YouTube Channel".
 - **Plan Structure**: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
 - **Content**: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.
 - **Post Details (CRITICAL):
@@ -348,9 +348,23 @@ IMPORTANT: For image prompts, the prompt you generate MUST start with the exact 
         }),
     }));
 
+    const generateFallbackTitle = (userPrompt: string, selectedProduct: AffiliateLink | null, persona: Persona | null): string => {
+        if (selectedProduct) {
+            let title = `Promotion: ${selectedProduct.productName}`;
+            if (persona) {
+                title += ` ft. ${persona.nickName}`;
+            }
+            return title;
+        }
+        if (persona) {
+            return `Plan for ${persona.nickName}: ${userPrompt.substring(0, 30)}...`;
+        }
+        return userPrompt.substring(0, 50);
+    }
+
     return {
         id: crypto.randomUUID(),
-        name: (planName && planName !== 'Untitled Plan') ? planName : (selectedProduct ? `Promotion Plan: ${selectedProduct.productName}` : userPrompt.substring(0, 30)),
+        name: (planName && planName !== 'Untitled Plan') ? planName : generateFallbackTitle(userPrompt, selectedProduct, persona),
         prompt: userPrompt,
         plan: planWithEnhancements,
         source: 'wizard',
@@ -793,7 +807,8 @@ All content MUST be generated from the perspective of the following KOL/KOC.
                     brandFoundation,
                     language,
                     model,
-                    persona
+                    persona,
+                    '' // mediaPromptSuffix
                 );
                 return { ...post, mediaPrompt: newPrompt };
             } catch (e) {

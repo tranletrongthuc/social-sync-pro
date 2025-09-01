@@ -45,7 +45,7 @@ export const PinterestIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export const AirtableIcon = ({ className }: { className?: string }) => (
+export const DatabaseIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" className={className || "h-8 w-8 text-sky-500"} fill="currentColor" viewBox="0 0 24 24">
         <path d="M21.62,4.38l-2.54-2.54L12,9.07L4.92,1.84L2.38,4.38l7.07,7.07L2.38,18.52l2.54,2.54L12,13.83l7.07,7.07l2.54-2.54 l-7.07-7.07L21.62,4.38z"/>
     </svg>

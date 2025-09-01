@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from './ui';
-import type { FacebookPage } from '../types';
+import type { FacebookPage } from '../../types';
 
 interface FacebookPageSelectionModalProps {
     isOpen: boolean;

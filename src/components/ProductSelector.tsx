@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { AffiliateLink } from '../types';
+import { AffiliateLink } from '../../types';
 import { Input, Select, Button } from './ui';
 import { SearchIcon, LinkIcon, CheckCircleIcon } from './icons';
 
