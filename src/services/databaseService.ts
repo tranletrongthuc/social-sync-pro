@@ -23,57 +23,6 @@ export const clearAllCache = (): void => {
   Object.keys(dataCache).forEach(key => delete dataCache[key]);
 };
 
-
-/**
- * Fetch settings from MongoDB
- */
-const fetchSettingsFromDatabase = async (brandId: string): Promise<Settings | null> => {
-  try {
-    const response = await fetch('/api/mongodb?action=fetch-settings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ brandId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch settings: ${response.statusText}`);
-    }
-
-    const settings = await response.json();
-    return settings;
-  } catch (error) {
-    console.error('Failed to fetch settings from database:', error);
-    throw error;
-  }
-};
-
-/**
- * Save settings to MongoDB
- */
-const saveSettingsToDatabase = async (settings: Settings, brandId: string): Promise<void> => {
-  try {
-    const response = await fetch('/api/mongodb?action=save-settings', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ settings, brandId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to save settings: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    console.log('Settings saved successfully:', result);
-  } catch (error) {
-    console.error('Failed to save settings to database:', error);
-    throw error;
-  }
-};
-
 /**
  * Fetch admin defaults from MongoDB
  */
@@ -125,59 +74,52 @@ const saveAdminDefaultsToDatabase = async (settings: Settings): Promise<void> =>
 };
 
 /**
+ * Save brand-specific settings to MongoDB
+ */
+const saveSettingsToDatabase = async (settings: Settings, brandId: string): Promise<void> => {
+  try {
+    const response = await fetch('/api/mongodb?action=save-settings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ settings, brandId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to save settings: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    console.log('Brand settings saved successfully:', result);
+  } catch (error) {
+    console.error('Failed to save settings to database:', error);
+    throw error;
+  }
+};
+
+/**
  * Create or update a brand record in MongoDB
  */
 const createOrUpdateBrandRecordInDatabase = async (
   assets: GeneratedAssets,
-  imageUrls: Record<string, string>,
   brandId: string | null
 ): Promise<string> => {
-  console.log("createOrUpdateBrandRecordInDatabase: Function started.");
-  console.log("createOrUpdateBrandRecordInDatabase: assets (partial):", assets.brandFoundation.brandName, assets.mediaPlans.length);
-  console.log("createOrUpdateBrandRecordInDatabase: imageUrls (keys):", Object.keys(imageUrls));
-  console.log("createOrUpdateBrandRecordInDatabase: brandId:", brandId);
-
-  // Prune assets to send only necessary data
-  const prunedAssets = {
-    brandFoundation: assets.brandFoundation,
-    coreMediaAssets: {
-      colorPalette: assets.coreMediaAssets?.colorPalette || [],
-      fontRecommendations: assets.coreMediaAssets?.fontRecommendations || []
-    },
-    unifiedProfileAssets: assets.unifiedProfileAssets,
-    // Only send basic info for mediaPlans, not the full plan content
-    mediaPlans: assets.mediaPlans?.map(p => ({
-      id: p.id,
-      name: p.name,
-      prompt: p.prompt,
-      productImages: p.productImages // Assuming productImages are small and relevant
-    })) || [],
-    // Do not send affiliateLinks, personas, trends, ideas, facebookTrends, facebookPostIdeas
-    // as they are loaded separately or not needed for brand record creation/update
-  };
-
   try {
-    console.log("createOrUpdateBrandRecordInDatabase: Making fetch call to /api/mongodb?action=create-or-update-brand");
-    console.log("createOrUpdateBrandRecordInDatabase: Request body (pruned assets, imageUrls keys, brandId):");
-    console.log(JSON.stringify({ assets: prunedAssets, imageUrls: Object.keys(imageUrls), brandId }, null, 2));
-
     const response = await fetch('/api/mongodb?action=create-or-update-brand', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ assets: prunedAssets, imageUrls, brandId }),
+      body: JSON.stringify({ assets, brandId }),
     });
-    console.log("createOrUpdateBrandRecordInDatabase: Fetch call completed. Response status:", response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`createOrUpdateBrandRecordInDatabase: Fetch response not OK. Status: ${response.status}, Text: ${errorText}`);
       throw new Error(`Failed to create or update brand record: ${response.statusText}. Details: ${errorText}`);
     }
 
     const result = await response.json();
-    console.log("createOrUpdateBrandRecordInDatabase: Fetch call successful. Result:", result);
     return result.brandId;
   } catch (error) {
     console.error('createOrUpdateBrandRecordInDatabase: Error caught:', error);
@@ -215,6 +157,7 @@ const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
       brandFoundation: result.brandKitData.brandFoundation,
       coreMediaAssets: result.brandKitData.coreMediaAssets,
       unifiedProfileAssets: result.brandKitData.unifiedProfileAssets,
+      settings: result.brandKitData.settings,
       mediaPlans: [], // Will be populated later
       affiliateLinks: [], // Will be populated later
       personas: [], // Will be populated later
@@ -983,6 +926,7 @@ const loadInitialProjectData = async (brandId: string): Promise<{
     brandFoundation: BrandFoundation;
     coreMediaAssets: CoreMediaAssets;
     unifiedProfileAssets: UnifiedProfileAssets;
+    settings: Settings;
   };
 }> => {
   const response = await fetch('/api/mongodb?action=initial-load', {
@@ -1163,10 +1107,9 @@ export const loadTrend = async (trendId: string, brandId: string): Promise<Trend
 
 // Export all functions with MongoDB-specific names
 export {
-  fetchSettingsFromDatabase as fetchSettings,
-  saveSettingsToDatabase as saveSettings,
   fetchAdminDefaultsFromDatabase as fetchAdminDefaults,
   saveAdminDefaultsToDatabase as saveAdminDefaults,
+  saveSettingsToDatabase as saveSettings,
   createOrUpdateBrandRecordInDatabase as createOrUpdateBrandRecord,
   loadCompleteAssetsFromDatabase as loadCompleteAssets,
   syncAssetMediaWithDatabase as syncAssetMedia,

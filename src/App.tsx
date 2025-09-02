@@ -37,6 +37,8 @@ import {
     fetchAffiliateLinksForBrand,
     loadIdeasForTrend,
     checkIfProductExistsInDatabase,
+    saveSettings,
+    saveAdminDefaults,
 } from './services/databaseService';
 
 // Lazy loading functions
@@ -776,15 +778,27 @@ const App: React.FC = () => {
         const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
         console.log("ensureMongoProject: Cloudinary upload results (newPublicUrls):", newPublicUrls);
         const allImageUrls = { ...generatedImages, ...newPublicUrls };
+        
+        // Update assets with the new image URLs
+        const updatedAssets = JSON.parse(JSON.stringify(assets)); // Deep copy
+
+        if (updatedAssets.coreMediaAssets.logoConcepts) {
+            updatedAssets.coreMediaAssets.logoConcepts.forEach((logo: LogoConcept) => {
+                if (allImageUrls[logo.imageKey]) {
+                    logo.imageUrl = allImageUrls[logo.imageKey];
+                }
+            });
+        }
+        if (updatedAssets.unifiedProfileAssets.profilePictureImageKey && allImageUrls[updatedAssets.unifiedProfileAssets.profilePictureImageKey]) {
+            updatedAssets.unifiedProfileAssets.profilePictureImageUrl = allImageUrls[updatedAssets.unifiedProfileAssets.profilePictureImageKey];
+        }
+        if (updatedAssets.unifiedProfileAssets.coverPhotoImageKey && allImageUrls[updatedAssets.unifiedProfileAssets.coverPhotoImageKey]) {
+            updatedAssets.unifiedProfileAssets.coverPhotoImageUrl = allImageUrls[updatedAssets.unifiedProfileAssets.coverPhotoImageKey];
+        }
+
         console.log("ensureMongoProject: Media uploaded. Calling createOrUpdateBrandRecord.");
-        console.log("ensureMongoProject: Arguments for createOrUpdateBrandRecord:", {
-            assets: assets ? { brandFoundationName: assets.brandFoundation.brandName, mediaPlansCount: assets.mediaPlans.length } : null,
-            allImageUrlsKeys: Object.keys(allImageUrls),
-            brandId: null
-        });
         const newBrandId = await createOrUpdateBrandRecord(
-            assets,
-            allImageUrls,
+            updatedAssets,
             null
         );
         console.log("ensureMongoProject: createOrUpdateBrandRecord returned newBrandId:", newBrandId);
@@ -2474,6 +2488,38 @@ const App: React.FC = () => {
         }
     }, [mongoBrandId, updateAutoSaveStatus]);
 
+    const handleSaveSettings = useCallback(async (newSettings: Settings) => {
+        setIsSavingSettings(true);
+        setError(null);
+        try {
+            // Update settings in the central config service (in-memory)
+            await configService.updateAppSettings(newSettings);
+
+            // Persist settings to the database
+            if (mongoBrandId) {
+                await saveSettings(newSettings, mongoBrandId);
+            } else {
+                // If there is no brand context, save as system-wide defaults.
+                // This might happen if settings are changed from a global admin page.
+                await saveAdminDefaults(newSettings);
+            }
+
+            // Update local state from the single source of truth
+            setSettings(configService.getAppSettings());
+            setAiModelConfig(configService.getAiModelConfig());
+
+            setIsSettingsModalOpen(false);
+            setSuccessMessage("Settings saved successfully!");
+            setTimeout(() => setSuccessMessage(null), 3000);
+
+        } catch (err) {
+            console.error("Failed to save settings:", err);
+            setError(err instanceof Error ? err.message : "Could not save settings.");
+        } finally {
+            setIsSavingSettings(false);
+        }
+    }, [mongoBrandId]);
+
     const handleSetPersonaImage = useCallback(async (personaId: string, photoId: string, dataUrl: string): Promise<string | undefined> => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
         const newImageKey = `persona_${personaId}_photo_${photoId}_${randomSuffix}`;
@@ -2780,7 +2826,8 @@ const App: React.FC = () => {
                         <SettingsModal
                             isOpen={isSettingsModalOpen}
                             onClose={() => setIsSettingsModalOpen(false)}
-                            brandId={mongoBrandId || ''}
+                            settings={settings}
+                            onSave={handleSaveSettings}
                         />
                         
 

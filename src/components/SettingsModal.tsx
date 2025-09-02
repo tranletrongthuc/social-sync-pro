@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import type { Settings } from '../../types';
+import type { Settings, AIService } from '../../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
-import { fetchAdminDefaults, fetchSettings, saveSettings, loadAIServices } from '../services/databaseService';
-import { configService } from '../services/configService';
-
+import { loadAIServices } from '../services/databaseService';
 
 // Helper function to get models by capability from AI services
-const getModelsByCapability = (aiServices: any[], capability: 'text' | 'image') => {
+const getModelsByCapability = (aiServices: AIService[], capability: 'text' | 'image') => {
   return aiServices
-    .flatMap((service: any) => service.models)
-    .filter((model: any) => model.capabilities.includes(capability))
-    .map((model: any) => ({
+    .flatMap(service => service.models)
+    .filter(model => model.capabilities.includes(capability))
+    .map(model => ({
       value: model.name,
       label: `${model.provider}: ${model.name}`
     }));
@@ -20,7 +18,8 @@ const getModelsByCapability = (aiServices: any[], capability: 'text' | 'image') 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  brandId: string;
+  settings: Settings;
+  onSave: (newSettings: Settings) => Promise<void>;
 }
 
 type ActiveTab = 'general' | 'generation' | 'affiliate';
@@ -117,155 +116,45 @@ const T = {
   }
 };
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId }) => {
-  const [settings, setSettings] = useState<Settings | null>(null); // Initialize with null
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings: initialSettings, onSave }) => {
+  const [settings, setSettings] = useState<Settings>(initialSettings);
   const [activeTab, setActiveTab] = useState<ActiveTab>('general');
-  const [aiServices, setAiServices] = useState<any[]>([]);
+  const [aiServices, setAiServices] = useState<AIService[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState<boolean>(false); // New state for saving
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
-  // Load AI services from Database and brand-specific settings
   useEffect(() => {
-    const loadAllData = async () => {
-      if (!isOpen) {
-        setSettings(null); // Reset settings when modal is closed
-        return;
-      }
-      
-      if (!brandId) {
-        setError('No brand selected');
-        setLoading(false);
-        return;
-      }
-
-      setLoading(true);
-      setError(null);
-      
-      try {
-        // Fetch brand-specific settings
-        const fetchedSettings = await fetchSettings(brandId);
-
-        if (fetchedSettings) {
-          setSettings({
-            ...fetchedSettings,
-          });
-        } else {
-          // If no settings found for the brand, initialize with admin defaults
-          console.warn(`No settings found for brand ${brandId}. Initializing with admin defaults.`);
-          const adminDefaults = await configService.getAdminDefaults();
-          setSettings({
-            ...adminDefaults,
-          });
-        }
-
-        // Load AI services (for dropdowns)
-        const loadedServices = await loadAIServices();
-        setAiServices(loadedServices);
-
-      } catch (err) {
-        console.error('Failed to load data for settings modal:', err);
-        setError('Failed to load settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
-        setSettings(null); // Set to null on error
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (isOpen) {
-      loadAllData();
+      setSettings(initialSettings);
+      const fetchAiServices = async () => {
+        setLoading(true);
+        try {
+          const loadedServices = await loadAIServices();
+          setAiServices(loadedServices);
+        } catch (err) {
+          setError('Failed to load AI models configuration.');
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchAiServices();
     }
-  }, [isOpen, brandId]); // Depend on isOpen and brandId
+  }, [isOpen, initialSettings]);
 
   const texts = (T as any)[settings?.language || 'English'] || T['English'];
 
   if (!isOpen) {
-    console.log('SettingsModal: Not open, returning null');
     return null;
   }
-  
-  // Check if settings are properly loaded
-  if (!brandId) {
-    return (
-      <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 border border-gray-200 m-4 transform transition-all">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <SettingsIcon className="h-8 w-8 text-brand-green" />
-                {texts.title}
-              </h2>
-              <p className="text-red-500 mt-1 font-serif">Error: No brand selected</p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
-  if (!settings || loading) {
-    return (
-      <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 border border-gray-200 m-4 transform transition-all">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <SettingsIcon className="h-8 w-8 text-brand-green" />
-                {texts.title}
-              </h2>
-              <p className="text-gray-500 mt-1 font-serif">Loading settings...</p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
-          </div>
-          <div className="mt-6 flex justify-center">
-            <div className="w-8 h-8 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-  
-  if (error) {
-    return (
-      <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-8 border border-gray-200 m-4 transform transition-all">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                <SettingsIcon className="h-8 w-8 text-brand-green" />
-                {texts.title}
-              </h2>
-              <p className="text-red-500 mt-1 font-serif">Error: {error}</p>
-            </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const textGenerationModels = getModelsByCapability(aiServices, 'text');
-  const imageGenerationModels = getModelsByCapability(aiServices, 'image');
 
   const handleSave = async () => {
-    if (!settings || !brandId) return;
-
     setIsSaving(true);
     setError(null);
     try {
-      // Save general settings
-      await saveSettings(settings, brandId);
-
-      // // Save AI model configuration
-      // await saveAiModelConfigToDatabase({
-      //   textModelFallbackOrder: settings.textModelFallbackOrder,
-      //   visionModels: settings.visionModels,
-      // }, brandId);
-
-      onClose(); // Close modal on successful save
+      await onSave(settings);
+      onClose();
     } catch (err) {
-      console.error('Failed to save settings:', err);
       setError('Failed to save settings: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setIsSaving(false);
@@ -279,6 +168,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
         [name]: type === 'number' ? parseInt(value, 10) || 0 : value
     }));
   };
+
+  const textGenerationModels = getModelsByCapability(aiServices, 'text');
+  const imageGenerationModels = getModelsByCapability(aiServices, 'image');
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
@@ -330,23 +222,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
-                            {/* Show loading state */}
                             {loading && <option>Loading AI models...</option>}
-                            
-                            {/* Show error message if failed to load */}
                             {error && <option>Error loading models</option>}
-                            
-                            {/* Dynamically load text generation models from AI services */}
                             {textGenerationModels.map(model => (
                                 <option key={model.value} value={model.value}>{model.label}</option>
                             ))}
-                            
-                            {/* Fallback option if the current value is not in the list */}
                             {!loading && !error && !textGenerationModels.some(model => model.value === settings.textGenerationModel) && settings.textGenerationModel && (
                                 <option value={settings.textGenerationModel}>{settings.textGenerationModel} (Custom)</option>
                             )}
-                            
-                            {/* Default option if no models and no current value */}
                             {!loading && !error && textGenerationModels.length === 0 && !settings.textGenerationModel && (
                                 <option value="">No models available</option>
                             )}
@@ -363,23 +246,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                             onChange={handleInputChange}
                             className="mt-1"
                         >
-                            {/* Show loading state */}
                             {loading && <option>Loading AI models...</option>}
-                            
-                            {/* Show error message if failed to load */}
                             {error && <option>Error loading models</option>}
-                            
-                            {/* Dynamically load image generation models from AI services */}
                             {imageGenerationModels.map(model => (
                                 <option key={model.value} value={model.value}>{model.label}</option>
                             ))}
-                            
-                            {/* Fallback option if the current value is not in the list */}
                             {!loading && !error && !imageGenerationModels.some(model => model.value === settings.imageGenerationModel) && settings.imageGenerationModel && (
                                 <option value={settings.imageGenerationModel}>{settings.imageGenerationModel} (Custom)</option>
                             )}
-                            
-                            {/* Default option if no models and no current value */}
                             {!loading && !error && imageGenerationModels.length === 0 && !settings.imageGenerationModel && (
                                 <option value="">No models available</option>
                             )}
@@ -432,26 +306,25 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.media_prompt_suffix_desc}</p>
                     </div>
 
-                    {/* Text Model Fallback Order */}
                     <div className="mb-6">
                         <label className="block text-lg font-medium text-gray-800">Text Model Fallback Order</label>
                         <div className="space-y-2">
-                            {settings!.textModelFallbackOrder.map((model, index) => (
+                            {(settings.textModelFallbackOrder || []).map((model, index) => (
                                 <div key={index} className="flex items-center gap-2">
                                     <Input
                                         value={model}
                                         onChange={(e) => {
-                                            const newOrder = [...settings!.textModelFallbackOrder];
+                                            const newOrder = [...(settings.textModelFallbackOrder || [])];
                                             newOrder[index] = e.target.value;
-                                            setSettings({ ...settings!, textModelFallbackOrder: newOrder });
+                                            setSettings({ ...settings, textModelFallbackOrder: newOrder });
                                         }}
                                         className="flex-grow"
                                     />
                                     <Button
                                         variant="tertiary"
                                         onClick={() => {
-                                            const newOrder = settings!.textModelFallbackOrder.filter((_, i) => i !== index);
-                                            setSettings({ ...settings!, textModelFallbackOrder: newOrder });
+                                            const newOrder = (settings.textModelFallbackOrder || []).filter((_, i) => i !== index);
+                                            setSettings({ ...settings, textModelFallbackOrder: newOrder });
                                         }}
                                     >
                                         <TrashIcon className="h-5 w-5 text-red-600" />
@@ -461,33 +334,32 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                         </div>
                         <Button
                             className="mt-3 flex items-center gap-2"
-                            onClick={() => setSettings({ ...settings!, textModelFallbackOrder: [...settings!.textModelFallbackOrder, ''] })}
+                            onClick={() => setSettings({ ...settings, textModelFallbackOrder: [...(settings.textModelFallbackOrder || []), ''] })}
                         >
                             <PlusIcon className="h-5 w-5" />
                             Add Text Model
                         </Button>
                     </div>
 
-                    {/* Vision Models */}
                     <div>
                         <label className="block text-lg font-medium text-gray-800">Vision Models</label>
                         <div className="space-y-2">
-                            {settings!.visionModels.map((model, index) => (
+                            {(settings.visionModels || []).map((model, index) => (
                                 <div key={index} className="flex items-center gap-2">
                                     <Input
                                         value={model}
                                         onChange={(e) => {
-                                            const newModels = [...settings!.visionModels];
+                                            const newModels = [...(settings.visionModels || [])];
                                             newModels[index] = e.target.value;
-                                            setSettings({ ...settings!, visionModels: newModels });
+                                            setSettings({ ...settings, visionModels: newModels });
                                         }}
                                         className="flex-grow"
                                     />
                                     <Button
                                         variant="tertiary"
                                         onClick={() => {
-                                            const newModels = settings!.visionModels.filter((_, i) => i !== index);
-                                            setSettings({ ...settings!, visionModels: newModels });
+                                            const newModels = (settings.visionModels || []).filter((_, i) => i !== index);
+                                            setSettings({ ...settings, visionModels: newModels });
                                         }}
                                     >
                                         <TrashIcon className="h-5 w-5 text-red-600" />
@@ -497,7 +369,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, brandId 
                         </div>
                         <Button
                             className="mt-3 flex items-center gap-2"
-                            onClick={() => setSettings({ ...settings!, visionModels: [...settings!.visionModels, ''] })}
+                            onClick={() => setSettings({ ...settings, visionModels: [...(settings.visionModels || []), ''] })}
                         >
                             <PlusIcon className="h-5 w-5" />
                             Add Vision Model
