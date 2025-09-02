@@ -52,7 +52,7 @@ interface MediaPlanDisplayProps {
   isExporting: boolean;
   onRegenerateWeekImages: (planId: string, weekIndex: number) => void;
   planGroupsList: {id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[], personaId?: string;}[];
-  onSelectPlan: (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => void;
+  onSelectPlan: (planId: string) => void;
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
@@ -86,6 +86,8 @@ interface MediaPlanDisplayProps {
   brandFoundation: GeneratedAssets['brandFoundation'];
   // New prop for opening funnel wizard
   onOpenFunnelWizard: () => void;
+  viewingPost: PostInfo | null;
+  setViewingPost: (postInfo: PostInfo | null) => void;
 }
 
 const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
@@ -113,10 +115,12 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     onAssignPersonaToPlan, 
     onPublishPost, 
     brandFoundation,
-    onOpenFunnelWizard // New prop
+    onOpenFunnelWizard, // New prop
+    viewingPost,
+    setViewingPost
   } = props;
   const { language } = settings;
-  const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
+  
     const [viewMode, setViewMode] = useState<'feed' | 'calendar'>('feed');
     const [isPlanSidebarOpen, setIsPlanSidebarOpen] = useState(false);
     const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -277,7 +281,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
       // to prevent it from disappearing unexpectedly.
       // The user can close it manually.
     }
-  }, [plans, viewingPost]);
+  }, [plans, viewingPost, setViewingPost]);
 
   const handleViewDetails = (postInfo: PostInfo) => {
     setViewingPost(postInfo);
@@ -316,18 +320,39 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     };
   }, [selectedPlan, personas]);
 
-      // Convert paginated posts to PostInfo format
+      // Convert paginated posts to PostInfo format with correct weekIndex and postIndex
     const paginatedPostInfos = useMemo(() => {
         if (!selectedPlan) return [];
         
-        // Since we're getting posts directly, we need to map them to PostInfo format
-        // This is a simplified version - in a real implementation, you'd track weekIndex and postIndex
-        return paginatedPosts.map((post, index) => ({
-            planId: selectedPlan.id,
-            weekIndex: 0, // This would need to be calculated properly in a real implementation
-            postIndex: index,
-            post,
-        }));
+        // Create a map of post.id to its location for quick lookup
+        const postLocationMap = new Map<string, { weekIndex: number, postIndex: number }>();
+        selectedPlan.plan.forEach((week, weekIndex) => {
+            week.posts.forEach((post, postIndex) => {
+                postLocationMap.set(post.id, { weekIndex, postIndex });
+            });
+        });
+        
+        // Map paginatedPosts to PostInfo with correct indices
+        return paginatedPosts.map((post) => {
+            const location = postLocationMap.get(post.id);
+            if (!location) {
+                // Fallback, though this shouldn't happen if data is consistent
+                console.warn(`Post with id ${post.id} not found in plan structure`);
+                return {
+                    planId: selectedPlan.id,
+                    weekIndex: 0,
+                    postIndex: 0,
+                    post,
+                };
+            }
+            
+            return {
+                planId: selectedPlan.id,
+                weekIndex: location.weekIndex,
+                postIndex: location.postIndex,
+                post,
+            };
+        });
     }, [paginatedPosts, selectedPlan]);
 
     const displayedPosts = useMemo(() => {

@@ -27,3 +27,6 @@ b) Each prompt should include the following sections, clearly delineated:
 * Avoid slang, casual language, or excessive emojis.
 
 Knowledge: Project files
+
+## Qwen Added Memories
+- The user is working on the SocialSync Pro project, currently focused on refactoring tasks related to database consolidation (MongoDB), API endpoint consolidation, Airtable deprecation, and fixing image upload/display functionalities. The project uses a Vercel Hobby plan.

@@ -111,6 +111,9 @@ interface MainDisplayProps {
   onGenerateFacebookPostIdeas: (postInfo: PostInfo) => void;
   onAddFacebookPostIdeaToPlan: (idea: FacebookPostIdea) => void;
   isGeneratingFacebookPostIdeas: boolean;
+  // Post Detail Modal State
+  viewingPost: PostInfo | null;
+  setViewingPost: (postInfo: PostInfo | null) => void;
   // Funnel Campaign Props
   onCreateFunnelCampaignPlan: (plan: MediaPlanGroup) => void;
   // Lazy loading props
@@ -203,6 +206,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onUpdatePersona,
     onLoadIdeasForTrend,
     onCreateFunnelCampaignPlan, // New prop
+    viewingPost,
+    setViewingPost,
   } = props;
   
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -471,6 +476,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               brandFoundation={brandFoundation}
               // New prop for opening funnel wizard
               onOpenFunnelWizard={handleOpenFunnelWizard}
+              viewingPost={viewingPost}
+              setViewingPost={setViewingPost}
             />
           )}
           {activeTab === 'strategy' && (

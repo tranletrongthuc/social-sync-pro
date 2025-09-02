@@ -4,9 +4,6 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import mongodbHandler from './mongodb.js';
 
-// Airtable helper
-import { makeAirtableRequest } from './lib/airtable.js';
-
 // Initialize AI services
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
@@ -30,8 +27,6 @@ async function handler(request, response) {
 
   // Route based on service
   switch (service) {
-    case 'airtable':
-      return handleAirtableRequest(request, response, action);
     case 'mongodb':
       return handleMongodbRequest(request, response, action);
     case 'gemini':
@@ -49,169 +44,6 @@ async function handler(request, response) {
     default:
       response.setHeader('Allow', ['GET', 'POST']);
       response.status(405).end(`Service ${service} Not Allowed`);
-  }
-}
-
-// Airtable handler
-async function handleAirtableRequest(request, response, action) {
-  switch (action) {
-    case 'request': {
-      if (request.method !== 'POST') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
-      }
-
-      try {
-        const { method = 'GET', path, body, headers = {} } = request.body;
-        const { AIRTABLE_PAT, AIRTABLE_BASE_ID } = process.env;
-
-        if (!AIRTABLE_PAT || !AIRTABLE_BASE_ID) {
-          return response.status(500).json({ error: 'Airtable credentials not configured on server' });
-        }
-
-        if (!path) {
-          return response.status(400).json({ error: 'Missing path for Airtable request' });
-        }
-
-        // Construct the full URL
-        let fullPath;
-        if (path.startsWith('meta/bases/')) {
-          fullPath = path.replace('meta/bases/', `meta/bases/${AIRTABLE_BASE_ID}/`);
-        } else {
-          fullPath = `${AIRTABLE_BASE_ID}/${path}`;
-        }
-        
-        const url = `https://api.airtable.com/v0/${fullPath}`;
-        
-        const airtableHeaders = {
-          'Authorization': `Bearer ${AIRTABLE_PAT}`,
-          'Content-Type': 'application/json',
-          ...headers
-        };
-
-        const fetchOptions = {
-          method,
-          headers: airtableHeaders
-        };
-
-        if (body && (method === 'POST' || method === 'PATCH' || method === 'PUT')) {
-          fetchOptions.body = JSON.stringify(body);
-        }
-
-        const airtableResponse = await fetch(url, fetchOptions);
-        const responseData = await airtableResponse.json();
-
-        if (!airtableResponse.ok) {
-          throw new Error(`Airtable API error: ${airtableResponse.status} ${airtableResponse.statusText} - ${JSON.stringify(responseData)}`);
-        }
-
-        response.status(200).json(responseData);
-
-      } catch (error) {
-        console.error('--- CRASH in /api/airtable/request ---');
-        console.error('Error object:', error);
-        response.status(500).json({ error: `Failed to communicate with Airtable: ${error.message}` });
-      }
-      break;
-    }
-    case 'check-credentials': {
-      if (request.method !== 'GET') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
-      }
-
-      try {
-        const { AIRTABLE_PAT, AIRTABLE_BASE_ID } = process.env;
-        
-        if (!AIRTABLE_PAT || !AIRTABLE_BASE_ID) {
-          return response.status(200).json({ valid: false });
-        }
-        
-        // Perform a simple, low-cost request to validate credentials
-        await makeAirtableRequest('GET', `meta/bases/${AIRTABLE_BASE_ID}/tables`);
-        response.status(200).json({ valid: true });
-      } catch (error) {
-        console.error('Airtable credential check failed:', error);
-        response.status(200).json({ valid: false });
-      }
-      break;
-    }
-    case 'list-brands': {
-      if (request.method !== 'GET') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
-      }
-
-      try {
-        const { AIRTABLE_BASE_ID } = process.env;
-        if (!AIRTABLE_BASE_ID) {
-          throw new Error('Airtable Base ID not configured on server');
-        }
-        
-        const BRANDS_TABLE_NAME = 'Brands';
-        const airtableResponse = await makeAirtableRequest('GET', BRANDS_TABLE_NAME);
-        
-        const brands = airtableResponse.records.map(record => ({
-          id: record.fields.brand_id,
-          name: record.fields.name,
-          airtableId: record.id
-        }));
-        
-        response.status(200).json({ brands });
-      } catch (error) {
-        console.error('--- CRASH in /api/airtable/list-brands ---');
-        console.error('Error object:', error);
-        
-        // If the table doesn't exist, return an empty array
-        if (error.message && error.message.includes('NOT_FOUND')) {
-          console.warn("Brands table not found in Airtable. Returning empty list.");
-          return response.status(200).json({ brands: [] });
-        }
-        
-        response.status(500).json({ error: `Failed to fetch brands from Airtable: ${error.message}` });
-      }
-      break;
-    }
-    case 'save-ideas': {
-      if (request.method !== 'POST') {
-        return response.status(405).json({ error: 'Method Not Allowed' });
-      }
-
-      try {
-        const { ideas } = request.body;
-
-        if (!Array.isArray(ideas) || ideas.length === 0) {
-          return response.status(400).json({ error: 'Invalid or empty ideas array provided.' });
-        }
-
-        const IDEAS_TABLE = 'Ideas';
-        const recordsToCreate = ideas.map(idea => ({
-          fields: {
-            "Idea": idea.text,
-            "Status": "New",
-            ...(idea.brandAirtableId && { "Brand": [idea.brandAirtableId] }),
-          }
-        }));
-
-        const BATCH_SIZE = 10;
-        const createdIdeaIds = [];
-
-        for (let i = 0; i < recordsToCreate.length; i += BATCH_SIZE) {
-          const batch = recordsToCreate.slice(i, i + BATCH_SIZE);
-          const ideasResponse = await makeAirtableRequest('POST', IDEAS_TABLE, { records: batch });
-          if (ideasResponse.records) {
-            createdIdeaIds.push(...ideasResponse.records.map(r => r.id));
-          }
-        }
-
-        response.status(200).json({ success: true, createdIds: createdIdeaIds });
-      } catch (error) {
-        console.error('--- CRASH in /api/airtable/save-ideas ---');
-        console.error('Error object:', error);
-        response.status(500).json({ error: `Failed to save ideas: ${error.message}` });
-      }
-      break;
-    }
-    default:
-      response.setHeader('Allow', ['GET', 'POST']);
-      response.status(405).end(`Method ${request.method} Not Allowed for action ${action}`);
   }
 }
 
@@ -699,7 +531,6 @@ async function handleHealthRequest(request, response) {
       cloudflare: !!(process.env.CLOUDFLARE_ACCOUNT_ID && process.env.CLOUDFLARE_API_TOKEN),
       cloudinary: !!(process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_UPLOAD_PRESET),
       facebook: !!(process.env.FACEBOOK_APP_ID),
-      airtable: !!(process.env.AIRTABLE_PAT && process.env.AIRTABLE_BASE_ID),
       mongodb: !!process.env.MONGODB_URI
     }
   });

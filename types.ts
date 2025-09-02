@@ -133,6 +133,7 @@ export interface LogoConcept {
   style: string;
   prompt: string;
   imageKey: string;
+  imageUrl?: string;
 }
 
 export interface CoreMediaAssets {

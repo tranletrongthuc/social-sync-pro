@@ -70,6 +70,7 @@ async function handler(request, response) {
             }
 
             const result = await cloudinaryResponse.json();
+            console.log(`Uploaded media with key "${key}" to Cloudinary:`, result.secure_url);
             return [key, result.secure_url];
           } catch (error) {
             console.error(`Failed to upload media with key "${key}" to Cloudinary:`, error);

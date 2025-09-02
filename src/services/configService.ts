@@ -1,4 +1,4 @@
-import { fetchAdminDefaults } from './databaseService';
+import { fetchAdminDefaultsFromDatabase as fetchAdminDefaults } from './databaseService';
 import type { Settings, AiModelConfig } from '../../types';
 
 // Quản lý cấu hình ứng dụng

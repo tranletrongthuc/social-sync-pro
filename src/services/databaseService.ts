@@ -157,7 +157,6 @@ const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
       brandFoundation: result.brandKitData.brandFoundation,
       coreMediaAssets: result.brandKitData.coreMediaAssets,
       unifiedProfileAssets: result.brandKitData.unifiedProfileAssets,
-      settings: result.brandKitData.settings,
       mediaPlans: [], // Will be populated later
       affiliateLinks: [], // Will be populated later
       personas: [], // Will be populated later
@@ -179,7 +178,6 @@ const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
  * Sync asset media with MongoDB
  */
 const syncAssetMediaWithDatabase = async (
-  imageUrls: Record<string, string>,
   brandId: string,
   assets: GeneratedAssets
 ): Promise<void> => {
@@ -189,7 +187,7 @@ const syncAssetMediaWithDatabase = async (
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ imageUrls, brandId, assets }),
+      body: JSON.stringify({ brandId, assets }),
     });
 
     if (!response.ok) {
@@ -1107,41 +1105,41 @@ export const loadTrend = async (trendId: string, brandId: string): Promise<Trend
 
 // Export all functions with MongoDB-specific names
 export {
-  fetchAdminDefaultsFromDatabase as fetchAdminDefaults,
-  saveAdminDefaultsToDatabase as saveAdminDefaults,
-  saveSettingsToDatabase as saveSettings,
-  createOrUpdateBrandRecordInDatabase as createOrUpdateBrandRecord,
-  loadCompleteAssetsFromDatabase as loadCompleteAssets,
-  syncAssetMediaWithDatabase as syncAssetMedia,
-  saveAffiliateLinksToDatabase as saveAffiliateLinks,
-  fetchAffiliateLinksForBrandFromDatabase as fetchAffiliateLinksForBrand,
-  deleteAffiliateLinkFromDatabase as deleteAffiliateLink,
-  savePersonaToDatabase as savePersona,
-  deletePersonaFromDatabase,
-  assignPersonaToPlanInDatabase,
-  updateMediaPlanPostInDatabase,
-  saveMediaPlanGroupToDatabase as saveMediaPlanGroup,
-  saveTrendToDatabase as saveTrend,
-  deleteTrendFromDatabase,
-  saveIdeasToDatabase as saveIdeas,
-  saveAIServiceToDatabase as saveAIService,
-  deleteAIServiceFromDatabase as deleteAIService,
-  saveAIModelToDatabase as saveAIModel,
-  deleteAIModelFromDatabase as deleteAIModel,
-  loadAIServicesFromDatabase as loadAIServices,
-  listMediaPlanGroupsForBrandFromDatabase as listMediaPlanGroupsForBrand,
-  loadMediaPlanFromDatabase as loadMediaPlan,
-  bulkPatchPostsInDatabase as bulkPatchPosts,
-  bulkUpdatePostSchedulesInDatabase as bulkUpdatePostSchedules,
-  listBrandsFromDatabase,
-  checkDatabaseCredentials,
-  loadProjectFromDatabase,
-  checkIfProductExistsInDatabase,
-  loadIdeasForTrend,
-  loadInitialProjectData,
-  loadMediaPlanGroupsList,
-  loadStrategyHubData,
-  loadAffiliateVaultData,
-  loadPersonasData,
-  loadMediaPlanPostsWithPagination,
+    fetchAdminDefaultsFromDatabase,
+    saveAdminDefaultsToDatabase,
+    saveSettingsToDatabase,
+    createOrUpdateBrandRecordInDatabase,
+    loadCompleteAssetsFromDatabase,
+    syncAssetMediaWithDatabase,
+    saveAffiliateLinksToDatabase,
+    fetchAffiliateLinksForBrandFromDatabase,
+    deleteAffiliateLinkFromDatabase,
+    savePersonaToDatabase,
+    deletePersonaFromDatabase,
+    assignPersonaToPlanInDatabase,
+    updateMediaPlanPostInDatabase,
+    saveMediaPlanGroupToDatabase,
+    saveTrendToDatabase,
+    deleteTrendFromDatabase,
+    saveIdeasToDatabase,
+    saveAIServiceToDatabase,
+    deleteAIServiceFromDatabase,
+    saveAIModelToDatabase,
+    deleteAIModelFromDatabase,
+    loadAIServicesFromDatabase,
+    listMediaPlanGroupsForBrandFromDatabase,
+    loadMediaPlanFromDatabase,
+    bulkPatchPostsInDatabase,
+    bulkUpdatePostSchedulesInDatabase,
+    listBrandsFromDatabase,
+    checkDatabaseCredentials,
+    loadProjectFromDatabase,
+    checkIfProductExistsInDatabase,
+    loadIdeasForTrend,
+    loadInitialProjectData,
+    loadMediaPlanGroupsList,
+    loadStrategyHubData,
+    loadAffiliateVaultData,
+    loadPersonasData,
+    loadMediaPlanPostsWithPagination,
 };

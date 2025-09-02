@@ -6,7 +6,6 @@ import MainDisplay from './components/MainDisplay';
 import AdminPage from './components/AdminPage';
 import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
-import DatabaseLoadModal from './components/DatabaseLoadModal';
 import SettingsModal from './components/SettingsModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
 import Toast from './components/Toast';
@@ -17,28 +16,28 @@ import { generateImageWithOpenRouter } from './services/openrouterService';
 import { textGenerationService } from './services/textGenerationService';
 import { generateImageWithCloudflare } from './services/cloudflareService';
 import {
-    createOrUpdateBrandRecord,
-    saveAffiliateLinks,
-    deleteAffiliateLink as deleteAffiliateLinkFromDatabase,
-    saveMediaPlanGroup,
-    updateMediaPlanPostInDatabase as updateMediaPlanPostInDatabase,
-    bulkUpdatePostSchedules,
+    createOrUpdateBrandRecordInDatabase as createOrUpdateBrandRecord,
+    saveAffiliateLinksToDatabase as saveAffiliateLinks,
+    deleteAffiliateLinkFromDatabase,
+    saveMediaPlanGroupToDatabase as saveMediaPlanGroup,
+    updateMediaPlanPostInDatabase,
+    bulkUpdatePostSchedulesInDatabase as bulkUpdatePostSchedules,
     loadProjectFromDatabase,
-    listMediaPlanGroupsForBrand,
-    loadMediaPlan,
-    syncAssetMedia,
-    savePersona,
+    listMediaPlanGroupsForBrandFromDatabase,
+    loadMediaPlanFromDatabase as loadMediaPlan,
+    syncAssetMediaWithDatabase as syncAssetMedia,
+    savePersonaToDatabase as savePersona,
     deletePersonaFromDatabase,
-    saveTrend,
+    saveTrendToDatabase as saveTrend,
     deleteTrendFromDatabase,
-    saveIdeas,
+    saveIdeasToDatabase,
     assignPersonaToPlanInDatabase,
     checkDatabaseCredentials,
-    fetchAffiliateLinksForBrand,
+    fetchAffiliateLinksForBrandFromDatabase as fetchAffiliateLinksForBrand,
     loadIdeasForTrend,
     checkIfProductExistsInDatabase,
-    saveSettings,
-    saveAdminDefaults,
+    saveSettingsToDatabase as saveSettings,
+    saveAdminDefaultsToDatabase
 } from './services/databaseService';
 
 // Lazy loading functions
@@ -47,7 +46,6 @@ import {
     loadAffiliateVault,
     loadPersonas,
     loadMediaPlanGroups,
-    loadMediaPlanPosts,
     loadInitialData,
 } from './services/lazyLoadService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
@@ -435,7 +433,6 @@ const App: React.FC = () => {
     const [adminPassword, setAdminPassword] = useState<string>('');
     
     // Integration States
-    const [isDatabaseLoadModalOpen, setIsDatabaseLoadModalOpen] = useState<boolean>(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
     const [isPersonaConnectModalOpen, setIsPersonaConnectModalOpen] = useState<boolean>(false);
     const [personaToConnect, setPersonaToConnect] = useState<Persona | null>(null);
@@ -1188,6 +1185,11 @@ const App: React.FC = () => {
 
         const action: AssetsAction = { type: 'UPDATE_ASSET_IMAGE', payload: { oldImageKey: imageKey, newImageKey, postInfo } };
         dispatchAssets(action);
+
+        if (postInfo) {
+            const updatedPost = { ...postInfo.post, imageKey: newImageKey };
+            setViewingPost({ ...postInfo, post: updatedPost });
+        }
         
         if (mongoBrandId && generatedAssets) {
             updateAutoSaveStatus('saving');
@@ -1197,17 +1199,31 @@ const App: React.FC = () => {
                 const publicUrl = publicUrls[newImageKey];
 
                 if (publicUrl) {
+                    setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
                     if (postInfo) {
                         const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
-                        const updatedPost = { ...postInfo.post, imageKey: newImageKey, mediaOrder };
+                        const updatedPost = { ...postInfo.post, imageKey: newImageKey, imageUrl: publicUrl, mediaOrder };
                         await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId, publicUrl);
+                        setViewingPost({ ...postInfo, post: updatedPost });
                     } else {
                         const updatedAssets = assetsReducer(generatedAssets, action);
+                        if (updatedAssets && updatedAssets.coreMediaAssets.logoConcepts) {
+                            const logo = updatedAssets.coreMediaAssets.logoConcepts.find((l: LogoConcept) => l.imageKey === newImageKey);
+                            if (logo) {
+                                logo.imageUrl = publicUrl;
+                            }
+                        }
+                        if (updatedAssets && updatedAssets.unifiedProfileAssets.profilePictureImageKey === newImageKey) {
+                            updatedAssets.unifiedProfileAssets.profilePictureImageUrl = publicUrl;
+                        }
+                        if (updatedAssets && updatedAssets.unifiedProfileAssets.coverPhotoImageKey === newImageKey) {
+                            updatedAssets.unifiedProfileAssets.coverPhotoImageUrl = publicUrl;
+                        }
+                        
                         if (updatedAssets) {
-                            await syncAssetMedia(publicUrls, mongoBrandId, updatedAssets);
+                            await syncAssetMedia(mongoBrandId, updatedAssets);
                         }
                     }
-                    setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
                     updateAutoSaveStatus('saved');
                 } else {
                     throw new Error("Image upload to Cloudinary failed, public URL not received.");
@@ -1318,8 +1334,21 @@ const App: React.FC = () => {
                         await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId, publicUrl);
                     } else {
                         const updatedAssets = assetsReducer(generatedAssets, action);
+                        if (updatedAssets && updatedAssets.coreMediaAssets.logoConcepts) {
+                            const logo = updatedAssets.coreMediaAssets.logoConcepts.find((l: LogoConcept) => l.imageKey === newImageKey);
+                            if (logo) {
+                                logo.imageUrl = publicUrl;
+                            }
+                        }
+                        if (updatedAssets && updatedAssets.unifiedProfileAssets.profilePictureImageKey === newImageKey) {
+                            updatedAssets.unifiedProfileAssets.profilePictureImageUrl = publicUrl;
+                        }
+                        if (updatedAssets && updatedAssets.unifiedProfileAssets.coverPhotoImageKey === newImageKey) {
+                            updatedAssets.unifiedProfileAssets.coverPhotoImageUrl = publicUrl;
+                        }
+                        
                         if (updatedAssets) {
-                            await syncAssetMedia(publicUrls, mongoBrandId, updatedAssets);
+                            await syncAssetMedia(mongoBrandId, updatedAssets);
                         }
                     }
                     setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
@@ -1518,7 +1547,7 @@ const App: React.FC = () => {
             dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
             
             if (mongoBrandId) {
-                await saveIdeas(newIdeas, mongoBrandId);
+                await saveIdeasToDatabase(newIdeas, mongoBrandId);
             }
         } catch (err) {
             console.error("Failed to generate ideas:", err);
@@ -1766,7 +1795,7 @@ const App: React.FC = () => {
             if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
                 try {
-                    await saveIdeas(newIdeas);
+                    await saveIdeasToDatabase(newIdeas);
                     updateAutoSaveStatus('saved');
                 } catch (e) {
                     console.error("Failed to save ideas to MongoDB:", e);
@@ -1976,8 +2005,26 @@ const App: React.FC = () => {
                 facebookTrends: [], // Will be loaded lazily
                 facebookPostIdeas: [], // Will be loaded lazily
             };
+
+            // Pre-populate the generatedImages cache with persisted image URLs
+            // This ensures images for logo concepts and unified profile assets are displayed immediately
+            const initialGeneratedImages: Record<string, string> = {};
+            // Populate from logo concepts
+            brandKitData.coreMediaAssets.logoConcepts.forEach(logo => {
+                if (logo.imageUrl) {
+                    initialGeneratedImages[logo.imageKey] = logo.imageUrl;
+                }
+            });
+            // Populate from unified profile assets if URLs exist
+            if (brandKitData.unifiedProfileAssets.profilePictureImageUrl && brandKitData.unifiedProfileAssets.profilePictureImageKey) {
+                initialGeneratedImages[brandKitData.unifiedProfileAssets.profilePictureImageKey] = brandKitData.unifiedProfileAssets.profilePictureImageUrl;
+            }
+            if (brandKitData.unifiedProfileAssets.coverPhotoImageUrl && brandKitData.unifiedProfileAssets.coverPhotoImageKey) {
+                initialGeneratedImages[brandKitData.unifiedProfileAssets.coverPhotoImageKey] = brandKitData.unifiedProfileAssets.coverPhotoImageUrl;
+            }
             
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: initialAssets });
+            setGeneratedImages(initialGeneratedImages); // Set the pre-populated image cache
             setMongoBrandId(brandId);
             setCurrentStep('assets');
             setActiveTab('brandKit'); // Redirect to brandKit tab for instant rendering
@@ -1993,7 +2040,7 @@ const App: React.FC = () => {
                 setActivePlanId(null);
             }
             
-            setIsDatabaseLoadModalOpen(false);
+            
 
         } catch (err) {
             console.error("Failed to load project from MongoDB:", err);
@@ -2501,7 +2548,7 @@ const App: React.FC = () => {
             } else {
                 // If there is no brand context, save as system-wide defaults.
                 // This might happen if settings are changed from a global admin page.
-                await saveAdminDefaults(newSettings);
+                await saveAdminDefaultsToDatabase(newSettings);
             }
 
             // Update local state from the single source of truth
@@ -2793,6 +2840,9 @@ const App: React.FC = () => {
                             onGenerateFacebookPostIdeas={handleGenerateFacebookPostIdeas}
                             onAddFacebookPostIdeaToPlan={handleAddFacebookPostIdeaToPlan}
                             isGeneratingFacebookPostIdeas={isGeneratingFacebookPostIdeas}
+                            // Post Detail Modal State
+                            viewingPost={viewingPost}
+                            setViewingPost={setViewingPost}
                             // Funnel Campaign Props
                             onCreateFunnelCampaignPlan={handleCreateFunnelCampaignPlan}
                             // Lazy loading props
@@ -2817,12 +2867,7 @@ const App: React.FC = () => {
                                 {waitMessage}
                             </div>
                         )}
-                        <DatabaseLoadModal 
-                            isOpen={isDatabaseLoadModalOpen}
-                            onClose={() => setIsDatabaseLoadModalOpen(false)}
-                            onLoadProject={handleLoadFromDatabase}
-                            language={settings.language}
-                        />
+                        
                         <SettingsModal
                             isOpen={isSettingsModalOpen}
                             onClose={() => setIsSettingsModalOpen(false)}

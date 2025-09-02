@@ -198,6 +198,8 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
         <div 
             className="w-full h-full min-h-[200px] bg-gray-50 flex flex-col justify-center items-center text-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-brand-green transition-colors cursor-pointer"
             onClick={() => fileInputRef.current?.click()}
+            onPaste={handlePaste}
+            tabIndex={0}
         >
             <div className="flex items-center gap-4 text-gray-400">
                 <VideoCameraIcon className="h-10 w-10"/>

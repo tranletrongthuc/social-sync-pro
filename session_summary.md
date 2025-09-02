@@ -169,3 +169,108 @@ The refactoring and fixes are complete, simplifying the database schema and impr
 
 * Outcome:
     * The application-crashing bug was resolved by correctly implementing the full settings-saving logic, from the frontend event handler in App.tsx down to the data-access layer in databaseService.ts.
+
+    Session Summary: Full Airtable Deprecation and Image Upload Refactor
+
+Session Summary (2025-09-02)[2]
+The primary goal of this session was to resolve an image upload error and complete the final migration from Airtable to MongoDB by removing all remaining Airtable-related code from the
+project.
+
+Initial Problem:
+The application was throwing a 404 Not Found error when attempting to upload images. This was caused by the frontend calling a deprecated API endpoint (/api/cloudinary/upload) that did
+not align with the consolidated backend routing structure which uses action query parameters (e.g., /api/cloudinary?action=upload).
+
+Solution and Refactoring:
+
+1. Endpoint Correction: The initial 404 error was fixed by updating the bffService.ts to use the correct ?action= parameter for all Cloudinary, Cloudflare, and Facebook API calls.
+
+2. Airtable Code Removal (API):
+    * The legacy Airtable request handler was completely removed from api/index.js.
+    * The unused utility file api/lib/airtable.js was deleted.
+
+3. Airtable Code Removal (Frontend):
+    * The databaseService.ts was refactored to remove all backward-compatibility aliases for Airtable functions (e.g., listBrandsFromAirtable). All data functions now have an explicit
+        ...FromDatabase suffix.
+    * App.tsx was significantly refactored to:
+        * Update all data service calls to use the new, non-aliased function names (e.g., createOrUpdateBrandRecordInDatabase).
+        * Remove the now-defunct DatabaseLoadModal component and its related state and event handlers, which were remnants of the Airtable loading workflow.
+
+Outcome:
+The image upload functionality is now stable and correctly integrated with the MongoDB backend. All legacy code related to the Airtable database has been scrubbed from the project,
+completing the migration.
+
+Session Summary (2025-09-02)[3]
+* Completed Airtable Removal: I removed all remaining remnants of the Airtable integration, including the DatabaseLoadModal.tsx component, associated functions and state in App.tsx, and the airtable package itself.
+* Fixed Image Pasting in Modals: I resolved an issue where pasting an image into the "Post Detail" modal was not working by adding the necessary event handlers.
+* Addressed Image URL Saving: I identified and fixed a bug where imageUrls for "Logo Concepts" were not being saved to MongoDB. This involved:   
+	* Updating the LogoConcept and UnifiedProfileAssets types in types.ts to include an imageUrl field.   
+	* Modifying the create-or-update-brand action in the backend to initialize these new fields.   
+	* Correcting the sync-asset-media backend action to properly update image URLs.
+* State Management Refactoring: I lifted the viewingPost state from the MediaPlanDisplay component up to the main App component to ensure the "Post Detail" modal correctly displays updated data after an image is pasted.
+* Resolved Build Errors: I fixed multiple build-time and runtime errors related to incorrect function imports and syntax issues that arose during the refactoring process.
+
+Session Summary (2025-09-02)[4]
+===
+
+## Bug Fixes & Refactoring
+
+This session focused on addressing several critical bugs and completing the refactoring of asset management to use a single, consolidated data structure in MongoDB.
+
+### 1. Fixed Duplicate `logoConcepts` in Database Schema
+
+**Problem:**
+The `brands` collection in MongoDB contained two separate fields for logo concepts:
+- A top-level `logoConcepts` array (old/deprecated structure).
+- A nested `coreMediaAssets.logoConcepts` array (new/consolidated structure).
+This caused data inconsistency and confusion.
+
+**Solution:**
+- Modified the backend `/api/mongodb.js`:
+    - **`create-or-update-brand`**: Removed saving logo concepts to the deprecated top-level field. Now only saves to `coreMediaAssets.logoConcepts`.
+    - **`initial-load` & `load-complete-project`**: Updated to load logo concepts exclusively from `brandRecord.coreMediaAssets.logoConcepts`.
+    - **`sync-asset-media`**: Simplified to directly update the entire `coreMediaAssets` object sent by the frontend, as it's now the single source of truth.
+- Ensured frontend services and components already used `assets.coreMediaAssets.logoConcepts`, so no UI changes were required for data consumption.
+
+### 2. Fixed Loading Existing Logo Images in Brand Kit UI
+
+**Problem:**
+When loading an existing brand, logo images that had been previously generated or uploaded were not displayed in the Brand Kit tab. The UI showed the "Generate" or "Upload" placeholder instead of the persisted image.
+
+**Root Cause:**
+The `ImageGenerator` component used the `generatedImages` cache (a state in `App.tsx`) to display images, looking them up by `imageKey`. While the initial data load (`loadInitialProjectData`) correctly fetched the `imageUrl` from the database, it did not populate the `generatedImages` cache. This cache was only populated when an image was generated or uploaded during the current session.
+
+**Solution:**
+- Modified `handleLoadFromDatabase` in `App.tsx` to pre-populate the `generatedImages` state after loading initial data:
+    - Iterates through `brandKitData.coreMediaAssets.logoConcepts` and adds entries to the cache: `{ [logo.imageKey]: logo.imageUrl }`.
+    - Also populates cache for `unifiedProfileAssets` if `profilePictureImageUrl` or `coverPhotoImageUrl` exist.
+- This ensures that `ImageGenerator` can immediately find and display persisted images upon loading a brand.
+
+### 3. Fixed Post Detail Modal Opening Error
+
+**Problem:**
+Clicking on a post card to open the Post Detail modal resulted in a JavaScript error: `Uncaught TypeError: setViewingPost is not a function`.
+
+**Root Cause:**
+- `MainDisplay.tsx` expected `viewingPost` and `setViewingPost` as props and passed them down to `MediaPlanDisplay`.
+- However, these props were missing from the `MainDisplayProps` interface definition and were not being passed from `App.tsx` when `MainDisplay` was instantiated.
+
+**Solution:**
+- Added `viewingPost: PostInfo | null;` and `setViewingPost: (postInfo: PostInfo | null) => void;` to the `MainDisplayProps` interface in `MainDisplay.tsx`.
+- Added `viewingPost={viewingPost}` and `setViewingPost={setViewingPost}` to the props list when `MainDisplay` is rendered in `App.tsx`.
+
+### 4. Fixed Post Feed Not Refreshing After Individual Post Changes
+
+**Problem:**
+After making changes to a post in the Post Detail modal (e.g., uploading an image) and closing the modal, the main Posts feed did not reflect the changes (e.g., the new image was not shown on the corresponding post card).
+
+**Root Cause:**
+- The `assetsReducer` in `App.tsx` uses the `planId`, `weekIndex`, and `postIndex` from a `postInfo` object to locate and update the specific post within the `generatedAssets` state.
+- In `MediaPlanDisplay.tsx`, the list of posts rendered in the feed (`paginatedPostInfos`) was constructed with incorrect `weekIndex` and `postIndex` values (hardcoded or based on a flattened list).
+- When `handleSetImage` was called from the modal, it passed this incorrect `postInfo`. The reducer used these wrong indices, failed to find the actual post in the nested `plan.plan[weekIndex].posts[postIndex]` structure, and thus never updated the main state. The `generatedImages` cache was updated, but the main data source for the feed was not.
+
+**Solution:**
+- Corrected the `paginatedPostInfos` `useMemo` in `MediaPlanDisplay.tsx`:
+    - Implemented logic to iterate through the actual `selectedPlan.plan` structure.
+    - Created a map to correctly associate each `post.id` with its true `weekIndex` and `postIndex`.
+    - Ensured every `PostInfo` object in `paginatedPostInfos` now has the accurate coordinates needed for the reducer to update the correct post in the main state.
+- This ensures that changes made in the modal are correctly propagated to the main state, triggering a re-render of the feed with the updated data.

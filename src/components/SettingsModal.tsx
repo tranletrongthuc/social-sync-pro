@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import type { Settings, AIService } from '../../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
-import { loadAIServices } from '../services/databaseService';
+import { loadAIServicesFromDatabase as loadAIServices } from '../services/databaseService';
 
 // Helper function to get models by capability from AI services
 const getModelsByCapability = (aiServices: AIService[], capability: 'text' | 'image') => {

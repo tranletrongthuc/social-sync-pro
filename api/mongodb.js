@@ -131,7 +131,14 @@ async function handler(request, response) {
             console.log('--- Received request for /api/mongodb/create-or-update-brand ---');
             try {
               const { assets, brandId } = request.body;
-    
+  
+              // Ensure coreMediaAssets is properly structured
+              const coreMediaAssets = {
+                logoConcepts: (assets.coreMediaAssets?.logoConcepts || []).map(logo => ({...logo})),
+                colorPalette: assets.coreMediaAssets?.colorPalette || {},
+                fontRecommendations: assets.coreMediaAssets?.fontRecommendations || {}
+              };
+
               const brandDocument = {
                 name: assets.brandFoundation?.brandName || '',
                 mission: assets.brandFoundation?.mission || '',
@@ -142,17 +149,21 @@ async function handler(request, response) {
                 values: assets.brandFoundation?.values || [],
                 keyMessaging: assets.brandFoundation?.keyMessaging || [],
                 
-                logoConcepts: assets.coreMediaAssets?.logoConcepts || [],
-                colorPalette: assets.coreMediaAssets?.colorPalette || {},
-                fontRecommendations: assets.coreMediaAssets?.fontRecommendations || {},
+                // Removed top-level logoConcepts field
                 
-                unifiedProfileAssets: assets.unifiedProfileAssets || {},
+                coreMediaAssets: coreMediaAssets,
+                
+                unifiedProfileAssets: {
+                    ...assets.unifiedProfileAssets,
+                    profilePictureImageUrl: '', // These will be populated later via sync-asset-media
+                    coverPhotoImageUrl: ''
+                },
                 
                 settings: assets.settings || {}, // New consolidated settings
-    
+  
                 updatedAt: new Date(),
               };
-    
+  
               if (brandId) {
                 await brandsCollection.updateOne(
                   { _id: new ObjectId(brandId) },
@@ -1022,33 +1033,19 @@ async function handler(request, response) {
             case 'sync-asset-media':
                 console.log('--- Received request for /api/mongodb/sync-asset-media ---');
                 try {
-                  const { imageUrls, brandId, assets } = request.body;
+                  const { brandId, assets } = request.body;
                   
                   const brand = await brandsCollection.findOne({ _id: new ObjectId(brandId) });
                   if (!brand) {
                     return response.status(404).json({ error: 'Brand not found' });
                   }
         
-                  const newLogoConcepts = brand.logoConcepts.map(logo => {
-                    if (imageUrls[logo.imageKey]) {
-                      return { ...logo, imageUrl: imageUrls[logo.imageKey] };
-                    }
-                    return logo;
-                  });
-        
                   const brandUpdates = {
-                    logoConcepts: newLogoConcepts
+                    // Update the entire coreMediaAssets object. 
+                    // This is safe as the frontend sends the full, correct structure.
+                    'coreMediaAssets': assets.coreMediaAssets,
+                    'unifiedProfileAssets': assets.unifiedProfileAssets
                   };
-                  
-                  if (assets.unifiedProfileAssets.profilePictureImageKey && 
-                      imageUrls[assets.unifiedProfileAssets.profilePictureImageKey]) {
-                    brandUpdates.profilePictureImageUrl = imageUrls[assets.unifiedProfileAssets.profilePictureImageKey];
-                  }
-                  
-                  if (assets.unifiedProfileAssets.coverPhotoImageKey && 
-                      imageUrls[assets.unifiedProfileAssets.coverPhotoImageKey]) {
-                    brandUpdates.coverPhotoImageUrl = imageUrls[assets.unifiedProfileAssets.coverPhotoImageKey];
-                  }
                   
                   await brandsCollection.updateOne(
                     { _id: new ObjectId(brandId) },
@@ -1059,7 +1056,9 @@ async function handler(request, response) {
                   console.log('--- Asset media synced ---');
                 } catch (error) {
                   console.error('--- CRASH in /api/mongodb/sync-asset-media ---');
-                  throw error;
+                  console.error('Error object:', error);
+                  // Provide a more informative error response
+                  response.status(500).json({ error: `Failed to sync asset media: ${error.message}` });
                 }
                 break;
     
@@ -1212,9 +1211,10 @@ async function handler(request, response) {
                       usp: brandRecord.usp
                     },
                     coreMediaAssets: {
-                      logoConcepts: brandRecord.logoConcepts || [],
-                      colorPalette: brandRecord.colorPalette || {},
-                      fontRecommendations: brandRecord.fontRecommendations || {}
+                      // Read logo concepts from the consolidated location
+                      logoConcepts: brandRecord.coreMediaAssets?.logoConcepts || [],
+                      colorPalette: brandRecord.coreMediaAssets?.colorPalette || {},
+                      fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {}
                     },
                     unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
                     mediaPlans: mediaPlans,
@@ -1259,7 +1259,7 @@ async function handler(request, response) {
                     const brandSummary = {
                       id: brandRecord._id.toString(),
                       name: brandRecord.name,
-                      logoUrl: brandRecord.logoUrl
+                      logoUrl: brandRecord.logoUrl // This field might not exist anymore, but keep for compatibility if needed elsewhere
                     };
         
                     const brandKitData = {
@@ -1270,28 +1270,29 @@ async function handler(request, response) {
                         targetAudience: brandRecord.targetAudience,
                         personality: brandRecord.personality,
                         keyMessaging: brandRecord.keyMessaging || [],
-usp: brandRecord.usp,
-},
-coreMediaAssets: {
-logoConcepts: brandRecord.logoConcepts || [],
-colorPalette: brandRecord.colorPalette || {},
-fontRecommendations: brandRecord.fontRecommendations || {},
-},
-unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
-settings: brandRecord.settings || {}
-};
+                        usp: brandRecord.usp,
+                      },
+                      coreMediaAssets: {
+                        // Read logo concepts from the consolidated location
+                        logoConcepts: brandRecord.coreMediaAssets?.logoConcepts || [],
+                        colorPalette: brandRecord.coreMediaAssets?.colorPalette || {},
+                        fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {},
+                      },
+                      unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
+                      settings: brandRecord.settings || {}
+                    };
 
-                response.status(200).json({
-                  brandSummary,
-                  brandKitData
-                });
-                console.log('--- Initial load data sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/initial-load ---');
-                throw error;
-            }
-            break;
+                    response.status(200).json({
+                      brandSummary,
+                      brandKitData
+                    });
+                    console.log('--- Initial load data sent to client ---');
+        
+                } catch (error) {
+                    console.error('--- CRASH in /api/mongodb/initial-load ---');
+                    throw error;
+                }
+                break;
         
         case 'load-affiliate-vault':
             console.log('--- Received request for /api/mongodb/load-affiliate-vault ---');

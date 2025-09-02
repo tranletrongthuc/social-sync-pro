@@ -119,14 +119,14 @@ export const uploadMediaWithBff = async (
   uploadPreset: string
 ): Promise<Record<string, string>> => {
   try {
-    const response = await bffFetch('/api/cloudinary/upload', {
+    const response = await bffFetch('/api/cloudinary?action=upload', {
       method: 'POST',
       body: JSON.stringify({ media, cloudName, uploadPreset }),
     });
     
     return response.uploadedUrls;
   } catch (error) {
-    console.error(`Error calling BFF endpoint /api/cloudinary/upload:`, error);
+    console.error(`Error calling BFF endpoint /api/cloudinary?action=upload:`, error);
     throw error;
   }
 };
@@ -141,14 +141,14 @@ export const publishToFacebookWithBff = async (
   videoUrl?: string
 ): Promise<{ publishedUrl: string }> => {
   try {
-    const response = await bffFetch('/api/facebook/publish', {
+    const response = await bffFetch('/api/facebook?action=publish', {
       method: 'POST',
       body: JSON.stringify({ post, imageUrl, pageId, accessToken, videoUrl }),
     });
     
     return response;
   } catch (error) {
-    console.error(`Error calling BFF endpoint /api/facebook/publish:`, error);
+    console.error(`Error calling BFF endpoint /api/facebook?action=publish:`, error);
     throw error;
   }
 };
