@@ -8,8 +8,9 @@ import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
 import SettingsModal from './components/SettingsModal';
 import PersonaConnectModal from './components/PersonaConnectModal';
+import AutoPersonaResultModal from './components/AutoPersonaResultModal';
 import Toast from './components/Toast';
-import { generateImage } from './services/geminiService';
+import { generateImage, autoGeneratePersonaProfile } from './services/geminiService';
 import { createDocxBlob, createMediaPlanXlsxBlob } from './services/exportService';
 import { suggestProductsForPost } from './services/khongminhService';
 import { generateImageWithOpenRouter } from './services/openrouterService';
@@ -73,14 +74,18 @@ type AssetsAction =
   | { type: 'ADD_OR_UPDATE_AFFILIATE_LINK'; payload: AffiliateLink }
   | { type: 'DELETE_AFFILIATE_LINK'; payload: string }
   | { type: 'IMPORT_AFFILIATE_LINKS'; payload: AffiliateLink[] }
+  | { type: 'SET_AFFILIATE_LINKS'; payload: AffiliateLink[] }
   | { type: 'BULK_UPDATE_ASSET_IMAGES', payload: { postInfo: PostInfo, newImageKey: string }[] }
   | { type: 'BULK_SCHEDULE_POSTS', payload: { updates: { postId: string; scheduledAt: string; status: 'scheduled' }[] } }
   | { type: 'SAVE_PERSONA'; payload: Persona }
   | { type: 'DELETE_PERSONA'; payload: string }
+  | { type: 'UPDATE_PERSONA_ID'; payload: { oldId: string; newId: string } }
+  | { type: 'SET_PERSONAS'; payload: Persona[] }
   | { type: 'SAVE_TREND'; payload: Trend }
   | { type: 'DELETE_TREND'; payload: string }
   | { type: 'ADD_IDEAS'; payload: Idea[] }
   | { type: 'SET_IDEAS'; payload: Idea[] }
+  | { type: 'SET_STRATEGY_DATA'; payload: { trends: Trend[]; ideas: Idea[] } }
   | { type: 'ADD_CONTENT_PACKAGE'; payload: MediaPlanGroup }
   | { type: 'ASSIGN_PERSONA_TO_PLAN'; payload: { planId: string; personaId: string | null; } }
   | { type: 'SET_FACEBOOK_TRENDS'; payload: FacebookTrend[] }
@@ -185,6 +190,21 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
             return { ...state, affiliateLinks: [...(state.affiliateLinks || []), ...action.payload] };
         }
         
+        case 'SET_AFFILIATE_LINKS': {
+            if (!state) return state;
+            return { ...state, affiliateLinks: action.payload };
+        }
+
+        case 'SET_PERSONAS': {
+            if (!state) return state;
+            return { ...state, personas: action.payload };
+        }
+
+        case 'SET_STRATEGY_DATA': {
+            if (!state) return state;
+            return { ...state, trends: action.payload.trends, ideas: action.payload.ideas };
+        }
+
         case 'BULK_UPDATE_ASSET_IMAGES': {
             if (!state) return state;
             const newState = JSON.parse(JSON.stringify(state));
@@ -248,6 +268,19 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
             if (!state) return state;
             const personaId = action.payload;
             const updatedPersonas = (state.personas || []).filter(p => p.id !== personaId);
+            return { ...state, personas: updatedPersonas };
+        }
+
+        case 'UPDATE_PERSONA_ID': {
+            if (!state) return state;
+            const { oldId, newId } = action.payload;
+            const existingPersonas = state.personas || [];
+            const index = existingPersonas.findIndex(p => p.id === oldId);
+            if (index === -1) return state; // Not found, do nothing
+
+            const updatedPersonas = [...existingPersonas];
+            updatedPersonas[index] = { ...updatedPersonas[index], id: newId };
+            
             return { ...state, personas: updatedPersonas };
         }
 
@@ -472,93 +505,57 @@ const App: React.FC = () => {
     // Lazy loading callbacks for MainDisplay component
     const handleLoadStrategyHubData = useCallback(async () => {
         console.log("handleLoadStrategyHubData called");
-        // If no brand ID, we can't load data from MongoDB
         if (!mongoBrandId) {
-            // For local projects without MongoDB integration, we still want to show the UI
             console.log("No MongoDB brand ID, skipping strategy hub data load");
-            return Promise.resolve();
+            return;
         }
         
         try {
             const { trends, ideas } = await loadStrategyHub(mongoBrandId);
             console.log("Strategy hub data loaded:", { trends, ideas });
-            
-            // Update the assets with the loaded data
-            dispatchAssets({ 
-                type: 'INITIALIZE_ASSETS', 
-                payload: {
-                    ...generatedAssets!,
-                    trends,
-                    ideas
-                }
-            });
-            return Promise.resolve();
+            dispatchAssets({ type: 'SET_STRATEGY_DATA', payload: { trends, ideas } });
         } catch (error) {
             console.error("Failed to load strategy hub data:", error);
             setError(error instanceof Error ? error.message : "Could not load strategy hub data.");
-            return Promise.reject(error);
+            throw error;
         }
-    }, [mongoBrandId, generatedAssets, dispatchAssets, setError]);
+    }, [mongoBrandId, dispatchAssets, setError]);
 
     const handleLoadAffiliateVaultData = useCallback(async () => {
         console.log("handleLoadAffiliateVaultData called");
-        // If no brand ID, we can't load data from MongoDB
         if (!mongoBrandId) {
-            // For local projects without MongoDB integration, we still want to show the UI
-            // but with empty data. The components will handle this case.
             console.log("No MongoDB brand ID, skipping affiliate vault data load");
-            return Promise.resolve();
+            return;
         }
         
         try {
             const affiliateLinks = await loadAffiliateVault(mongoBrandId);
             console.log("Affiliate vault data loaded:", affiliateLinks);
-            
-            // Update the assets with the loaded data
-            dispatchAssets({ 
-                type: 'INITIALIZE_ASSETS', 
-                payload: {
-                    ...generatedAssets!,
-                    affiliateLinks
-                }
-            });
-            return Promise.resolve();
+            dispatchAssets({ type: 'SET_AFFILIATE_LINKS', payload: affiliateLinks });
         } catch (error) {
             console.error("Failed to load affiliate vault data:", error);
             setError(error instanceof Error ? error.message : "Could not load affiliate vault data.");
-            return Promise.reject(error);
+            throw error;
         }
-    }, [mongoBrandId, generatedAssets, dispatchAssets, setError]);
+    }, [mongoBrandId, dispatchAssets, setError]);
 
     const handleLoadPersonasData = useCallback(async () => {
         console.log("handleLoadPersonasData called");
-        // If no brand ID, we can't load data from MongoDB
         if (!mongoBrandId) {
-            // For local projects without MongoDB integration, we still want to show the UI
-            // but with empty data. The components will handle this case.
             console.log("No MongoDB brand ID, skipping personas data load");
-            return Promise.resolve();
+            return;
         }
         
         try {
             const personas = await loadPersonas(mongoBrandId);
             console.log("Personas data loaded:", personas);
-            
-            // Update the assets with the loaded data
-            dispatchAssets({ 
-                type: 'INITIALIZE_ASSETS', 
-                payload: {
-                    ...generatedAssets!,
-                    personas
-                }
-            });
-            return Promise.resolve();
+            dispatchAssets({ type: 'SET_PERSONAS', payload: personas });
         } catch (error) {
             console.error("Failed to load personas data:", error);
             setError(error instanceof Error ? error.message : "Could not load personas data.");
-            return Promise.reject(error);
+            throw error;
         }
-    }, [mongoBrandId, generatedAssets, dispatchAssets, setError]);
+    }, [mongoBrandId, dispatchAssets, setError]);
 
     // Set brandId in configService when it changes
     useEffect(() => {
@@ -2502,7 +2499,10 @@ const App: React.FC = () => {
             dispatchAssets({ type: 'SAVE_PERSONA', payload: personaToSave });
             
             if (mongoBrandId) {
-                await savePersona(personaToSave, mongoBrandId);
+                const newId = await savePersona(personaToSave, mongoBrandId);
+                if (newId && newId !== personaToSave.id) {
+                    dispatchAssets({ type: 'UPDATE_PERSONA_ID', payload: { oldId: personaToSave.id, newId } });
+                }
             }
             updateAutoSaveStatus('saved');
         } catch(e: any) {
@@ -2534,6 +2534,67 @@ const App: React.FC = () => {
                 .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }
     }, [mongoBrandId, updateAutoSaveStatus]);
+
+    const [isAutoPersonasModalOpen, setIsAutoPersonasModalOpen] = useState(false);
+    const [autoGeneratedPersonas, setAutoGeneratedPersonas] = useState<Partial<Persona>[] | null>(null);
+
+    const handleAutoGeneratePersona = useCallback(async () => {
+        if (!generatedAssets?.brandFoundation) {
+            setError("Brand Foundation is not available. Please generate a brand kit first.");
+            return;
+        }
+        const { mission, usp } = generatedAssets.brandFoundation;
+        if (!mission || !usp) {
+            setError("Brand mission and USP must be defined in the Brand Kit to generate a persona.");
+            return;
+        }
+
+        setLoaderContent({ title: "AI is Generating Personas...", steps: ["Analyzing brand identity...", "Crafting diverse persona profiles...", "Finalizing results..."] });
+        setError(null);
+        try {
+            const personaDataArray = await autoGeneratePersonaProfile(mission, usp);
+            setAutoGeneratedPersonas(personaDataArray);
+            setIsAutoPersonasModalOpen(true);
+        } catch (err) {
+            console.error("Failed to auto-generate personas:", err);
+            setError(err instanceof Error ? err.message : "An unknown error occurred during persona generation.");
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [generatedAssets?.brandFoundation]);
+
+    const handleSaveSelectedPersonas = useCallback((selectedPersonas: Partial<Persona>[]) => {
+        if (!selectedPersonas || selectedPersonas.length === 0) {
+            setIsAutoPersonasModalOpen(false);
+            return;
+        }
+
+        const personasToSave = selectedPersonas.map(p => {
+            const newId = crypto.randomUUID(); // Keep client-side ID for reducer key, backend will create the final unified ID
+            const fullPersona: Persona = {
+                id: newId,
+                nickName: p.nickName || 'Generated Persona',
+                mainStyle: p.mainStyle || '',
+                activityField: p.activityField || '',
+                outfitDescription: p.visualCharacteristics || p.outfitDescription || '',
+                photos: Array.from({ length: 5 }, (_, i) => ({ id: crypto.randomUUID(), imageKey: `persona_${newId}_photo_${i}` })),
+                socialAccounts: [],
+                contentTone: p.contentTone,
+                visualCharacteristics: p.visualCharacteristics,
+                coreCharacteristics: p.coreCharacteristics,
+                keyMessages: p.keyMessages,
+            };
+            return fullPersona;
+        });
+
+        personasToSave.forEach(p => handleSavePersona(p));
+        
+        setIsAutoPersonasModalOpen(false);
+        setAutoGeneratedPersonas(null);
+        setSuccessMessage(`${personasToSave.length} new persona(s) saved successfully!`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+
+    }, [handleSavePersona]);
 
     const handleSaveSettings = useCallback(async (newSettings: Settings) => {
         setIsSavingSettings(true);
@@ -2825,6 +2886,7 @@ const App: React.FC = () => {
                             onDeletePersona={handleDeletePersona}
                             onSetPersonaImage={handleSetPersonaImage}
                             onUpdatePersona={handleUpdatePersona}
+                            onAutoGeneratePersona={handleAutoGeneratePersona}
                             // Strategy Hub
                             onSaveTrend={handleSaveTrend}
                             onDeleteTrend={handleDeleteTrend}
@@ -2883,6 +2945,14 @@ const App: React.FC = () => {
                             personaToConnect={personaToConnect}
                             platformToConnect={platformToConnect}
                             onSocialAccountConnected={handleSocialAccountConnected}
+                        />
+
+                        <AutoPersonaResultModal
+                            isOpen={isAutoPersonasModalOpen}
+                            onClose={() => setIsAutoPersonasModalOpen(false)}
+                            onSave={handleSaveSelectedPersonas}
+                            personaData={autoGeneratedPersonas}
+                            language={settings.language}
                         />
                     </>
                 );

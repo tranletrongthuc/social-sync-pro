@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { generateContentWithBff, generateImageWithBff } from './bffService';
+import { generateContentWithBff, generateImageWithBff, autoGeneratePersonaWithBff } from './bffService';
 import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../../types';
 
 
@@ -1226,3 +1226,14 @@ const instagramPurpose = "Capture immediate visual attention and generate curios
 const tiktokPurpose = "Hijack attention within the first three seconds with high-energy, trend-centric, easily digestible video clips. Extract the most surprising fact, controversial point, or quickest 'hack' to create an 'information gap' or emotional reaction that drives viewers to your profile to find the YouTube channel link for the complete breakdown.";
 
 const pinterestPurpose = "Create long-lasting, searchable resources that funnel users seeking solutions or inspiration. Convert core message into vertical Idea Pins or infographics with keyword-rich titles (e.g., 'How to Achieve X in 5 Easy Steps'). Serve as a visual bookmark solving part of the user's problem, with a direct outbound link to the YouTube video.";
+
+export const autoGeneratePersonaProfile = async (mission: string, usp: string): Promise<Partial<Persona>[]> => {
+    const personaProfiles = await autoGeneratePersonaWithBff(mission, usp);
+
+    if (!personaProfiles || !Array.isArray(personaProfiles)) {
+        throw new Error("Received invalid or empty array response from AI when generating persona profiles.");
+    }
+
+    // The bffFetch service already parses the JSON array.
+    return personaProfiles as Partial<Persona>[];
+};

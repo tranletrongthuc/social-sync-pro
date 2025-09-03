@@ -937,23 +937,31 @@ async function handler(request, response) {
                 avatarImageKey: persona.avatarImageKey,
                 avatarImageUrl: persona.avatarImageUrl,
                 brandId: brandId,
-                updatedAt: new Date()
+                updatedAt: new Date(),
+                // New auto-generation fields
+                contentTone: persona.contentTone,
+                visualCharacteristics: persona.visualCharacteristics,
+                coreCharacteristics: persona.coreCharacteristics || [],
+                keyMessages: persona.keyMessages || [],
+                gender: persona.gender
               };
               
-              // If persona.id exists, update; otherwise create new
-              if (persona.id) {
+              // If persona.id exists AND it's a valid ObjectId, it's an update.
+              if (persona.id && ObjectId.isValid(persona.id)) {
                 await personasCollection.updateOne(
                   { _id: new ObjectId(persona.id) },
                   { $set: personaDocument }
                 );
                 response.status(200).json({ id: persona.id });
               } else {
+                // Otherwise, it's a new persona (even if it has a client-side UUID).
+                // We generate a new, unified ID on the backend.
                 const newPersonaObjectId = new ObjectId();
                 const newPersonaId = newPersonaObjectId.toString();
                 const fullPersonaDocument = {
                     ...personaDocument,
                     _id: newPersonaObjectId,
-                    id: newPersonaId
+                    id: newPersonaId // Unified ID
                 };
                 await personasCollection.insertOne(fullPersonaDocument);
                 response.status(200).json({ id: newPersonaId });
@@ -1552,9 +1560,12 @@ async function handler(request, response) {
                     outfitDescription: record.outfitDescription,
                     avatarImageKey: record.avatarImageKey,
                     avatarImageUrl: record.avatarImageUrl,
-                    photos: record.photos || [], // Will be populated on client side if needed
-                    socialAccounts: record.socialAccounts || [], // Will be populated on client side if needed
-                    ...record // Include any other fields that might be in the record
+                    photos: record.photos || [],
+                    socialAccounts: record.socialAccounts || [],
+                    contentTone: record.contentTone,
+                    visualCharacteristics: record.visualCharacteristics,
+                    coreCharacteristics: record.coreCharacteristics,
+                    keyMessages: record.keyMessages
                 }));
     
                 response.status(200).json({ personas });

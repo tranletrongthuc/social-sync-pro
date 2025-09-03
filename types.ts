@@ -20,6 +20,12 @@ export interface Persona {
     avatarImageUrl?: string;
     photos: PersonaPhoto[];
     socialAccounts?: SocialAccount[]; // New field to store social accounts associated with the persona
+    // Fields for auto-generated personas
+    contentTone?: string;
+    visualCharacteristics?: string;
+    coreCharacteristics?: string[];
+    keyMessages?: string[];
+    gender?: string;
 }
 
 export interface BrandInfo {

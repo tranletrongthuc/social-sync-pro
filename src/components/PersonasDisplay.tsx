@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, memo, useId } from 'react';
-import type { Persona, PersonaPhoto, SocialAccount } from '../../types';
+import type { Persona, PersonaPhoto, SocialAccount, BrandFoundation } from '../../types';
 import { Button, Input, TextArea } from './ui';
-import { PlusIcon, UsersIcon, SearchIcon, TrashIcon, UploadIcon, DotsVerticalIcon, PencilIcon, FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, PinterestIcon } from './icons';
+import { PlusIcon, UsersIcon, SearchIcon, TrashIcon, UploadIcon, DotsVerticalIcon, PencilIcon, FacebookIcon, InstagramIcon, TikTokIcon, YouTubeIcon, PinterestIcon, SparklesIcon } from './icons';
 import { connectSocialAccountToPersona, disconnectSocialAccountFromPersona, handleConnectFacebookPage } from '../services/socialAccountService';
 import FacebookPageSelectionModal from './FacebookPageSelectionModal';
 
@@ -453,36 +453,16 @@ interface PersonasDisplayProps {
     onSetPersonaImage: (dataUrl: string, imageKey: string, personaId: string) => void;
     isUploadingImage: (imageKey: string) => boolean;
     language: string;
-    onUpdatePersona: (persona) => void; // New prop for updating persona after social account changes
+    onUpdatePersona: (persona: Persona) => void; // New prop for updating persona after social account changes
+    brandFoundation?: BrandFoundation;
+    onAutoGeneratePersona: () => void;
     // Lazy loading props
     isDataLoaded?: boolean;
     onLoadData?: () => void;
     isLoading?: boolean;
 }
 
-const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language, onUpdatePersona, isDataLoaded, onLoadData, isLoading }) => {
-    console.log("PersonasDisplay rendered with props:", { personas, generatedImages, isDataLoaded, isLoading });
-    
-    const [isPersonasDataLoaded, setIsPersonasDataLoaded] = useState(false);
-    const [isLoadingPersonasData, setIsLoadingPersonasData] = useState(false);
-    
-    // Load data when component mounts if not already loaded
-    useEffect(() => {
-        console.log("PersonasDisplay useEffect triggered", { isDataLoaded, onLoadData, isLoading });
-        if (!isDataLoaded && onLoadData && !isLoading) {
-            console.log("Loading personas data in PersonasDisplay");
-            setIsLoadingPersonasData(true);
-            onLoadData().finally(() => {
-                setIsLoadingPersonasData(false);
-                setIsPersonasDataLoaded(true);
-                console.log("Personas data loaded in PersonasDisplay");
-            });
-        } else if (isDataLoaded) {
-            console.log("Personas data already loaded in PersonasDisplay");
-            setIsPersonasDataLoaded(true);
-        }
-    }, []); // Empty dependency array to run only once
-    
+const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, onSetPersonaImage, isUploadingImage, language, onUpdatePersona, brandFoundation, onAutoGeneratePersona, isDataLoaded, onLoadData, isLoading }) => {
     const [newPersona, setNewPersona] = useState<Persona | null>(null);
 
     const T = {
@@ -490,6 +470,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
             title: "Quản lý KOL/KOC",
             subtitle: "Định nghĩa các nhân vật sẽ đại diện cho thương hiệu của bạn trong các chiến dịch.",
             addPersona: "Thêm KOL/KOC mới",
+            autoGenerate: "Tự động tạo",
             noPersonas: "Chưa có KOL/KOC nào.",
             addFirst: "Thêm người đầu tiên để bắt đầu.",
             confirmDelete: "Bạn có chắc muốn xóa nhân vật này không? Điều này không thể hoàn tác.",
@@ -498,6 +479,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
             title: "KOL/KOC Management",
             subtitle: "Define the personas who will represent your brand in campaigns.",
             addPersona: "Add New KOL/KOC",
+            autoGenerate: "Auto-Generate",
             noPersonas: "No personas yet.",
             addFirst: "Add your first one to get started.",
             confirmDelete: "Are you sure you want to delete this persona? This cannot be undone.",
@@ -543,7 +525,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
     return (
         <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
             {/* Loading indicator */}
-            {isLoadingPersonasData && (
+            {isLoading && (
                 <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
                     <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
                         <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -557,7 +539,16 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                     <h2 className="text-3xl font-bold font-sans text-gray-900 flex items-center gap-3"><UsersIcon className="h-8 w-8 text-brand-green"/> {texts.title}</h2>
                     <p className="text-lg text-gray-500 font-serif mt-1">{texts.subtitle}</p>
                 </div>
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 flex items-center gap-2">
+                    <Button 
+                        onClick={onAutoGeneratePersona} 
+                        variant="secondary"
+                        disabled={!brandFoundation?.mission || !brandFoundation?.usp}
+                        title={(!brandFoundation?.mission || !brandFoundation?.usp) ? "Please define a mission and USP in the Brand Kit tab first." : "Auto-generate a new persona"}
+                        className="flex items-center gap-2"
+                    >
+                        <SparklesIcon className="h-5 w-5"/> {texts.autoGenerate || 'Auto-Generate'}
+                    </Button>
                     <Button onClick={handleAddNew} className="flex items-center gap-2">
                         <PlusIcon className="h-5 w-5"/> {texts.addPersona}
                     </Button>

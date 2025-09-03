@@ -73,6 +73,23 @@ export const generateImageWithBff = async (
   }
 };
 
+export const autoGeneratePersonaWithBff = async (
+  mission: string,
+  usp: string
+): Promise<any> => {
+  try {
+    const response = await bffFetch('/api/gemini?action=auto-generate-persona', {
+      method: 'POST',
+      body: JSON.stringify({ mission, usp }),
+    });
+    
+    return response;
+  } catch (error) {
+    console.error(`Error calling BFF endpoint /api/gemini?action=auto-generate-persona:`, error);
+    throw error;
+  }
+};
+
 // --- OpenRouter API Functions ---
 
 export const generateContentWithOpenRouterBff = async (

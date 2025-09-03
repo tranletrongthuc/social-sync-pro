@@ -120,37 +120,15 @@ interface StrategyDisplayProps {
 const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
     const { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingTrendsFromSearch, productTrendToSelect, onLoadIdeasForTrend, isDataLoaded, onLoadData, isLoading } = props;
     
-    console.log("StrategyDisplay rendered with props:", { language, trends, ideas, personas, affiliateLinks, generatedImages, settings, isDataLoaded, isLoading });
-    
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
     const [useSearchForIdeas, setUseSearchForIdeas] = useState(false);
     const isGeminiModel = settings.textGenerationModel.startsWith('gemini-');
     const [wizardIdea, setWizardIdea] = useState<Idea | null>(null);
-    const [isStrategyHubDataLoaded, setIsStrategyHubDataLoaded] = useState(false);
-    const [isLoadingStrategyHubData, setIsLoadingStrategyHubData] = useState(false);
-
     const [industryForSearch, setIndustryForSearch] = useState('');
 
-    // Load data when component mounts if not already loaded
     useEffect(() => {
-        console.log("StrategyDisplay useEffect triggered", { isDataLoaded, onLoadData, isLoading });
-        if (!isDataLoaded && onLoadData && !isLoading) {
-            console.log("Loading strategy hub data in StrategyDisplay");
-            setIsLoadingStrategyHubData(true);
-            onLoadData().finally(() => {
-                setIsLoadingStrategyHubData(false);
-                setIsStrategyHubDataLoaded(true);
-                console.log("Strategy hub data loaded in StrategyDisplay");
-            });
-        } else if (isDataLoaded) {
-            console.log("Strategy hub data already loaded in StrategyDisplay");
-            setIsStrategyHubDataLoaded(true);
-        }
-    }, []); // Empty dependency array to run only once
-
-    useEffect(() => {
-        if (isStrategyHubDataLoaded && productTrendToSelect && trends.length > 0) {
+        if (isDataLoaded && productTrendToSelect && trends.length > 0) {
             const trendToSelect = trends.find(t => t.id === productTrendToSelect);
             if (trendToSelect) {
                 setSelectedTrend(trendToSelect);
@@ -158,13 +136,13 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                     onLoadIdeasForTrend(trendToSelect.id);
                 }
             }
-        } else if (isStrategyHubDataLoaded && !selectedTrend && trends.length > 0) {
+        } else if (isDataLoaded && !selectedTrend && trends.length > 0) {
             setSelectedTrend(trends[0]);
             if (onLoadIdeasForTrend) {
                 onLoadIdeasForTrend(trends[0].id);
             }
         }
-    }, [trends, productTrendToSelect, selectedTrend, onLoadIdeasForTrend, isStrategyHubDataLoaded]);
+    }, [trends, productTrendToSelect, selectedTrend, onLoadIdeasForTrend, isDataLoaded]);
     
     const T = {
         'Việt Nam': {
@@ -267,23 +245,11 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
     }, [ideas, selectedTrend]);
 
     return (
-        <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
+        <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50 relative">
             {/* Loading indicator */}
-            {isLoadingStrategyHubData && (
-                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-gray-700 font-medium">Loading strategy hub data...</p>
-                    </div>
-                </div>
-            )}
-            {/* Loading indicator */}
-            {isLoadingStrategyHubData && (
-                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-gray-700 font-medium">Loading strategy hub data...</p>
-                    </div>
+            {isLoading && (
+                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
+                    <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
                 </div>
             )}
             

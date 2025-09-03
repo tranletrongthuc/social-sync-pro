@@ -96,6 +96,7 @@ interface MainDisplayProps {
   onDeletePersona: (personaId: string) => void;
   onSetPersonaImage: (dataUrl: string, imageKey: string, personaId: string) => void;
   onUpdatePersona: (persona: Persona) => void;
+  onAutoGeneratePersona: () => void;
   // Strategy Hub
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
@@ -196,6 +197,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onSavePersona,
     onDeletePersona,
     onSetPersonaImage,
+    onAutoGeneratePersona,
     onSaveTrend,
     onDeleteTrend,
     onGenerateIdeas,
@@ -384,9 +386,6 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   
   // Override setActiveTab to implement lazy loading
   const handleSetActiveTab = (tab: ActiveTab) => {
-    // Mark the tab as loaded (will trigger data loading in useEffect)
-    markTabAsLoaded(tab);
-    
     // Call the original setActiveTab
     setActiveTab(tab);
   };
@@ -529,7 +528,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onSetPersonaImage={onSetPersonaImage}
               isUploadingImage={isUploadingImage}
               language={settings.language}
-              onUpdatePersona={props.onUpdatePersona}
+              onUpdatePersona={onUpdatePersona}
+              brandFoundation={brandFoundation}
+              onAutoGeneratePersona={onAutoGeneratePersona}
               // Lazy loading props
               isDataLoaded={loadedTabs.has('personas')}
               onLoadData={props.onLoadPersonasData}

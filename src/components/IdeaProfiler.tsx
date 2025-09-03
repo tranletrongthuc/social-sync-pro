@@ -63,10 +63,10 @@ const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoadin
       generateButton: 'Tạo hồ sơ thương hiệu',
       generateButtonLoading: 'Đang tạo...',
       connectDB: "Kết nối Cơ sở dữ liệu",
-      loadFile: "Tải dự án",
+      loadFile: "Tải lên dự án",
       yourProjects: "Hoặc tiếp tục với một dự án hiện có",
-      loadingProjects: "Đang tải dự án...",
-      footerText: "Cung cấp bởi Google Gemini",
+      loadingProjects: "Đang tải lên dự án...",
+      footerText: "Cung cấp bởi Social Sync Pro Inc ",
       noProjectsFound: "Không tìm thấy dự án nào trong cơ sở dữ liệu của bạn.",
     },
     'English': {
@@ -80,7 +80,7 @@ const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoadin
       loadFile: "Load Project",
       yourProjects: "Or continue with an existing project",
       loadingProjects: "Loading projects...",
-      footerText: "Powered by Google Gemini",
+      footerText: "Powered by Social Sync Pro Inc",
       noProjectsFound: "No projects found in your database.",
     }
   };

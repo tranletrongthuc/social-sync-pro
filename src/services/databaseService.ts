@@ -280,7 +280,7 @@ const deleteAffiliateLinkFromDatabase = async (linkId: string, brandId: string):
 /**
  * Save persona to MongoDB
  */
-const savePersonaToDatabase = async (persona: Persona, brandId: string): Promise<void> => {
+const savePersonaToDatabase = async (persona: Persona, brandId: string): Promise<string> => {
   try {
     const response = await fetch('/api/mongodb?action=save-persona', {
       method: 'POST',
@@ -296,6 +296,7 @@ const savePersonaToDatabase = async (persona: Persona, brandId: string): Promise
 
     const result = await response.json();
     console.log('Persona saved successfully:', result);
+    return result.id;
   } catch (error) {
     console.error('Failed to save persona to database:', error);
     throw error;
@@ -977,7 +978,7 @@ const loadStrategyHubData = async (brandId: string): Promise<{
   ideas: Idea[];
 }> => {
   console.log("loadStrategyHubData called with brandId:", brandId);
-  const response = await fetch('/api/mongodb?action=strategy-hub', {
+  const response = await fetch('/api/mongodb?action=load-strategy-hub', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json',},
     body: JSON.stringify({ brandId }),
@@ -999,7 +1000,7 @@ const loadStrategyHubData = async (brandId: string): Promise<{
  */
 const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]> => {
   console.log("loadAffiliateVaultData called with brandId:", brandId);
-  const response = await fetch('/api/mongodb?action=affiliate-vault', {
+  const response = await fetch('/api/mongodb?action=load-affiliate-vault', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1023,7 +1024,7 @@ const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]>
  */
 const loadPersonasData = async (brandId: string): Promise<Persona[]> => {
   console.log("loadPersonasData called with brandId:", brandId);
-  const response = await fetch('/api/mongodb?action=personas', {
+  const response = await fetch('/api/mongodb?action=load-personas', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

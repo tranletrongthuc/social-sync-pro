@@ -34,27 +34,6 @@ const emptyLink: Omit<AffiliateLink, 'id'> = {
 };
 
 const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language, isDataLoaded, onLoadData, isLoading }) => {
-    console.log("AffiliateVaultDisplay rendered with props:", { affiliateLinks, isDataLoaded, isLoading });
-    
-    const [isAffiliateVaultDataLoaded, setIsAffiliateVaultDataLoaded] = useState(false);
-    const [isLoadingAffiliateVaultData, setIsLoadingAffiliateVaultData] = useState(false);
-    
-    // Load data when component mounts if not already loaded
-    useEffect(() => {
-        console.log("AffiliateVaultDisplay useEffect triggered", { isDataLoaded, onLoadData, isLoading });
-        if (!isDataLoaded && onLoadData && !isLoading) {
-            console.log("Loading affiliate vault data in AffiliateVaultDisplay");
-            setIsLoadingAffiliateVaultData(true);
-            onLoadData().finally(() => {
-                setIsLoadingAffiliateVaultData(false);
-                setIsAffiliateVaultDataLoaded(true);
-                console.log("Affiliate vault data loaded in AffiliateVaultDisplay");
-            });
-        } else if (isDataLoaded) {
-            console.log("Affiliate vault data already loaded in AffiliateVaultDisplay");
-            setIsAffiliateVaultDataLoaded(true);
-        }
-    }, []); // Empty dependency array to run only once
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
@@ -323,11 +302,17 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
     const totalPages = Math.ceil(processedLinks.length / productsPerPage);
 
     return (
-        <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div className="h-full flex flex-col p-4 lg:px-8 lg:py-6 bg-gray-50/50 relative">
+            {/* Loading indicator */}
+            {isLoading && (
+                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
+                    <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
+                </div>
+            )}
+            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <div>
-                    <h2 className="text-3xl font-bold font-sans text-gray-900 flex items-center gap-3"><LinkIcon className="h-8 w-8 text-brand-green"/> {texts.title}</h2>
-                    <p className="text-lg text-gray-500 font-serif mt-1">{texts.subtitle}</p>
+                    <h2 className="text-2xl font-bold font-sans text-gray-900 flex items-center gap-2"><LinkIcon className="h-7 w-7 text-brand-green"/> {texts.title}</h2>
+                    <p className="text-md text-gray-500 font-serif">{texts.subtitle}</p>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                     <Button variant="secondary" onClick={onReloadLinks} className="flex items-center gap-2">
@@ -344,33 +329,33 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             </header>
 
             {/* KPIs */}
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-8">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="p-2 text-center">
-                        <CollectionIcon className="h-7 w-7 text-green-600 mx-auto mb-1"/>
-                        <p className="text-sm font-medium text-gray-500">{texts.totalLinks}</p>
-                        <p className="text-xl font-bold text-gray-900">{kpiData.totalLinks}</p>
+            <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm mb-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <div className="p-1 text-center">
+                        <CollectionIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
+                        <p className="text-xs font-medium text-gray-500">{texts.totalLinks}</p>
+                        <p className="text-lg font-bold text-gray-900">{kpiData.totalLinks}</p>
                     </div>
-                    <div className="p-2 text-center">
-                        <CashIcon className="h-7 w-7 text-green-600 mx-auto mb-1"/>
-                        <p className="text-sm font-medium text-gray-500">{texts.totalComm}</p>
-                        <p className="text-xl font-bold text-gray-900">{kpiData.totalComm}</p>
+                    <div className="p-1 text-center">
+                        <CashIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
+                        <p className="text-xs font-medium text-gray-500">{texts.totalComm}</p>
+                        <p className="text-lg font-bold text-gray-900">{kpiData.totalComm}</p>
                     </div>
-                    <div className="p-2 text-center">
-                        <ScaleIcon className="h-7 w-7 text-green-600 mx-auto mb-1"/>
-                        <p className="text-sm font-medium text-gray-500">{texts.avgRate}</p>
-                        <p className="text-xl font-bold text-gray-900">{kpiData.avgRate}</p>
+                    <div className="p-1 text-center">
+                        <ScaleIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
+                        <p className="text-xs font-medium text-gray-500">{texts.avgRate}</p>
+                        <p className="text-lg font-bold text-gray-900">{kpiData.avgRate}</p>
                     </div>
-                    <div className="p-2 text-center">
-                        <SparklesIcon className="h-7 w-7 text-green-600 mx-auto mb-1"/>
-                        <p className="text-sm font-medium text-gray-500">{texts.topPerformer}</p>
-                        <p className="text-xl font-bold text-gray-900 truncate" title={kpiData.topPerformer.name}>{kpiData.topPerformer.value}</p>
+                    <div className="p-1 text-center">
+                        <SparklesIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
+                        <p className="text-xs font-medium text-gray-500">{texts.topPerformer}</p>
+                        <p className="text-lg font-bold text-gray-900 truncate" title={kpiData.topPerformer.name}>{kpiData.topPerformer.value}</p>
                     </div>
                 </div>
             </div>
 
             {/* Toolbar */}
-            <div className="mb-6 flex flex-col md:flex-row gap-4">
+            <div className="mb-4 flex flex-col md:flex-row gap-3">
                 <div className="relative flex-grow">
                     <Input 
                         placeholder={texts.searchPlaceholder} 
@@ -380,7 +365,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                     />
                     <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 </div>
-                <div className="flex items-center gap-4 flex-shrink-0">
+                <div className="flex items-center gap-3 flex-shrink-0">
                      <div className="flex items-center gap-2">
                         <label htmlFor="products-per-page" className="text-sm font-medium text-gray-700 whitespace-nowrap">{texts.productsPerPage}:</label>
                         <Select id="products-per-page" value={productsPerPage} onChange={(e) => setProductsPerPage(Number(e.target.value))}>
@@ -404,12 +389,12 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 </div>
             </div>
 
-            <main className="flex-grow overflow-y-auto -mx-2 p-2 sm:p-4 lg:p-6 flex flex-col">
+            <main className="flex-grow overflow-y-auto -mx-4 p-4 flex flex-col">
                 {(affiliateLinks.length > 0 || isAddingNewLink) ? (
                     <>
                         <div className="flex-grow">
                             {(displayLinks.length > 0 || isAddingNewLink) ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6">
                                      {isAddingNewLink && (
                                         <ProductCard
                                             isNew

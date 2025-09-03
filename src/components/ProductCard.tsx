@@ -167,7 +167,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                             </div>
                             <div>
                                 
-                                <h3 className={`text-lg font-bold text-gray-900 leading-tight`}>{link.productName}</h3>
+                                <h3 className={`text-lg font-bold text-gray-900 leading-tight`} title={link.productName}>
+                                    {link.productName.length > 68 ? `${link.productName.substring(0, 68)}...` : link.productName}
+                                </h3>
                                 {link.product_rating !== undefined && link.product_rating !== null && (
                                     <p className="text-sm text-gray-600 flex items-center gap-1">
                                         <span className="text-yellow-500">★</span> {link.product_rating.toFixed(1)}
@@ -212,7 +214,6 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                                 }}
                                 className="text-xs py-1 px-2"
                             >
-                                <SparklesIcon className="h-4 w-4 mr-1" />
                                 {texts.generateIdeas}
                             </Button>
                         )}

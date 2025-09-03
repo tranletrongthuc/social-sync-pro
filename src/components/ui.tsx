@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CopyIcon, CheckCircleIcon } from './icons';
+import { CopyIcon, CheckCircleIcon, CheckIcon } from './icons';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'tertiary';
@@ -140,3 +140,25 @@ export const Switch: React.FC<{
     </label>
   </div>
 );
+
+export const Checkbox: React.FC<{
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  id?: string;
+  className?: string;
+}> = ({ checked, onCheckedChange, id, className }) => {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      onClick={() => onCheckedChange(!checked)}
+      id={id}
+      className={`peer h-4 w-4 shrink-0 rounded-sm border-2 border-gray-400 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-green focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 ${checked ? 'bg-brand-green border-brand-green' : 'bg-white'} ${className}`}
+    >
+      <div className={`flex items-center justify-center text-white ${checked ? 'opacity-100' : 'opacity-0'}`}>
+        <CheckIcon className="h-3 w-3" />
+      </div>
+    </button>
+  );
+};

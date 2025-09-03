@@ -153,6 +153,71 @@ async function handler(request, response) {
       }
       break;
     }
+    case 'auto-generate-persona': {
+      if (request.method !== 'POST') {
+        return response.status(405).json({ error: 'Method Not Allowed' });
+      }
+      console.log('--- Received request for /api/gemini/auto-generate-persona ---');
+      try {
+        const { mission, usp } = request.body;
+
+        if (!mission || !usp) {
+          return response.status(400).json({ error: 'Missing required fields: mission and usp' });
+        }
+
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+        const prompt = `
+          You are an expert brand strategist and storyteller. Your task is to create a detailed, brand-aligned persona based on the provided brand information.
+
+          **Brand Information:**
+          *   **Mission Statement:** "${mission}"
+          *   **Unique Selling Proposition (USP):** "${usp}"
+
+          **Instructions:**
+          Generate an array of EXACTLY 3 persona profiles. Each persona in the array must be distinct and diverse from the others.
+          - **Diversity Requirement:** The set of personas must include a mix of genders (male, female) and represent different facets of the target audience (e.g., one could be a seasoned expert, another a curious newcomer).
+          - **Uniqueness Requirement:** Do not use the same name or highly similar characteristics for different personas in the array. Each profile should feel like a unique individual.
+
+          **Output Format:**
+          Provide your response as a single, minified JSON array of objects. Do not include any text or markdown formatting before or after the JSON object. The JSON objects must have the following structure:
+          [
+            {
+              "nickName": "A realistic, human-sounding first and last name for the persona that fits the brand's character (e.g., 'Alex Chen', 'Sophia Miller').",
+              "gender": "Male or Female",
+              "mainStyle": "A brief description of the persona's primary style (e.g., 'Minimalist and Modern', 'Bohemian and Earthy').",
+              "activityField": "The persona's main area of activity or expertise (e.g., 'Tech and Gadgets', 'Sustainable Living', 'Fitness and Wellness').",
+              "contentTone": "A description of the appropriate voice and style for all communications (e.g., 'Inspirational and empowering, with a friendly and approachable tone.').",
+              "visualCharacteristics": "Detailed descriptions of the persona's appearance, including clothing, style, and specific features. This will be used as a reference for generating an avatar. Be descriptive (e.g., 'Wears ethically sourced linen clothing in neutral tones, has long, flowing brown hair, and a warm, inviting smile. Often seen in natural, outdoor settings.').",
+              "coreCharacteristics": [
+                "A list of 3-5 key personality traits and values that resonate with the target audience (e.g., 'Authenticity', 'Innovation', 'Community-focused')."
+              ],
+              "keyMessages": [
+                "A list of 3-5 core messages the persona should consistently communicate, derived from the brand's mission and USP."
+              ]
+            }
+          ]
+        `;
+
+        const result = await model.generateContent(prompt);
+        const responseText = result.response.text();
+
+        // Clean the response to ensure it's valid JSON
+        const cleanedJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+        // Parse the JSON response
+        const personaData = JSON.parse(cleanedJson);
+
+        response.status(200).json(personaData);
+        console.log('--- Auto-generated persona sent to client ---');
+
+      } catch (error) {
+        console.error('--- CRASH in /api/gemini/auto-generate-persona ---');
+        console.error('Error object:', error);
+        response.status(500).json({ error: 'Failed to generate persona from Gemini API: ' + error.message });
+      }
+      break;
+    }
     default:
       response.setHeader('Allow', ['POST']);
       response.status(405).end(`Method ${request.method} Not Allowed for action ${action}`);
