@@ -308,6 +308,7 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
         }
 
         case 'ADD_IDEAS': {
+            console.log("ADD_IDEAS reducer called with:", action.payload);
             if (!state) return state;
             const newIdeas = action.payload;
             if (newIdeas.length === 0) return state;
@@ -530,7 +531,6 @@ const App: React.FC = () => {
         
         try {
             const affiliateLinks = await loadAffiliateVault(mongoBrandId);
-            console.log("Affiliate vault data loaded:", affiliateLinks);
             dispatchAssets({ type: 'SET_AFFILIATE_LINKS', payload: affiliateLinks });
         } catch (error) {
             console.error("Failed to load affiliate vault data:", error);
@@ -1541,10 +1541,11 @@ const App: React.FC = () => {
                 trendId: trend.id,
             }));
             
-            dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
-            
             if (mongoBrandId) {
-                await saveIdeasToDatabase(newIdeas, mongoBrandId);
+                const savedIdeas = await saveIdeasToDatabase(newIdeas, mongoBrandId);
+                dispatchAssets({ type: 'ADD_IDEAS', payload: savedIdeas });
+            } else {
+                dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
             }
         } catch (err) {
             console.error("Failed to generate ideas:", err);
@@ -1708,61 +1709,22 @@ const App: React.FC = () => {
     // New function for generating ideas from a product
     const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
         setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
-        console.log("User configured model:", settings.textGenerationModel);
-        
-        if ((settings.textGenerationModel).startsWith('gemini-') && !(settings.textGenerationModel).includes('free')) {
-            // Check BFF health instead of directly accessing environment variables
-            try {
-                const { checkBffHealth } = await import('./services/bffService');
-                const health = await checkBffHealth();
-                if (!health.services.gemini) {
-                    setError("Gemini API key is not configured on the BFF. Please check your server .env file and restart the BFF server.");
-                    setLoaderContent(null);
-                    return;
-                }
-            } catch (error) {
-                setError("Failed to check BFF health. Please ensure the BFF server is running.");
-                setLoaderContent(null);
-                return;
-            }
-        }
-        
         try {
             const generationTask = (model: string) => {
-                console.log("Attempting to generate ideas with model:", model);
                 return textGenerationService.generateIdeasFromProduct(product, settings.language, model);
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
-            
+
             if (!Array.isArray(newIdeaData) || newIdeaData.length === 0) {
                 throw new Error("Failed to generate ideas: No valid ideas returned from AI service.");
             }
-            
-            for (let i = 0; i < newIdeaData.length; i++) {
-                const idea = newIdeaData[i];
-                if (!idea.title || !idea.description || !idea.targetAudience) {
-                    console.error("Invalid idea structure:", idea);
-                    throw new Error(`Idea ${i + 1} is missing required fields. Please try again.`);
-                }
-            }
-            
-            const newIdeas: Idea[] = newIdeaData.map(idea => ({
-                ...idea,
-                id: crypto.randomUUID(),
-                trendId: 'product-' + product.id, 
-                productId: product.id, 
-            }));
-            
-            dispatchAssets({ type: 'ADD_IDEAS', payload: newIdeas });
-            
-            const productTrendId = 'product-' + product.id;
+
             const existingTrends = generatedAssets?.trends || [];
-            const productTrendExists = existingTrends.some(trend => trend.id === productTrendId);
-            
-            let productTrend: Trend;
-            if (!productTrendExists) {
-                productTrend = {
-                    id: productTrendId,
+            let productTrend: Trend | undefined = existingTrends.find(t => t.topic === `Ideas for: ${product.productName}`);
+            let trendId: string;
+
+            if (!productTrend) {
+                const newTrendPayload: Omit<Trend, 'id'> = {
                     brandId: mongoBrandId || '',
                     industry: 'Product Ideas',
                     topic: `Ideas for: ${product.productName}`,
@@ -1772,40 +1734,58 @@ const App: React.FC = () => {
                     analysis: `Affiliate product ideas for ${product.productName}`,
                     createdAt: new Date().toISOString(),
                 };
-                dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
-                
+
                 if (mongoBrandId) {
                     updateAutoSaveStatus('saving');
                     try {
-                        await saveTrend(productTrend, mongoBrandId);
+                        const newId = await saveTrend(newTrendPayload, mongoBrandId);
+                        productTrend = { ...newTrendPayload, id: newId };
+                        dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
                         updateAutoSaveStatus('saved');
                     } catch (e) {
                         console.error("Failed to save trend to MongoDB:", e);
                         setError(e instanceof Error ? e.message : "Failed to save trend to MongoDB.");
                         updateAutoSaveStatus('error');
                     }
+                } else {
+                    productTrend = { ...newTrendPayload, id: crypto.randomUUID() };
+                    dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
                 }
-            } else {
-                productTrend = existingTrends.find(trend => trend.id === productTrendId)!;
             }
             
+            trendId = productTrend!.id;
+
+            const newIdeas: Idea[] = newIdeaData.map(idea => ({
+                ...idea,
+                id: crypto.randomUUID(),
+                trendId: trendId, 
+                productId: product.id, 
+            }));
+
             if (mongoBrandId) {
                 updateAutoSaveStatus('saving');
                 try {
-                    await saveIdeasToDatabase(newIdeas);
+                    const savedIdeas = await saveIdeasToDatabase(newIdeas, mongoBrandId);
+                    dispatchAssets({ type: 'ADD_IDEAS', payload: savedIdeas });
                     updateAutoSaveStatus('saved');
+                    
+                    setSuccessMessage(`Generated ${newIdeas.length} ideas from ${product.productName}`);
+                    setTimeout(() => setSuccessMessage(null), 3000);
+                    
+                    setActiveTab('strategy');
+                    setProductTrendToSelect(trendId);
                 } catch (e) {
                     console.error("Failed to save ideas to MongoDB:", e);
                     setError(e instanceof Error ? e.message : "Failed to save ideas to MongoDB.");
                     updateAutoSaveStatus('error');
                 }
+            } else {
+                setSuccessMessage(`Generated ${newIdeas.length} ideas from ${product.productName}`);
+                setTimeout(() => setSuccessMessage(null), 3000);
+                
+                setActiveTab('strategy');
+                setProductTrendToSelect(trendId);
             }
-            
-            setSuccessMessage(`Generated ${newIdeas.length} ideas from ${product.productName}`);
-            setTimeout(() => setSuccessMessage(null), 3000);
-            
-            setActiveTab('strategy');
-            setProductTrendToSelect(productTrendId);
         } catch (err) {
             console.error("Failed to generate ideas from product:", err);
             let errorMessage = "Failed to generate ideas from product. Please check your API keys and try again.";
@@ -1819,7 +1799,6 @@ const App: React.FC = () => {
                 }
             }
             setError(errorMessage);
-            setLoaderContent(null);
         } finally {
             setLoaderContent(null);
         }
@@ -1987,7 +1966,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             // Step 1: Load initial project data for fast rendering
-            const { brandSummary, brandKitData } = await loadInitialData(brandId);
+            const { brandSummary, brandKitData, affiliateLinks } = await loadInitialData(brandId);
             
             // Create a minimal assets object with just the brand kit data
             const initialAssets: GeneratedAssets = {
@@ -1995,7 +1974,7 @@ const App: React.FC = () => {
                 coreMediaAssets: brandKitData.coreMediaAssets,
                 unifiedProfileAssets: brandKitData.unifiedProfileAssets,
                 mediaPlans: [], // Will be loaded lazily
-                affiliateLinks: [], // Will be loaded lazily
+                affiliateLinks: affiliateLinks || [], // Use loaded links
                 personas: [], // Will be loaded lazily
                 trends: [], // Will be loaded lazily
                 ideas: [], // Will be loaded lazily
@@ -2854,6 +2833,7 @@ const App: React.FC = () => {
                             onDeleteAffiliateLink={handleDeleteAffiliateLink}
                             onImportAffiliateLinks={handleImportAffiliateLinks}
                             onReloadLinks={handleReloadAffiliateLinks}
+                            onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
                             // KhongMinh
                             analyzingPostIds={analyzingPostIds}
                             isAnyAnalysisRunning={analyzingPostIds.size > 0}

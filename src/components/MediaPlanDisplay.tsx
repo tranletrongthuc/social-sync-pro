@@ -680,7 +680,6 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                       <>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                           {displayedPosts.map(postInfo => {
-                            const promotedProductsCount = postInfo.post.promotedProductIds?.length || 0;
                             return (
                               <PostCard
                                 key={postInfo.post.id}
@@ -688,7 +687,6 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                                 language={language}
                                 imageUrl={postInfo.post.imageKey ? props.generatedImages[postInfo.post.imageKey] : undefined}
                                 videoUrl={postInfo.post.videoKey ? props.generatedVideos[postInfo.post.videoKey] : undefined}
-                                promotedProductsCount={promotedProductsCount}
                                 isDraft={postInfo.post.status === 'draft' || (!postInfo.post.status && !postInfo.post.scheduledAt)}
                                 isSelected={props.selectedPostIds.has(postInfo.post.id)}
                                 onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}

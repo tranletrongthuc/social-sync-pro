@@ -1157,6 +1157,7 @@ For each idea, provide:
 1.  A catchy 'title' that would grab attention.
 2.  A detailed 'description' explaining the concept and how it would showcase the product.
 3.  A specific 'targetAudience' that this idea would appeal to.
+4.  The 'productId' of the product, which MUST be exactly this value: "${product.id}".
 
 Product Details:
 ${productDetails}
@@ -1172,8 +1173,9 @@ Make sure each idea is distinct and highlights different aspects of the product.
                 title: { type: Type.STRING },
                 description: { type: Type.STRING },
                 targetAudience: { type: Type.STRING },
+                productId: { type: Type.STRING },
             },
-            required: ['title', 'description', 'targetAudience'],
+            required: ['title', 'description', 'targetAudience', 'productId'],
         },
     };
 

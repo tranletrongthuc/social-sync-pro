@@ -274,3 +274,45 @@ After making changes to a post in the Post Detail modal (e.g., uploading an imag
     - Created a map to correctly associate each `post.id` with its true `weekIndex` and `postIndex`.
     - Ensured every `PostInfo` object in `paginatedPostInfos` now has the accurate coordinates needed for the reducer to update the correct post in the main state.
 - This ensures that changes made in the modal are correctly propagated to the main state, triggering a re-render of the feed with the updated data.
+
+### Session Summary (2025-09-03)
+
+This session focused on significant bug fixing and the implementation of a major new feature, "Auto-Generate Persona Profile". We addressed issues ranging from data synchronization and database operations to UI layout and component-level logic.
+
+### 1. New Feature: Auto-Generate Persona Profile
+
+A new feature was fully implemented to auto-generate multiple, diverse brand personas based on the brand's mission and USP.
+
+*   **Backend:**
+    *   A new `auto-generate-persona` action was added to `api/gemini.js`.
+    *   The AI prompt was specifically engineered to request an array of 3 diverse personas (including a mix of genders) and to return the data in a structured JSON format.
+*   **Database & Types:**
+    *   The `Persona` type in `types.ts` was extended with new optional fields: `contentTone`, `visualCharacteristics`, `coreCharacteristics`, `keyMessages`, and `gender`.
+    *   The `save-persona` action in `api/mongodb.js` was updated to save these new fields and to robustly handle ID generation, ensuring the `id` and `_id` fields are unified for new documents.
+*   **Frontend:**
+    *   A new `autoGeneratePersonaProfile` function was added to the service layer to call the new endpoint.
+    *   The `PersonasDisplay.tsx` component was updated with an "Auto-Generate" button.
+    *   A new modal, `AutoPersonaResultModal.tsx`, was created to display the array of generated personas and allow the user to select which ones to save.
+    *   The main `App.tsx` component was updated with new state and handlers (`handleAutoGeneratePersona`, `handleSaveSelectedPersonas`) to manage the entire workflow.
+
+### 2. Bug Fixes & Refinements
+
+*   **Data Synchronization & Stale State:**
+    *   **Stale Persona List:** Fixed a bug where the persona list didn't update after a new persona was saved. The `savePersona` function was modified to return the final database ID to the client, and a new `UPDATE_PERSONA_ID` reducer action was implemented in `App.tsx` to synchronize the client-side state.
+    *   **Stale Promoted Products:** Fixed a bug where promoted products weren't displayed in the post detail modal. The root cause was that `affiliateLinks` were lazy-loaded. The fix involved updating the `initial-load` backend action and the corresponding frontend services to load affiliate links as part of the initial project data.
+*   **Database Operations (`upsert` Bug):**
+    *   Identified and fixed a critical, recurring bug where `updateOne` operations with `{ upsert: true }` were creating new, incomplete documents if the filter did not find a match.
+    *   This was corrected in `update-media-plan-post` and `save-settings` by removing the `upsert` flag, making these functions true "updates" and preventing data corruption.
+*   **UI & Component Logic:**
+    *   **Missing Promotion Label:** Fixed a bug where the "Promo" label wasn't showing on `PostCard`s. The component was refactored to derive the promotion status from the `postInfo` prop directly, rather than relying on a derived `promotedProductsCount` prop from the parent.
+    *   **Missing Loading Indicators:** Refactored the main tab components (`PersonasDisplay`, `AffiliateVaultDisplay`, `StrategyDisplay`) to remove their internal loading state and correctly use the `isLoading` prop passed from `MainDisplay` to show a loading overlay when data is being fetched.
+    *   **Missing `Checkbox` Component:** Resolved a startup crash by creating a new `Checkbox` component in `ui.tsx` and a `CheckIcon` in `icons.tsx`, as they were being imported but did not exist.
+*   **API Request Error:**
+    *   **Funnel Generation Crash:** Fixed a `400 Bad Request` error from the Google AI API. The `generate` action in `api/gemini.js` was incorrectly nesting the `tools` property inside `generation_config`. The code was corrected to place `tools` at the top level of the API request payload.
+
+### 3. Notes for Future Development
+
+*   **State Synchronization:** The session revealed a recurring pattern of client-side state becoming out of sync with the database after creation operations (e.g., persona IDs, post IDs). **Recommendation:** Ensure all "create" operations in the backend API return the final document ID, and the client-side logic *always* has a mechanism to receive this ID and update its state with this information.
+*   **Cautious Use of `upsert`:** The creation of incomplete documents was caused by the misuse of `{ upsert: true }`. **Recommendation:** Use `upsert` with extreme caution. It is only safe when the `$set` operation contains a complete data model for the document. For most cases, a clearer and safer pattern is to explicitly separate "create" and "update" logic.
+*   **Component Responsibility:** Note the issue where `PostCard` relied on a derived prop (`promotedProductsCount`) from its parent, which was a point of failure. Making child components more self-reliant by passing them the full data object (`postInfo`) and letting them derive their own state is more robust.
+*   **Lazy Loading Complexity:** Mention that the lazy-loading strategy for core data (`affiliateLinks`) caused downstream bugs in components that depended on that data. Suggest that for a given "project" or "brand" context, it might be simpler and more robust to load all associated reference data (like personas, affiliate links) at the start, rather than on a per-tab basis. This simplifies state management and prevents downstream component failures.

@@ -31,6 +31,10 @@ async function handler(request, response) {
         if (systemInstruction) {
           delete generationConfig.systemInstruction;
         }
+        const tools = generationConfig?.tools;
+        if (tools) {
+          delete generationConfig.tools;
+        }
 
         const modelConfig = { model: model };
         if (systemInstruction) {
@@ -47,10 +51,11 @@ async function handler(request, response) {
         if (Object.keys(generationConfig).length > 0) {
           generateContentRequest.generationConfig = generationConfig;
         }
+        if (tools) {
+          generateContentRequest.tools = tools;
+        }
 
-        const result = config 
-          ? await geminiModel.generateContent(generateContentRequest)
-          : await geminiModel.generateContent(JSON.stringify(contents));
+        const result = await geminiModel.generateContent(generateContentRequest);
         
         console.log('--- generateContent call SUCCEEDED ---');
         const responseText = result.response.text();

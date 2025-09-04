@@ -20,7 +20,6 @@ export interface PostCardProps {
     onViewDetails: (postInfo: PostInfo) => void;
     imageUrl?: string;
     videoUrl?: string;
-    promotedProductsCount?: number;
     isDraft: boolean;
     isSelected: boolean;
     onToggleSelection: (postId: string) => void;
@@ -30,7 +29,7 @@ export interface PostCardProps {
 }
 
 const PostCard: React.FC<PostCardProps> = (props) => {
-    const { postInfo, language, onViewDetails, imageUrl, videoUrl, promotedProductsCount, isDraft, isSelected, onToggleSelection, scheduledAt, publishedAt, publishedUrl } = props;
+    const { postInfo, language, onViewDetails, imageUrl, videoUrl, isDraft, isSelected, onToggleSelection, scheduledAt, publishedAt, publishedUrl } = props;
     const { post } = postInfo;
     const Icon = platformIcons[post.platform] || SparklesIcon;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -218,7 +217,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                         <span>{texts.video}</span>
                     </div>
                  )}
-                {promotedProductsCount && promotedProductsCount > 0 && (
+                {postInfo.post.promotedProductIds && postInfo.post.promotedProductIds.length > 0 && (
                      <div className="text-xs px-2 py-0.5 rounded-full font-medium text-purple-800 bg-purple-100 flex items-center gap-1">
                         <KhongMinhIcon className="h-3 w-3" />
                         <span>{texts.promoted}</span>

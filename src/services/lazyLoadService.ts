@@ -11,8 +11,7 @@ import {
  * Service for lazy loading data to improve initial load times
  */
 
-// Cache for loaded data to prevent unnecessary reloads
-const dataCache: Record<string, any> = {};
+import { dataCache } from './databaseService';
 
 /**
  * Load initial project data for fast rendering of the BrandKitView
@@ -24,6 +23,7 @@ export const loadInitialData = async (brandId: string): Promise<{
     coreMediaAssets: CoreMediaAssets;
     unifiedProfileAssets: UnifiedProfileAssets;
   };
+  affiliateLinks: AffiliateLink[];
 }> => {
   const cacheKey = `initial-${brandId}`;
   if (dataCache[cacheKey]) {
@@ -140,20 +140,3 @@ export const loadMediaPlanPosts = async (
   return data;
 };
 
-/**
- * Clear cache for a specific brand
- */
-export const clearCacheForBrand = (brandId: string): void => {
-  Object.keys(dataCache).forEach(key => {
-    if (key.includes(brandId)) {
-      delete dataCache[key];
-    }
-  });
-};
-
-/**
- * Clear all cache
- */
-export const clearAllCache = (): void => {
-  Object.keys(dataCache).forEach(key => delete dataCache[key]);
-};

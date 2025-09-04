@@ -1,7 +1,7 @@
 import type { GeneratedAssets, Settings, MediaPlan, CoreMediaAssets, UnifiedProfileAssets, MediaPlanGroup, BrandFoundation, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, ColorPalette, FontRecommendations, LogoConcept, PersonaPhoto, AIService } from '../../types';
 
 // Cache for loaded data to prevent unnecessary reloads
-const dataCache: Record<string, any> = {};
+export const dataCache: Record<string, any> = {};
 
 /**
  * Clear cache for a specific brand
@@ -439,12 +439,12 @@ const saveTrendToDatabase = async (trend: Omit<Trend, 'id'> & { id?: string }, b
     }
 
     const data = await response.json();
-    console.log("Trend saved successfully with ID:", data.trendId);
+    console.log("Trend saved successfully with ID:", data.id);
     
     // Clear cache for this brand's strategy hub data
     clearCacheForBrand(brandId);
     
-    return data.trendId;
+    return data.id;
   } catch (error) {
     console.error("Error saving trend:", error);
     throw error;
@@ -485,7 +485,7 @@ const deleteTrendFromDatabase = async (trendId: string, brandId: string): Promis
 /**
  * Save ideas to MongoDB
  */
-const saveIdeasToDatabase = async (ideas: Idea[]): Promise<void> => {
+const saveIdeasToDatabase = async (ideas: Idea[], brandId: string): Promise<Idea[]> => {
   console.log("saveIdeas called with ideas:", ideas);
   
   try {
@@ -494,7 +494,7 @@ const saveIdeasToDatabase = async (ideas: Idea[]): Promise<void> => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ ideas }),
+      body: JSON.stringify({ ideas, brandId }),
     });
 
     if (!response.ok) {
@@ -503,13 +503,14 @@ const saveIdeasToDatabase = async (ideas: Idea[]): Promise<void> => {
       throw new Error(`Failed to save ideas: ${response.statusText}`);
     }
 
+    const result = await response.json();
     console.log("Ideas saved successfully");
     
     // Clear cache for the brand associated with these ideas
-    if (ideas.length > 0) {
-      const brandId = ideas[0].id.split('-')[0]; // Extract brandId from the first idea's ID
+    if (brandId) {
       clearCacheForBrand(brandId);
     }
+    return result.ideas;
   } catch (error) {
     console.error("Error saving ideas:", error);
     throw error;
@@ -927,6 +928,7 @@ const loadInitialProjectData = async (brandId: string): Promise<{
     unifiedProfileAssets: UnifiedProfileAssets;
     settings: Settings;
   };
+  affiliateLinks: AffiliateLink[];
 }> => {
   const response = await fetch('/api/mongodb?action=initial-load', {
     method: 'POST',
@@ -1015,7 +1017,6 @@ const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]>
   }
 
   const { affiliateLinks } = await response.json();
-  console.log("Affiliate vault data received from API:", affiliateLinks);
   return affiliateLinks;
 };
 

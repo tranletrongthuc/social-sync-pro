@@ -57,6 +57,12 @@ interface MainDisplayProps {
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
+  // Affiliate Vault Props
+  onSaveAffiliateLink: (link: AffiliateLink) => void;
+  onDeleteAffiliateLink: (linkId: string) => void;
+  onImportAffiliateLinks: (links: AffiliateLink[]) => void;
+  onReloadLinks: () => void;
+  onGenerateIdeasFromProduct: (product: AffiliateLink) => void;
   // KhongMinh Props
   analyzingPostIds: Set<string>;
   isAnyAnalysisRunning: boolean;
@@ -166,6 +172,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onSaveAffiliateLink,
     onDeleteAffiliateLink,
     onImportAffiliateLinks,
+    onReloadLinks,
+    onGenerateIdeasFromProduct,
     productTrendToSelect,
     brandFoundation,
     analyzingPostIds,
@@ -510,8 +518,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onSaveLink={onSaveAffiliateLink}
               onDeleteLink={onDeleteAffiliateLink}
               onImportLinks={onImportAffiliateLinks}
-              onReloadLinks={props.onReloadLinks}
-              onGenerateIdeasFromProduct={props.onGenerateIdeasFromProduct}
+              onReloadLinks={onReloadLinks}
+              onGenerateIdeasFromProduct={onGenerateIdeasFromProduct}
               language={settings.language}
               // Lazy loading props
               isDataLoaded={loadedTabs.has('affiliateVault')}

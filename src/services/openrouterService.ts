@@ -874,13 +874,14 @@ For each idea, provide:
 1.  A catchy 'title' that would grab attention.
 2.  A detailed 'description' explaining the concept and how it would showcase the product.
 3.  A specific 'targetAudience' that this idea would appeal to.
+4.  The 'productId' of the product, which MUST be exactly this value: "${product.id}".
 
 Product Details:
 ${productDetails}
 
 Make sure each idea is distinct and highlights different aspects of the product. Consider various content formats like tutorials, reviews, comparisons, lifestyle content, unboxings, etc.
 
-You MUST respond with a single, valid JSON array containing 5 idea objects. Do not add any text or explanation before or after the JSON array.`;
+You MUST respond with a single, valid JSON array containing 5 idea objects. Do not add any text or explanation before or after the JSON array.`
     
     const response = await generateContentWithOpenRouterBff(
         model,

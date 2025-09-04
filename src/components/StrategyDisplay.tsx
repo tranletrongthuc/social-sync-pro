@@ -161,7 +161,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
             trendSearchTitle: "Tự động hóa Chiến lược Facebook",
             trendSearchSubtitle: "Tự động tìm kiếm và lưu lại các Xu hướng từ Facebook bằng công cụ tìm kiếm của Google.",
             industryPlaceholder: "Nhập ngành của bạn (ví dụ: Thời trang, Công nghệ, Ẩm thực)",
-            analyzeTrends: "Tìm kiếm Xu hướng",
+            analyzeTrends: "Tìm",
             analyzing: "Đang tìm kiếm...",
         },
         'English': {
@@ -180,7 +180,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
             trendSearchTitle: "Facebook Strategy Automation",
             trendSearchSubtitle: "Automatically search and save Trends from Facebook using Google Search engine.",
             industryPlaceholder: "Enter your industry (e.g., Fashion, Tech, Food)",
-            analyzeTrends: "Search Trends",
+            analyzeTrends: "Search",
             analyzing: "Searching...",
         }
     };
@@ -260,7 +260,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
             </header>
 
             <div className="h-full flex flex-col xl:flex-row pt-6">
-                <aside className="w-full xl:w-1/3 border-b xl:border-b-0 xl:border-r border-gray-200 bg-white p-6 flex flex-col">
+                <aside className="xl:w-96 border-b xl:border-b-0 xl:border-r border-gray-200 bg-white p-6 flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="text-xl font-bold text-gray-800">{texts.trends}</h3>
                         <Button variant="secondary" onClick={() => setEditingTrend({})} className="flex items-center gap-1.5 !px-2 !py-1">
@@ -272,7 +272,7 @@ const StrategyDisplay: React.FC<StrategyDisplayProps> = (props) => {
                         <p className="text-gray-500 font-serif mt-1 text-sm">{texts.trendSearchSubtitle}</p>
                         <div className="mt-3 flex gap-2">
                             <Input value={industryForSearch} onChange={e => setIndustryForSearch(e.target.value)} placeholder={texts.industryPlaceholder} />
-                            <Button onClick={() => onGenerateFacebookTrends(industryForSearch)} disabled={!industryForSearch || isGeneratingTrendsFromSearch} className="w-48">
+                            <Button onClick={() => onGenerateFacebookTrends(industryForSearch)} disabled={!industryForSearch || isGeneratingTrendsFromSearch} className="whitespace-nowrap flex items-center justify-center">
                                {isGeneratingTrendsFromSearch ? texts.analyzing : <><SearchIcon className="h-4 w-4 mr-2" />{texts.analyzeTrends}</>}
                             </Button>
                         </div>

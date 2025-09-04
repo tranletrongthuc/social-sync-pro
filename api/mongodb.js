@@ -34,7 +34,7 @@ async function handler(request, response) {
           const mediaPlansCollection = db.collection('mediaPlanGroups');
           const result = await mediaPlansCollection.updateOne(
             createIdFilter(planId),
-            { $set: { personaId: personaId } }
+            { $set: { personaId: personaId }}
           );
           
           // Update posts if needed
@@ -43,7 +43,7 @@ async function handler(request, response) {
             for (const post of updatedPosts) {
               await postsCollection.updateOne(
                 createIdFilter(post.id),
-                { $set: { mediaPrompt: post.mediaPrompt } }
+                { $set: { mediaPrompt: post.mediaPrompt }, }
               );
             }
           }
@@ -92,7 +92,8 @@ async function handler(request, response) {
                 $set: { 
                   scheduledAt: update.scheduledAt,
                   status: update.status
-                }
+                },
+                $unset: { upsert: true }
               }
             }
           }));
@@ -167,7 +168,8 @@ async function handler(request, response) {
               if (brandId) {
                 await brandsCollection.updateOne(
                   { _id: new ObjectId(brandId) },
-                  { $set: brandDocument }
+                  { $set: brandDocument },
+                  { upsert: true }
                 );
                 response.status(200).json({ brandId: brandId });
               } else {
@@ -636,7 +638,7 @@ async function handler(request, response) {
                     bulkOperations.push({
                         updateOne: {
                             filter: { _id: new ObjectId(link.id), brandId: brandId },
-                            update: { $set: linkDocument }
+                            update: { $set: linkDocument },
                         }
                     });
                 } else { // Insert new
@@ -687,7 +689,8 @@ async function handler(request, response) {
               if (model.id) {
                 await aiModelsCollection.updateOne(
                   { _id: new ObjectId(model.id) },
-                  { $set: modelDocument }
+                  { $set: modelDocument },
+                  { upsert: true }
                 );
                 response.status(200).json({ id: model.id });
               } else {
@@ -727,7 +730,8 @@ async function handler(request, response) {
               if (service.id) {
                 await aiServicesCollection.updateOne(
                   { _id: new ObjectId(service.id) },
-                  { $set: serviceDocument }
+                  { $set: serviceDocument },
+                  { upsert: true }
                 );
                 response.status(200).json({ id: service.id });
               } else {
@@ -752,29 +756,29 @@ async function handler(request, response) {
           case 'save-ideas':
             console.log('--- Received request for /api/mongodb/save-ideas ---');
             try {
-              const { ideas } = request.body;
+              const { ideas, brandId } = request.body;
               
               const ideasCollection = db.collection('ideas');
-              const bulkOperations = [];
-    
-              for (const idea of ideas) {
+              const newIdeas = [];
+              const operations = ideas.map(idea => {
                 const ideaDocument = {
                     title: idea.title,
                     description: idea.description,
                     targetAudience: idea.targetAudience,
                     productId: idea.productId,
                     trendId: idea.trendId,
+                    brandId: brandId,
                     updatedAt: new Date()
                 };
-    
-                if (idea.id && ObjectId.isValid(idea.id)) { // Update existing
-                    bulkOperations.push({
+
+                if (idea.id && ObjectId.isValid(idea.id)) {
+                    return {
                         updateOne: {
                             filter: { _id: new ObjectId(idea.id) },
-                            update: { $set: ideaDocument }
+                            update: { $set: ideaDocument },
                         }
-                    });
-                } else { // Insert new
+                    };
+                } else {
                     const newIdeaObjectId = new ObjectId();
                     const newIdeaId = newIdeaObjectId.toString();
                     const newIdeaDocument = {
@@ -782,19 +786,20 @@ async function handler(request, response) {
                         _id: newIdeaObjectId,
                         id: newIdeaId,
                     };
-                    bulkOperations.push({
+                    newIdeas.push(newIdeaDocument);
+                    return {
                         insertOne: {
                             document: newIdeaDocument
                         }
-                    });
+                    };
                 }
-              }
-            
-              if (bulkOperations.length > 0) {
-                await ideasCollection.bulkWrite(bulkOperations);
+              });
+
+              if (operations.length > 0) {
+                await ideasCollection.bulkWrite(operations);
               }
               
-              response.status(200).json({ success: true });
+              response.status(200).json({ success: true, ideas: newIdeas });
               console.log('--- Ideas saved ---');
             } catch (error) {
               console.error('--- CRASH in /api/mongodb/save-ideas ---');
@@ -950,7 +955,8 @@ async function handler(request, response) {
               if (persona.id && ObjectId.isValid(persona.id)) {
                 await personasCollection.updateOne(
                   { _id: new ObjectId(persona.id) },
-                  { $set: personaDocument }
+                  { $set: personaDocument },
+                  { upsert: true }
                 );
                 response.status(200).json({ id: persona.id });
               } else {
@@ -981,8 +987,7 @@ async function handler(request, response) {
                   
                   const result = await brandsCollection.updateOne(
                     { _id: new ObjectId(brandId) },
-                    { $set: { settings: settings, updatedAt: new Date() } },
-                    { upsert: true }
+                    { $set: { settings: settings, updatedAt: new Date() } }
                   );
                   
                   response.status(200).json({ success: true });
@@ -1012,11 +1017,12 @@ async function handler(request, response) {
                 updatedAt: new Date()
               };
               
-              // If trend.id exists, update; otherwise create new
-              if (trend.id) {
+              // If trend.id exists and is a valid ObjectId, it's an update.
+              if (trend.id && ObjectId.isValid(trend.id)) {
                 await trendsCollection.updateOne(
                   { _id: new ObjectId(trend.id) },
-                  { $set: trendDocument }
+                  { $set: trendDocument },
+                  { upsert: true }
                 );
                 response.status(200).json({ id: trend.id });
               } else {
@@ -1057,7 +1063,8 @@ async function handler(request, response) {
                   
                   await brandsCollection.updateOne(
                     { _id: new ObjectId(brandId) },
-                    { $set: brandUpdates }
+                    { $set: brandUpdates },
+                    { upsert: true }
                   );
                   
                   response.status(200).json({ success: true });
@@ -1077,10 +1084,10 @@ async function handler(request, response) {
               
               const postsCollection = db.collection('mediaPlanPosts');
               
-              // Prepare post document
+              // Prepare post document with all possible fields from the client
               const postDocument = {
                 title: post.title,
-                weekIndex: post.weekIndex,
+                week: post.week,
                 theme: post.theme,
                 platform: post.platform,
                 contentType: post.contentType,
@@ -1091,34 +1098,40 @@ async function handler(request, response) {
                 mediaPrompt: post.mediaPrompt,
                 script: post.script,
                 imageKey: post.imageKey,
-                imageUrl: imageUrl,
+                imageUrl: imageUrl, // Comes from request body separately
                 videoKey: post.videoKey,
-                videoUrl: videoUrl,
-                mediaOrder: post.mediaOrder ? post.mediaOrder.join(',') : undefined,
-                sources: (post.sources || []).map(s => `${s.title}:${s.uri}`) || [],
+                videoUrl: videoUrl, // Comes from request body separately
+                mediaOrder: post.mediaOrder || [],
+                sources: post.sources || [],
                 scheduledAt: post.scheduledAt,
                 publishedAt: post.publishedAt,
                 publishedUrl: post.publishedUrl,
                 autoComment: post.autoComment,
                 status: post.status,
                 isPillar: post.isPillar,
-                brandId: brandId,
+                brandId: brandId, // Comes from request body separately
+                mediaPlanId: post.mediaPlanId,
                 promotedProductIds: post.promotedProductIds || [],
+                postOrder: post.postOrder,
                 updatedAt: new Date()
               };
               
-              // Remove undefined fields
+              // Remove undefined fields to avoid overwriting existing data with null
               Object.keys(postDocument).forEach(key => 
                 postDocument[key] === undefined && delete postDocument[key]
               );
               
-              // Update the post
-              await postsCollection.updateOne(
+              // Update the post. Do NOT upsert. If the post doesn't exist, it's a client-side data issue.
+              const result = await postsCollection.updateOne(
                 createIdFilter(post.id),
                 { $set: postDocument }
               );
+
+              if (result.matchedCount === 0) {
+                console.warn(`--- update-media-plan-post did not find a document to update for id: ${post.id} ---`);
+              }
               
-              response.status(200).json({ success: true });
+              response.status(200).json({ success: true, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
               console.log('--- Media plan post updated ---');
             } catch (error) {
               console.error('--- CRASH in /api/mongodb/update-media-plan-post ---');
@@ -1258,11 +1271,35 @@ async function handler(request, response) {
                       return response.status(400).json({ error: 'Missing brandId in request body' });
                     }
                     
-                    const brandRecord = await brandsCollection.findOne({ _id: new ObjectId(brandId) });
+                    const [brandRecord, affiliateLinksRecords] = await Promise.all([
+                        brandsCollection.findOne({ _id: new ObjectId(brandId) }),
+                        db.collection('affiliateProducts').find({ brandId: brandId }).toArray()
+                    ]);
                     
                     if (!brandRecord) {
                       return response.status(404).json({ error: `Brand with ID ${brandId} not found.` });
                     }
+
+                    const affiliateLinks = affiliateLinksRecords.map((record) => ({
+                        id: record._id.toString(),
+                        productId: record.productId,
+                        productName: record.productName,
+                        price: record.price,
+                        salesVolume: record.salesVolume,
+                        providerName: record.providerName,
+                        commissionRate: record.commissionRate,
+                        commissionValue: record.commissionValue,
+                        productLink: record.productLink,
+                        promotionLink: record.promotionLink,
+                        product_avatar: record.productAvatar,
+                        product_description: record.productDescription,
+                        features: record.features || [],
+                        use_cases: record.useCases || [],
+                        customer_reviews: record.customerReviews,
+                        product_rating: record.productRating,
+                        product_image_links: record.productImageLinks || [],
+                        ...record
+                    }));
         
                     const brandSummary = {
                       id: brandRecord._id.toString(),
@@ -1292,7 +1329,8 @@ async function handler(request, response) {
 
                     response.status(200).json({
                       brandSummary,
-                      brandKitData
+                      brandKitData,
+                      affiliateLinks
                     });
                     console.log('--- Initial load data sent to client ---');
         
