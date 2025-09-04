@@ -1,4 +1,4 @@
-import React, { useState, Suspense, useCallback, useEffect } from 'react';
+import React, { useState, Suspense, useCallback, useEffect, lazy } from 'react';
 import type { 
   GeneratedAssets, 
   MediaPlanGroup, 
@@ -11,11 +11,13 @@ import type {
   Idea, 
   PostInfo 
 } from '../../types';
-import ScheduleModal from './ScheduleModal';
-import BulkScheduleModal from './BulkScheduleModal';
 import { Header, ActiveTab } from './Header';
-import { MediaPlanWizardModal } from './MediaPlanWizardModal';
-import FunnelCampaignWizard from './FunnelCampaignWizard'; // Import the new component
+
+// Lazy load modals and wizards
+const ScheduleModal = lazy(() => import('./ScheduleModal'));
+const BulkScheduleModal = lazy(() => import('./BulkScheduleModal'));
+const MediaPlanWizardModal = lazy(() => import('./MediaPlanWizardModal').then(module => ({ default: module.MediaPlanWizardModal })));
+const FunnelCampaignWizard = lazy(() => import('./FunnelCampaignWizard'));
 
 const AssetDisplay = React.lazy(() => import('./AssetDisplay'));
 const MediaPlanDisplay = React.lazy(() => import('./MediaPlanDisplay'));
@@ -548,47 +550,55 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
         </Suspense>
       </main>
       
-      <ScheduleModal
-        isOpen={!!schedulingPost}
-        onClose={() => onOpenScheduleModal(null)}
-        schedulingPost={schedulingPost}
-        onSchedule={onSchedulePost}
-        isScheduling={isScheduling}
-        language={settings.language}
-      />
+      <Suspense fallback={null}>
+        <ScheduleModal
+          isOpen={!!schedulingPost}
+          onClose={() => onOpenScheduleModal(null)}
+          schedulingPost={schedulingPost}
+          onSchedule={onSchedulePost}
+          isScheduling={isScheduling}
+          language={settings.language}
+        />
+      </Suspense>
 
-      <BulkScheduleModal
-        isOpen={isBulkScheduleModalOpen}
-        onClose={onCloseBulkScheduleModal}
-        onSchedule={onBulkSchedule}
-        isScheduling={isScheduling}
-        language={settings.language}
-        selectedCount={selectedPostIds.size}
-      />
+      <Suspense fallback={null}>
+        <BulkScheduleModal
+          isOpen={isBulkScheduleModalOpen}
+          onClose={onCloseBulkScheduleModal}
+          onSchedule={onBulkSchedule}
+          isScheduling={isScheduling}
+          language={settings.language}
+          selectedCount={selectedPostIds.size}
+        />
+      </Suspense>
 
-      <MediaPlanWizardModal
-        isOpen={isWizardOpen}
-        onClose={() => { setIsWizardOpen(false); setInitialWizardPrompt(''); setInitialWizardProductId(undefined); }}
-        settings={settings}
-        onGenerate={onGeneratePlan}
-        isGenerating={isGeneratingPlan}
-        personas={assets.personas || []}
-        generatedImages={generatedImages}
-        initialPrompt={initialWizardPrompt}
-        affiliateLinks={assets.affiliateLinks || []}
-        initialProductId={initialWizardProductId}
-      />
+      <Suspense fallback={null}>
+        <MediaPlanWizardModal
+          isOpen={isWizardOpen}
+          onClose={() => { setIsWizardOpen(false); setInitialWizardPrompt(''); setInitialWizardProductId(undefined); }}
+          settings={settings}
+          onGenerate={onGeneratePlan}
+          isGenerating={isGeneratingPlan}
+          personas={assets.personas || []}
+          generatedImages={generatedImages}
+          initialPrompt={initialWizardPrompt}
+          affiliateLinks={assets.affiliateLinks || []}
+          initialProductId={initialWizardProductId}
+        />
+      </Suspense>
       
-      {/* Funnel Campaign Wizard Modal */}
-      <FunnelCampaignWizard
-        isOpen={isFunnelWizardOpen}
-        onClose={() => setIsFunnelWizardOpen(false)}
-        personas={assets.personas || []}
-        affiliateLinks={assets.affiliateLinks || []}
-        language={settings.language}
-        onCreatePlan={onCreateFunnelCampaignPlan}
-        generatedImages={generatedImages}
-      />
+      <Suspense fallback={null}>
+        {/* Funnel Campaign Wizard Modal */}
+        <FunnelCampaignWizard
+          isOpen={isFunnelWizardOpen}
+          onClose={() => setIsFunnelWizardOpen(false)}
+          personas={assets.personas || []}
+          affiliateLinks={assets.affiliateLinks || []}
+          language={settings.language}
+          onCreatePlan={onCreateFunnelCampaignPlan}
+          generatedImages={generatedImages}
+        />
+      </Suspense>
     </div>
   );
 };

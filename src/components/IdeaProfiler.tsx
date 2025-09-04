@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button, TextArea } from './ui';
 import { SparklesIcon, PlugIcon, UploadIcon, PlusIcon } from './icons';
-import { listBrandsFromDatabase } from '../services/databaseService';
 
 interface IdeaProfilerProps {
   onGenerateProfile: (idea: string) => void;
@@ -13,35 +12,26 @@ interface IdeaProfilerProps {
   setLanguage: (lang: string) => Promise<void>;
   integrationsVersion: number;
   areCredentialsSet: boolean;
+  brands: { id: string, name: string }[]; // New prop
+  isFetchingBrands: boolean; // New prop
 }
 
-const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ onGenerateProfile, isLoading, onLoadProject, onLoadProjectFromDatabase, onOpenIntegrations, language, setLanguage, integrationsVersion, areCredentialsSet }) => {
+const IdeaProfiler: React.FC<IdeaProfilerProps> = ({ 
+  onGenerateProfile, 
+  isLoading, 
+  onLoadProject, 
+  onLoadProjectFromDatabase, 
+  onOpenIntegrations, 
+  language, 
+  setLanguage, 
+  integrationsVersion, 
+  areCredentialsSet, 
+  brands, // Use prop
+  isFetchingBrands // Use prop
+}) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [idea, setIdea] = useState('');
-  const [brands, setBrands] = useState<{ id: string, name: string }[]>([]);
-  const [isFetchingBrands, setIsFetchingBrands] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const checkCredentialsAndFetch = async () => {
-      if (areCredentialsSet) {
-        setIsFetchingBrands(true);
-        setError(null);
-        try {
-          const fetchedBrands = await listBrandsFromDatabase();
-          setBrands(fetchedBrands);
-        } catch (err) {
-          console.error("Failed to fetch brands from Database:", err);
-          setError(err instanceof Error ? err.message : "Could not fetch projects.");
-        } finally {
-          setIsFetchingBrands(false);
-        }
-      } else {
-        setBrands([]); // Clear brands if credentials are not set
-      }
-    };
-    checkCredentialsAndFetch();
-  }, [integrationsVersion, areCredentialsSet]);
 
   const handleLoadClick = () => {
     fileInputRef.current?.click();

@@ -1,14 +1,17 @@
-import React, { useState, useCallback, useEffect, useRef, useReducer } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useReducer, Suspense, lazy } from 'react';
 import saveAs from 'file-saver';
-import IdeaProfiler from './components/IdeaProfiler';
-import BrandProfiler from './components/BrandProfiler';
-import MainDisplay from './components/MainDisplay';
-import AdminPage from './components/AdminPage';
+
+// Lazy load components
+const IdeaProfiler = lazy(() => import('./components/IdeaProfiler'));
+const BrandProfiler = lazy(() => import('./components/BrandProfiler'));
+const MainDisplay = lazy(() => import('./components/MainDisplay'));
+const AdminPage = lazy(() => import('./components/AdminPage'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const PersonaConnectModal = lazy(() => import('./components/PersonaConnectModal'));
+const AutoPersonaResultModal = lazy(() => import('./components/AutoPersonaResultModal'));
+
 import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
-import SettingsModal from './components/SettingsModal';
-import PersonaConnectModal from './components/PersonaConnectModal';
-import AutoPersonaResultModal from './components/AutoPersonaResultModal';
 import Toast from './components/Toast';
 import { generateImage, autoGeneratePersonaProfile } from './services/geminiService';
 import { createDocxBlob, createMediaPlanXlsxBlob } from './services/exportService';
@@ -33,7 +36,7 @@ import {
     deleteTrendFromDatabase,
     saveIdeasToDatabase,
     assignPersonaToPlanInDatabase,
-    checkDatabaseCredentials,
+    initializeApp, // Use the new initializer
     fetchAffiliateLinksForBrandFromDatabase as fetchAffiliateLinksForBrand,
     loadIdeasForTrend,
     checkIfProductExistsInDatabase,
@@ -484,24 +487,7 @@ const App: React.FC = () => {
     // State to track the product trend to select (for passing to MainDisplay)
     const [productTrendToSelect, setProductTrendToSelect] = useState<string | null>(null);
 
-    // Log environment variables for debugging
-    useEffect(() => {
-        // console.log("Environment variables at startup:", import.meta.env);
-        // Check BFF health instead of directly accessing environment variables
-        import('./services/bffService').then(({ checkBffHealth }) => {
-            checkBffHealth().then(health => {
-                if (health.services.gemini) {
-                    console.log("Gemini API Key is configured on the BFF");
-                } else {
-                    console.log("Gemini API Key is not configured on the BFF");
-                }
-            }).catch(error => {
-                console.log("Failed to check BFF health:", error);
-            });
-        }).catch(error => {
-            console.log("Failed to import BFF service:", error);
-        });
-    }, []);
+    
 
     // Lazy loading callbacks for MainDisplay component
     const handleLoadStrategyHubData = useCallback(async () => {
@@ -623,17 +609,28 @@ const App: React.FC = () => {
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
 
     const [isConfigLoaded, setIsConfigLoaded] = useState(false);
+    const [brands, setBrands] = useState<{ id: string, name: string }[]>([]);
+    const [isFetchingBrands, setIsFetchingBrands] = useState(true);
 
+    const configLoadedRef = useRef(false);
     useEffect(() => {
-        const loadInitialConfig = async () => {
+        if (configLoadedRef.current) return;
+        configLoadedRef.current = true;
+
+        const loadInitialData = async () => {
             try {
-                await configService.initializeConfig();
+                setIsFetchingBrands(true);
+                // Single call to initialize app data
+                const { credentialsSet, brands, adminDefaults } = await initializeApp();
+
+                await configService.initializeConfig(adminDefaults);
                 setSettings(configService.getAppSettings());
                 setAiModelConfig(configService.getAiModelConfig());
-                const areSet = await checkDatabaseCredentials();
-                console.log('areCredentialsSet', areSet);
-                setAreCredentialsSet(areSet);
-                if (areSet) {
+
+                setAreCredentialsSet(credentialsSet);
+                setBrands(brands);
+
+                if (credentialsSet) {
                     setToast({ message: 'Successfully connected to outer services.', type: 'success' });
                 } else {
                     setToast({ message: 'Failed to connect to outer services. Please check your credentials.', type: 'error' });
@@ -643,9 +640,10 @@ const App: React.FC = () => {
                 setError("Failed to load initial configuration. Please check your Database setup.");
             } finally {
                 setIsConfigLoaded(true);
+                setIsFetchingBrands(false);
             }
         };
-        loadInitialConfig();
+        loadInitialData();
     }, []);
 
     const isLoading = !!loaderContent;
@@ -689,19 +687,7 @@ const App: React.FC = () => {
                 console.log(`Attempting text generation with model: ${model}`);
                 
                 if (model.startsWith('gemini-') && !model.includes('free')) {
-                    // Check BFF health instead of directly accessing environment variables
-                    try {
-                        const { checkBffHealth } = await import('./services/bffService');
-                        const health = await checkBffHealth();
-                        console.log(`Checking Gemini API key for model ${model}:`, health.services.gemini ? "Key exists on BFF" : "Key is missing on BFF");
-                        if (!health.services.gemini) {
-                            console.log(`Skipping ${model} because Gemini API key is not configured on BFF`);
-                            throw new Error("Gemini API key is not configured on the BFF. Please check your server .env file and restart the BFF server.");
-                        }
-                    } catch (error) {
-                        console.log(`Failed to check BFF health for model ${model}:`, error);
-                        throw new Error("Failed to check BFF health. Please ensure the BFF server is running.");
-                    }
+                    // This check is now implicit in the backend call
                 }
                 
                 const result = await generationTask(model);
@@ -2763,141 +2749,149 @@ const App: React.FC = () => {
         case 'idea':
             return (
                 <>
-                    <IdeaProfiler
-                        onGenerateProfile={handleGenerateProfile}
-                        isLoading={!!loaderContent}
-                        onLoadProject={handleLoadProjectFile}
-                        onLoadProjectFromDatabase={handleLoadFromDatabase}
-                        language={settings.language}
-                        setLanguage={setLanguage}
-                        integrationsVersion={integrationsVersion}
-                        areCredentialsSet={areCredentialsSet}
-                    />
+                    <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
+                        <IdeaProfiler
+                            onGenerateProfile={handleGenerateProfile}
+                            isLoading={!!loaderContent}
+                            onLoadProject={handleLoadProjectFile}
+                            onLoadProjectFromDatabase={handleLoadFromDatabase}
+                            language={settings.language}
+                            setLanguage={setLanguage}
+                            integrationsVersion={integrationsVersion}
+                            areCredentialsSet={areCredentialsSet}
+                            brands={brands}
+                            isFetchingBrands={isFetchingBrands}
+                        />
+                    </Suspense>
                     {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
                     
                 </>
             );
         case 'profile':
             return (
-                <BrandProfiler
-                    initialBrandInfo={brandInfo!}
-                    onGenerate={handleGenerateKit}
-                    isLoading={!!loaderContent}
-                    onBack={handleBackToIdea}
-                    language={settings.language}
-                />
+                <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
+                    <BrandProfiler
+                        initialBrandInfo={brandInfo!}
+                        onGenerate={handleGenerateKit}
+                        isLoading={!!loaderContent}
+                        onBack={handleBackToIdea}
+                        language={settings.language}
+                    />
+                </Suspense>
             );
         case 'assets':
             if (generatedAssets) {
                                   return (
                     <>
-                        <MainDisplay
-                            assets={generatedAssets}
-                            onGenerateImage={handleGenerateImage}
-                            onSetImage={handleSetImage}
-                            generatedImages={generatedImages}
-                            isGeneratingImage={(key) => generatingImageKeys.has(key)}
-                            isUploadingImage={(key) => uploadingImageKeys.has(key)}
-                            settings={settings}
-                            onExportBrandKit={handleExportBrandKit}
-                            isExportingBrandKit={isExporting}
-                            onExportPlan={handleExportMediaPlan}
-                            isExportingPlan={isExporting}
-                            onGeneratePlan={handleGenerateMediaPlanGroup}
-                            isGeneratingPlan={!!loaderContent}
-                            onRegenerateWeekImages={handleRegenerateWeekImages}
-                            onBulkSuggestPromotions={handleBulkSuggestPromotions}
-                            onBulkGenerateComments={handleBulkGenerateComments}
-                            onBulkGenerateImages={handleBulkGenerateImages}
-                            productImages={[]}
-                            onSetProductImages={handleSetProductImages}
-                            onSaveProject={handleSaveProjectToFile}
-                            isSavingProject={isSaving}
-                            onStartOver={handleBackToIdea}
-                            autoSaveStatus={autoSaveStatus}
-                            onOpenSettings={() => setIsSettingsModalOpen(true)}
-                            onOpenIntegrations={() => setIsDatabaseLoadModalOpen(true)}
-                            activeTab={activeTab}
-                            setActiveTab={setActiveTabWithLog}
-                            // Media Plan props
-                            mediaPlanGroupsList={mediaPlanGroupsList}
-                            onSelectPlan={handleSelectPlan}
-                            // New prop to pass brandFoundation
-                            brandFoundation={generatedAssets?.brandFoundation}
-                            activePlanId={activePlanId}
-                            onUpdatePost={handleUpdatePost}
-                            onRefinePost={handleRefinePost}
-                            onAssignPersonaToPlan={handleAssignPersonaToPlan}
-                            // Affiliate Vault props
-                            onSaveAffiliateLink={handleSaveAffiliateLink}
-                            onDeleteAffiliateLink={handleDeleteAffiliateLink}
-                            onImportAffiliateLinks={handleImportAffiliateLinks}
-                            onReloadLinks={handleReloadAffiliateLinks}
-                            onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
-                            // KhongMinh
-                            analyzingPostIds={analyzingPostIds}
-                            isAnyAnalysisRunning={analyzingPostIds.size > 0}
-                            khongMinhSuggestions={khongMinhSuggestions}
-                            onAcceptSuggestion={handleAcceptSuggestion}
-                            onRunKhongMinhForPost={handleRunKhongMinhForPost}
-                            // On-demand prompt generation
-                            generatingPromptKeys={generatingPromptKeys}
-                            onGeneratePrompt={handleGenerateMediaPrompt}
-                            // Comment Generation
-                            onGenerateAffiliateComment={handleGenerateAffiliateComment}
-                            generatingCommentPostIds={generatingCommentPostIds}
-                            // Selection & Scheduling
-                            selectedPostIds={selectedPostIds}
-                            onTogglePostSelection={handleTogglePostSelection}
-                            onSelectAllPosts={handleSelectAllPosts}
-                            onClearSelection={() => setSelectedPostIds(new Set())}
-                            onOpenScheduleModal={setSchedulingPost}
-                            onPublishPost={handlePublishPost}
-                            isScheduling={isScheduling}
-                            onSchedulePost={handleSchedulePost}
-                            onPostDrop={handlePostDrop}
-                            schedulingPost={schedulingPost}
-                            onOpenBulkScheduleModal={() => setIsBulkScheduleModalOpen(true)}
-                            isBulkScheduleModalOpen={isBulkScheduleModalOpen}
-                            onCloseBulkScheduleModal={() => setIsBulkScheduleModalOpen(false)}
-                            onBulkSchedule={handleBulkSchedule}
-                            // Personas
-                            onSavePersona={handleSavePersona}
-                            onDeletePersona={handleDeletePersona}
-                            onSetPersonaImage={handleSetPersonaImage}
-                            onUpdatePersona={handleUpdatePersona}
-                            onAutoGeneratePersona={handleAutoGeneratePersona}
-                            // Strategy Hub
-                            onSaveTrend={handleSaveTrend}
-                            onDeleteTrend={handleDeleteTrend}
-                            onGenerateIdeas={handleGenerateIdeas}
-                            onGenerateContentPackage={handleGenerateContentPackage}
-                            onGenerateFacebookTrends={handleGenerateFacebookTrends}
-                            isGeneratingTrendsFromSearch={isGeneratingFacebookTrends}
-                            onLoadIdeasForTrend={handleLoadIdeasForTrend}
-                            // Video
-                            generatedVideos={generatedVideos}
-                            onSetVideo={handleSetVideo}
-                             // New Facebook Strategy Props
-                            onGenerateFacebookPostIdeas={handleGenerateFacebookPostIdeas}
-                            onAddFacebookPostIdeaToPlan={handleAddFacebookPostIdeaToPlan}
-                            isGeneratingFacebookPostIdeas={isGeneratingFacebookPostIdeas}
-                            // Post Detail Modal State
-                            viewingPost={viewingPost}
-                            setViewingPost={setViewingPost}
-                            // Funnel Campaign Props
-                            onCreateFunnelCampaignPlan={handleCreateFunnelCampaignPlan}
-                            // Lazy loading props
-                            isStrategyHubDataLoaded={!!(generatedAssets?.trends?.length > 0 || generatedAssets?.ideas?.length > 0)}
-                            onLoadStrategyHubData={handleLoadStrategyHubData}
-                            isLoadingStrategyHubData={false}
-                            isAffiliateVaultDataLoaded={!!(generatedAssets?.affiliateLinks?.length > 0)}
-                            onLoadAffiliateVaultData={handleLoadAffiliateVaultData}
-                            isLoadingAffiliateVaultData={false}
-                            isPersonasDataLoaded={!!(generatedAssets?.personas?.length > 0)}
-                            onLoadPersonasData={handleLoadPersonasData}
-                            isLoadingPersonasData={false}
-                        />
+                        <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
+                            <MainDisplay
+                                assets={generatedAssets}
+                                onGenerateImage={handleGenerateImage}
+                                onSetImage={handleSetImage}
+                                generatedImages={generatedImages}
+                                isGeneratingImage={(key) => generatingImageKeys.has(key)}
+                                isUploadingImage={(key) => uploadingImageKeys.has(key)}
+                                settings={settings}
+                                onExportBrandKit={handleExportBrandKit}
+                                isExportingBrandKit={isExporting}
+                                onExportPlan={handleExportMediaPlan}
+                                isExportingPlan={isExporting}
+                                onGeneratePlan={handleGenerateMediaPlanGroup}
+                                isGeneratingPlan={!!loaderContent}
+                                onRegenerateWeekImages={handleRegenerateWeekImages}
+                                onBulkSuggestPromotions={handleBulkSuggestPromotions}
+                                onBulkGenerateComments={handleBulkGenerateComments}
+                                onBulkGenerateImages={handleBulkGenerateImages}
+                                productImages={[]}
+                                onSetProductImages={handleSetProductImages}
+                                onSaveProject={handleSaveProjectToFile}
+                                isSavingProject={isSaving}
+                                onStartOver={handleBackToIdea}
+                                autoSaveStatus={autoSaveStatus}
+                                onOpenSettings={() => setIsSettingsModalOpen(true)}
+                                onOpenIntegrations={() => setIsDatabaseLoadModalOpen(true)}
+                                activeTab={activeTab}
+                                setActiveTab={setActiveTabWithLog}
+                                // Media Plan props
+                                mediaPlanGroupsList={mediaPlanGroupsList}
+                                onSelectPlan={handleSelectPlan}
+                                // New prop to pass brandFoundation
+                                brandFoundation={generatedAssets?.brandFoundation}
+                                activePlanId={activePlanId}
+                                onUpdatePost={handleUpdatePost}
+                                onRefinePost={handleRefinePost}
+                                onAssignPersonaToPlan={handleAssignPersonaToPlan}
+                                // Affiliate Vault props
+                                onSaveAffiliateLink={handleSaveAffiliateLink}
+                                onDeleteAffiliateLink={handleDeleteAffiliateLink}
+                                onImportAffiliateLinks={handleImportAffiliateLinks}
+                                onReloadLinks={handleReloadAffiliateLinks}
+                                onGenerateIdeasFromProduct={handleGenerateIdeasFromProduct}
+                                // KhongMinh
+                                analyzingPostIds={analyzingPostIds}
+                                isAnyAnalysisRunning={analyzingPostIds.size > 0}
+                                khongMinhSuggestions={khongMinhSuggestions}
+                                onAcceptSuggestion={handleAcceptSuggestion}
+                                onRunKhongMinhForPost={handleRunKhongMinhForPost}
+                                // On-demand prompt generation
+                                generatingPromptKeys={generatingPromptKeys}
+                                onGeneratePrompt={handleGenerateMediaPrompt}
+                                // Comment Generation
+                                onGenerateAffiliateComment={handleGenerateAffiliateComment}
+                                generatingCommentPostIds={generatingCommentPostIds}
+                                // Selection & Scheduling
+                                selectedPostIds={selectedPostIds}
+                                onTogglePostSelection={handleTogglePostSelection}
+                                onSelectAllPosts={handleSelectAllPosts}
+                                onClearSelection={() => setSelectedPostIds(new Set())}
+                                onOpenScheduleModal={setSchedulingPost}
+                                onPublishPost={handlePublishPost}
+                                isScheduling={isScheduling}
+                                onSchedulePost={handleSchedulePost}
+                                onPostDrop={handlePostDrop}
+                                schedulingPost={schedulingPost}
+                                onOpenBulkScheduleModal={() => setIsBulkScheduleModalOpen(true)}
+                                isBulkScheduleModalOpen={isBulkScheduleModalOpen}
+                                onCloseBulkScheduleModal={() => setIsBulkScheduleModalOpen(false)}
+                                onBulkSchedule={handleBulkSchedule}
+                                // Personas
+                                onSavePersona={handleSavePersona}
+                                onDeletePersona={handleDeletePersona}
+                                onSetPersonaImage={handleSetPersonaImage}
+                                onUpdatePersona={handleUpdatePersona}
+                                onAutoGeneratePersona={handleAutoGeneratePersona}
+                                // Strategy Hub
+                                onSaveTrend={handleSaveTrend}
+                                onDeleteTrend={handleDeleteTrend}
+                                onGenerateIdeas={handleGenerateIdeas}
+                                onGenerateContentPackage={handleGenerateContentPackage}
+                                onGenerateFacebookTrends={handleGenerateFacebookTrends}
+                                isGeneratingTrendsFromSearch={isGeneratingFacebookTrends}
+                                onLoadIdeasForTrend={handleLoadIdeasForTrend}
+                                // Video
+                                generatedVideos={generatedVideos}
+                                onSetVideo={handleSetVideo}
+                                 // New Facebook Strategy Props
+                                onGenerateFacebookPostIdeas={handleGenerateFacebookPostIdeas}
+                                onAddFacebookPostIdeaToPlan={handleAddFacebookPostIdeaToPlan}
+                                isGeneratingFacebookPostIdeas={isGeneratingFacebookPostIdeas}
+                                // Post Detail Modal State
+                                viewingPost={viewingPost}
+                                setViewingPost={setViewingPost}
+                                // Funnel Campaign Props
+                                onCreateFunnelCampaignPlan={handleCreateFunnelCampaignPlan}
+                                // Lazy loading props
+                                isStrategyHubDataLoaded={!!(generatedAssets?.trends?.length > 0 || generatedAssets?.ideas?.length > 0)}
+                                onLoadStrategyHubData={handleLoadStrategyHubData}
+                                isLoadingStrategyHubData={false}
+                                isAffiliateVaultDataLoaded={!!(generatedAssets?.affiliateLinks?.length > 0)}
+                                onLoadAffiliateVaultData={handleLoadAffiliateVaultData}
+                                isLoadingAffiliateVaultData={false}
+                                isPersonasDataLoaded={!!(generatedAssets?.personas?.length > 0)}
+                                onLoadPersonasData={handleLoadPersonasData}
+                                isLoadingPersonasData={false}
+                            />
+                        </Suspense>
                         {successMessage && (
                             <div className="fixed bottom-5 right-5 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg animate-fade-in-out">
                                 {successMessage}
@@ -2910,30 +2904,36 @@ const App: React.FC = () => {
                             </div>
                         )}
                         
-                        <SettingsModal
-                            isOpen={isSettingsModalOpen}
-                            onClose={() => setIsSettingsModalOpen(false)}
-                            settings={settings}
-                            onSave={handleSaveSettings}
-                        />
+                        <Suspense fallback={null}>
+                            <SettingsModal
+                                isOpen={isSettingsModalOpen}
+                                onClose={() => setIsSettingsModalOpen(false)}
+                                settings={settings}
+                                onSave={handleSaveSettings}
+                            />
+                        </Suspense>
                         
 
-                        <PersonaConnectModal
-                            isOpen={isPersonaConnectModalOpen}
-                            onClose={handleClosePersonaConnectModal}
-                            language={settings.language}
-                            personaToConnect={personaToConnect}
-                            platformToConnect={platformToConnect}
-                            onSocialAccountConnected={handleSocialAccountConnected}
-                        />
+                        <Suspense fallback={null}>
+                            <PersonaConnectModal
+                                isOpen={isPersonaConnectModalOpen}
+                                onClose={handleClosePersonaConnectModal}
+                                language={settings.language}
+                                personaToConnect={personaToConnect}
+                                platformToConnect={platformToConnect}
+                                onSocialAccountConnected={handleSocialAccountConnected}
+                            />
+                        </Suspense>
 
-                        <AutoPersonaResultModal
-                            isOpen={isAutoPersonasModalOpen}
-                            onClose={() => setIsAutoPersonasModalOpen(false)}
-                            onSave={handleSaveSelectedPersonas}
-                            personaData={autoGeneratedPersonas}
-                            language={settings.language}
-                        />
+                        <Suspense fallback={null}>
+                            <AutoPersonaResultModal
+                                isOpen={isAutoPersonasModalOpen}
+                                onClose={() => setIsAutoPersonasModalOpen(false)}
+                                onSave={handleSaveSelectedPersonas}
+                                personaData={autoGeneratedPersonas}
+                                language={settings.language}
+                            />
+                        </Suspense>
                     </>
                 );
             }

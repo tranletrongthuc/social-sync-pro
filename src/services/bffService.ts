@@ -191,20 +191,7 @@ export const databaseRequestWithBff = async (
   }
 };
 
-// --- Health Check ---
 
-export const checkBffHealth = async (): Promise<{
-  status: string;
-  timestamp: string;
-  services: Record<string, boolean>;
-}> => {
-  try {
-    return await bffFetch('/api/health');
-  } catch (error) {
-    console.error(`Error calling BFF endpoint /api/health:`, error);
-    throw error;
-  }
-};
 
 // --- Cloudflare API Functions ---
 

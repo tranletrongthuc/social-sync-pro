@@ -316,3 +316,69 @@ A new feature was fully implemented to auto-generate multiple, diverse brand per
 *   **Cautious Use of `upsert`:** The creation of incomplete documents was caused by the misuse of `{ upsert: true }`. **Recommendation:** Use `upsert` with extreme caution. It is only safe when the `$set` operation contains a complete data model for the document. For most cases, a clearer and safer pattern is to explicitly separate "create" and "update" logic.
 *   **Component Responsibility:** Note the issue where `PostCard` relied on a derived prop (`promotedProductsCount`) from its parent, which was a point of failure. Making child components more self-reliant by passing them the full data object (`postInfo`) and letting them derive their own state is more robust.
 *   **Lazy Loading Complexity:** Mention that the lazy-loading strategy for core data (`affiliateLinks`) caused downstream bugs in components that depended on that data. Suggest that for a given "project" or "brand" context, it might be simpler and more robust to load all associated reference data (like personas, affiliate links) at the start, rather than on a per-tab basis. This simplifies state management and prevents downstream component failures.
+
+## Session Summary (2025-09-04)
+
+This session focused on fixing several bugs related to data synchronization, state management, and UI layout in the "Content Strategy" tab.
+
+### 1. Bug Fixes and Refactoring
+
+**Bug: "Tạo ý tưởng" (Generate Ideas) button in Affiliate Vault was unresponsive.**
+- **Analysis:** The `onGenerateIdeasFromProduct` prop was not being passed down from `App.tsx` to the `AffiliateVaultDisplay` component through `MainDisplay.tsx`.
+- **Fix:** The prop was added to the `MainDisplayProps` interface, and the handler was correctly passed down through the component tree, restoring the button's functionality.
+
+**Bug: BSONError when saving a new trend generated from a product.**
+- **Analysis:** The backend's `save-trend` action was attempting to convert a custom string ID (e.g., `product-xxxx`) into a MongoDB `ObjectId`, which caused a crash.
+- **Fix:** The `save-trend` action in `api/mongodb.js` was updated to first validate if the incoming `trend.id` is a valid `ObjectId`. If not, it now correctly creates a new trend with a new database-generated `ObjectId`.
+
+**Bug: New ideas generated from a trend or product were not displayed on the UI without a page reload.**
+- **Analysis:** This was a multi-faceted issue:
+    1.  A race condition existed where the UI would attempt to re-render before the new ideas were successfully saved to the database.
+    2.  The `trendId` assigned to new ideas generated from a product was incorrect (using a `product-` prefix), causing a mismatch with the actual trend ID in the database.
+    3.  A stale cache issue was identified where `lazyLoadService.ts` and `databaseService.ts` maintained separate, unsynchronized caches.
+- **Fix:**
+    1.  The `handleGenerateIdeas` and `handleGenerateIdeasFromProduct` functions in `App.tsx` were refactored to ensure the local state is only updated *after* the new data has been successfully saved to the database and the new database IDs have been returned.
+    2.  The logic for creating product-based trends was rewritten to remove the `product-` prefix and to use the correct database ID for the `trendId` field in the idea objects.
+    3.  The cache logic was consolidated by removing the local cache in `lazyLoadService.ts` and making it import and use the single cache instance from `databaseService.ts`.
+
+**Bug: Duplicated API calls on home page load.**
+- **Analysis:** The duplicated calls were identified as a side effect of React's `StrictMode` in development mode, which intentionally calls `useEffect` hooks twice to detect issues.
+- **Fix:** To prevent redundant API calls during development, a `useRef` was implemented in the `useEffect` hooks in both `App.tsx` and `IdeaProfiler.tsx` to ensure that the initial data fetching logic runs only once per component mount.
+
+### 2. Notes for Future Development
+
+- **State Synchronization with Database:** A recurring theme was the client-side state becoming out of sync with the database, especially after creating new documents. **Recommendation:** Always ensure that any "create" operation in the backend API returns the final document (including its database-generated ID), and the client-side logic is designed to receive this new ID and update its state accordingly. This prevents issues with stale data and incorrect IDs.
+
+- **Cache Management:** The presence of two separate data caches led to stale data being served to the UI. **Recommendation:** Maintain a single source of truth for any application-wide cache. Caching logic should be consolidated into a single, dedicated service to avoid synchronization problems.
+
+- **Asynchronous Operations and UI Updates:** Be mindful of race conditions when dealing with asynchronous operations that update the UI. Avoid updating the UI with temporary client-side data before the corresponding backend operation has completed. Whenever possible, wait for the successful completion of the async task and use the data returned from the server to update the state.
+
+- **Clarity on ID Fields:** The project uses both `id` (database `_id`) and `productId` (from affiliate platforms). **Recommendation:** Ensure that the correct ID is used in the correct context to avoid data mismatches. When in doubt, add logging to inspect the objects being passed between functions.
+
+### Session Summary (2025-09-04) [2]
+
+The primary goal of this session was to diagnose and fix a critical performance issue causing extremely long initial application load times (45s+ LCP). The root causes were identified as sequential API calls on startup and an excessively large initial JavaScript bundle.
+
+### 1. Key Accomplishments & Technical Changes
+
+*   **API Call Consolidation:**
+    *   The initial separate, sequential API calls for `check-credentials`, `list-brands`, and `fetch-admin-defaults` were identified as a major bottleneck.
+    *   A single, consolidated backend action `app-init` was created in `/api/mongodb.js` to perform the work of all three initial calls in one parallel, server-side operation.
+    *   The corresponding frontend code in `App.tsx` and `databaseService.ts` was refactored to use a single `initializeApp` function, reducing network round-trips from 3-4 to just one.
+
+*   **Code-Splitting and Lazy Loading:**
+    *   The application's entire codebase was being downloaded in a single, multi-megabyte JavaScript file (`App.tsx`), which severely delayed rendering.
+    *   Implemented aggressive code-splitting using `React.lazy()` and `<Suspense>`.
+    *   All major views (`IdeaProfiler`, `BrandProfiler`, `MainDisplay`, `AdminPage`) and all modal dialogs (`SettingsModal`, `ScheduleModal`, etc.) across the application are now loaded dynamically on demand, rather than all at once. This dramatically reduces the initial bundle size.
+
+*   **Dependency & State Refactoring:**
+    *   Fixed multiple `Uncaught SyntaxError` crashes that occurred after the initial refactoring. These were caused by child components (`configService.ts`, `IdeaProfiler.tsx`) trying to import and call functions that had been deleted from `databaseService.ts`.
+    *   Refactored `IdeaProfiler.tsx` to remove its own data-fetching logic. It now receives the list of brands as a prop from the main `App.tsx` component, which is a more efficient and standard React pattern.
+    *   Refactored `configService.ts` to be a simple state container that gets initialized by `App.tsx`, removing its own API-calling capabilities.
+
+### 2. Notes for Future Development
+
+*   **Thoroughness of Refactoring:** When consolidating an API or function, it is critical to perform a global search to find and update **all** call sites. Simply creating the new function is not enough; the old functions and their corresponding calls must be fully removed to prevent errors and redundant network requests.
+*   **Data Flow:** The session highlighted the importance of a clear, top-down data flow. The final, correct pattern involved the top-level `App.tsx` component fetching all necessary initial data once, and then passing that data down to child components via props. This should be the preferred pattern over having individual child components fetch their own data.
+*   **Assume Nothing About Imports:** The errors I introduced were from making assumptions about which modules were importing the functions I deleted. A future best practice will be to actively search for usages of a function across the codebase *before* deleting it.
+*   **Browser Cache:** While the issues in this session were code-related, the initial symptoms (old API calls still appearing) were characteristic of a browser cache issue. It's important to remember to instruct users to perform a hard refresh (Ctrl+Shift+R) after significant frontend changes are deployed.

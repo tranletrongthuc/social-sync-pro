@@ -108,6 +108,49 @@ async function handler(request, response) {
         }
         break;
 
+      case 'app-init':
+        console.log('--- Received request for /api/mongodb/app-init ---');
+        try {
+          // 1. Check Credentials
+          const { MONGODB_URI } = process.env;
+          if (!MONGODB_URI) {
+            return response.status(200).json({ credentialsSet: false, brands: [], adminDefaults: {} });
+          }
+          await db.command({ ping: 1 });
+
+          // 2. List Brands
+          const brandRecords = await brandsCollection.find({}).toArray();
+          const brands = brandRecords.map(record => ({
+            id: record._id.toString(),
+            name: record.name
+          }));
+
+          // 3. Fetch Admin Defaults
+          const adminSettingsCollection = db.collection('adminSettings');
+          const settingsRecord = await adminSettingsCollection.findOne({});
+          let adminDefaults = {};
+          if (settingsRecord) {
+            adminDefaults = {
+              language: settingsRecord.language,
+              totalPostsPerMonth: settingsRecord.totalPostsPerMonth,
+              mediaPromptSuffix: settingsRecord.mediaPromptSuffix,
+              affiliateContentKit: settingsRecord.affiliateContentKit,
+              textGenerationModel: settingsRecord.textGenerationModel,
+              imageGenerationModel: settingsRecord.imageGenerationModel,
+              textModelFallbackOrder: settingsRecord.textModelFallbackOrder || [],
+              visionModels: settingsRecord.visionModels || []
+            };
+          }
+
+          response.status(200).json({ credentialsSet: true, brands: brands, adminDefaults: adminDefaults });
+          console.log('--- App init data sent ---');
+        } catch (error) {
+          console.error('App init failed:', error);
+          // If any part fails, we assume credentials are not fully set or DB is down.
+          response.status(200).json({ credentialsSet: false, brands: [], adminDefaults: {} });
+        }
+        break;
+
       case 'check-credentials':
         console.log('--- Received request for /api/mongodb/check-credentials ---');
         try {
@@ -303,34 +346,7 @@ async function handler(request, response) {
         }
         break;
 
-      case 'fetch-admin-defaults':
-        console.log('--- Received request for /api/mongodb/fetch-admin-defaults ---');
-        try {
-          const adminSettingsCollection = db.collection('adminSettings');
-          const settingsRecord = await adminSettingsCollection.findOne({});
-          
-          if (!settingsRecord) {
-            return response.status(200).json({});
-          }
-          
-          const settings = {
-            language: settingsRecord.language,
-            totalPostsPerMonth: settingsRecord.totalPostsPerMonth,
-            mediaPromptSuffix: settingsRecord.mediaPromptSuffix,
-            affiliateContentKit: settingsRecord.affiliateContentKit,
-            textGenerationModel: settingsRecord.textGenerationModel,
-            imageGenerationModel: settingsRecord.imageGenerationModel,
-            textModelFallbackOrder: settingsRecord.textModelFallbackOrder || [],
-            visionModels: settingsRecord.visionModels || []
-          };
-          
-          response.status(200).json(settings);
-          console.log('--- Admin defaults fetched ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/fetch-admin-defaults ---');
-          throw error;
-        }
-        break;
+      
 
       case 'fetch-affiliate-links':
         console.log('--- Received request for /api/mongodb/fetch-affiliate-links ---');
@@ -387,23 +403,7 @@ async function handler(request, response) {
             }
             break;
 
-      case 'list-brands':
-        console.log('--- Received request for /api/mongodb/list-brands ---');
-        try {
-          const brandRecords = await brandsCollection.find({}).toArray();
-          
-          const brands = brandRecords.map(record => ({
-            id: record._id.toString(),
-            name: record.name
-          }));
-          
-          response.status(200).json({ brands });
-          console.log('--- Brands list sent to client ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/list-brands ---');
-          response.status(500).json({ error: `Failed to fetch brands from MongoDB: ${error.message}` });
-        }
-        break;
+      
 
       case 'list-media-plan-groups':
         console.log('--- Received request for /api/mongodb/list-media-plan-groups ---');

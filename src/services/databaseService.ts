@@ -23,30 +23,7 @@ export const clearAllCache = (): void => {
   Object.keys(dataCache).forEach(key => delete dataCache[key]);
 };
 
-/**
- * Fetch admin defaults from MongoDB
- */
-const fetchAdminDefaultsFromDatabase = async (): Promise<Settings> => {
-  try {
-    const response = await fetch('/api/mongodb?action=fetch-admin-defaults', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch admin defaults: ${response.statusText}`);
-    }
-
-    const settings = await response.json();
-    return settings;
-  } catch (error) {
-    console.error('Failed to fetch admin defaults from database:', error);
-    throw error;
-  }
-};
 
 /**
  * Save admin defaults to MongoDB
@@ -757,57 +734,9 @@ const bulkUpdatePostSchedulesInDatabase = async (updates: { postId: string; sche
   }
 };
 
-/**
- * List brands from MongoDB
- */
-const listBrandsFromDatabase = async (): Promise<{ id: string; name: string }[]> => {
-  try {
-    const response = await fetch('/api/mongodb?action=list-brands', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to list brands: ${response.statusText}`);
-    }
 
-    const result = await response.json();
-    return result.brands;
-  } catch (error) {
-    console.error('Failed to list brands from database:', error);
-    throw error;
-  }
-};
 
-/**
- * Check database credentials
- */
-const checkDatabaseCredentials = async (): Promise<boolean> => {
-  try {
-    const response = await fetch('/api/mongodb?action=check-credentials', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({}),
-    });
-
-    if (!response.ok) {
-      console.error(`Failed to check database credentials: ${response.statusText}`);
-      return false;
-    }
-
-    const result = await response.json();
-    console.log('Database credentials verified:', result);
-    return true;
-  } catch (error) {
-    console.error('Failed to check database credentials:', error);
-    return false;
-  }
-};
 
 /**
  * Load a complete project from MongoDB
@@ -872,6 +801,32 @@ const checkIfProductExistsInDatabase = async (productId: string): Promise<boolea
   } catch (error) {
     console.error('Failed to check if product exists in database:', error);
     return false;
+  }
+};
+
+/**
+ * Initialize the application by checking credentials and listing brands.
+ */
+const initializeApp = async (): Promise<{ credentialsSet: boolean; brands: { id: string; name: string }[]; adminDefaults: Settings }> => {
+  try {
+    const response = await fetch('/api/mongodb?action=app-init', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      console.error(`Failed to initialize app: ${response.statusText}`);
+      return { credentialsSet: false, brands: [], adminDefaults: {} as Settings };
+    }
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Failed to initialize app:', error);
+    return { credentialsSet: false, brands: [], adminDefaults: {} as Settings };
   }
 };
 
@@ -1107,7 +1062,6 @@ export const loadTrend = async (trendId: string, brandId: string): Promise<Trend
 
 // Export all functions with MongoDB-specific names
 export {
-    fetchAdminDefaultsFromDatabase,
     saveAdminDefaultsToDatabase,
     saveSettingsToDatabase,
     createOrUpdateBrandRecordInDatabase,
@@ -1133,8 +1087,6 @@ export {
     loadMediaPlanFromDatabase,
     bulkPatchPostsInDatabase,
     bulkUpdatePostSchedulesInDatabase,
-    listBrandsFromDatabase,
-    checkDatabaseCredentials,
     loadProjectFromDatabase,
     checkIfProductExistsInDatabase,
     loadIdeasForTrend,
@@ -1144,4 +1096,5 @@ export {
     loadAffiliateVaultData,
     loadPersonasData,
     loadMediaPlanPostsWithPagination,
+    initializeApp,
 };

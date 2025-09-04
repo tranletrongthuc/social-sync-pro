@@ -1,4 +1,3 @@
-import { fetchAdminDefaultsFromDatabase as fetchAdminDefaults } from './databaseService';
 import type { Settings, AiModelConfig } from '../../types';
 
 // Quản lý cấu hình ứng dụng
@@ -29,9 +28,8 @@ export class ConfigService {
         return ConfigService.instance;
     }
 
-    static async initializeConfig() {
+    static initializeConfig(defaults?: Settings) {
         try {
-            const defaults = await fetchAdminDefaults();
             const instance = ConfigService.getInstance();
             instance.appSettings = { ...instance.appSettings, ...defaults };
             return defaults;
@@ -49,14 +47,8 @@ export class ConfigService {
         return ConfigService.getInstance().aiModelConfig;
     }
 
-    static async getAdminDefaults() {
-        try {
-            const defaults = await fetchAdminDefaults();
-            return defaults;
-        } catch (error) {
-            console.error('Failed to fetch admin defaults:', error);
-            return ConfigService.getInstance().appSettings;
-        }
+    static getAdminDefaults(): Settings {
+        return ConfigService.getInstance().appSettings;
     }
 
     static async saveAdminDefaults(settings: Partial<Settings>) {
@@ -83,9 +75,8 @@ export class ConfigService {
     }
     
     // Instance methods
-    async initializeConfig() {
+    initializeConfig(defaults?: Settings) {
         try {
-            const defaults = await fetchAdminDefaults();
             this.appSettings = { ...this.appSettings, ...defaults };
             return defaults;
         } catch (error) {
@@ -102,14 +93,8 @@ export class ConfigService {
         return this.aiModelConfig;
     }
 
-    async getAdminDefaults() {
-        try {
-            const defaults = await fetchAdminDefaults();
-            return defaults;
-        } catch (error) {
-            console.error('Failed to fetch admin defaults:', error);
-            return this.appSettings;
-        }
+    getAdminDefaults(): Settings {
+        return this.appSettings;
     }
 
     async saveAdminDefaults(settings: Partial<Settings>) {
