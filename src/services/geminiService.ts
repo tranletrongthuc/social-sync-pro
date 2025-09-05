@@ -2,13 +2,14 @@ import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
 import { generateContentWithBff, generateImageWithBff, autoGeneratePersonaWithBff, generateImageWithBananaBff } from './bffService';
 
 export const generateImageWithBanana = async (
+    model: string,
     prompt: string,
     promptSuffix: string
 ): Promise<string> => {
     // Use BFF for image generation to keep API keys secure
     const fullPrompt = `${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}`;
     
-    return await generateImageWithBananaBff(fullPrompt);
+    return await generateImageWithBananaBff(model, fullPrompt);
 };
 import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../../types';
 
@@ -1239,8 +1240,8 @@ const tiktokPurpose = "Hijack attention within the first three seconds with high
 
 const pinterestPurpose = "Create long-lasting, searchable resources that funnel users seeking solutions or inspiration. Convert core message into vertical Idea Pins or infographics with keyword-rich titles (e.g., 'How to Achieve X in 5 Easy Steps'). Serve as a visual bookmark solving part of the user's problem, with a direct outbound link to the YouTube video.";
 
-export const autoGeneratePersonaProfile = async (mission: string, usp: string): Promise<Partial<Persona>[]> => {
-    const personaProfiles = await autoGeneratePersonaWithBff(mission, usp);
+export const autoGeneratePersonaProfile = async (mission: string, usp: string, model: string): Promise<Partial<Persona>[]> => {
+    const personaProfiles = await autoGeneratePersonaWithBff(mission, usp, model);
 
     if (!personaProfiles || !Array.isArray(personaProfiles)) {
         throw new Error("Received invalid or empty array response from AI when generating persona profiles.");

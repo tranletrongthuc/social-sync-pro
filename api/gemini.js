@@ -156,21 +156,15 @@ async function handler(request, response) {
 
       console.log('--- Received request for /api/gemini/generate-banana-image ---');
       try {
-        const { prompt } = request.body;
+        const { model: modelName, prompt } = request.body;
 
-        if (!prompt) {
-          return response.status(400).json({ error: 'Missing required field: prompt' });
+        if (!prompt || !modelName) {
+          return response.status(400).json({ error: 'Missing required field: prompt and model' });
         }
         
-        // const modelConfig = { model: model };
-        // if (systemInstruction) {
-        //   modelConfig.systemInstruction = systemInstruction;
-        // }
+        const model = genAI.getGenerativeModel({ model: modelName.replace('banana/', '') });
         
-        // const model = genAI.getGenerativeModel(modelConfig);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
-        
-        console.log('Generating banana image with Gemini 2.5 Flash Image Preview...');
+        console.log(`Generating banana image with ${modelName}...`);
 
         const result = await model.generateContent(prompt);
         const resultResponse = result.response;
@@ -200,20 +194,13 @@ async function handler(request, response) {
       }
       console.log('--- Received request for /api/gemini/auto-generate-persona ---');
       try {
-        const { mission, usp } = request.body;
+        const { mission, usp, model: modelName } = request.body;
 
-        if (!mission || !usp) {
-          return response.status(400).json({ error: 'Missing required fields: mission and usp' });
+        if (!mission || !usp || !modelName) {
+          return response.status(400).json({ error: 'Missing required fields: mission, usp, and model' });
         }
 
-        // const modelConfig = { model: model };
-        // if (systemInstruction) {
-        //   modelConfig.systemInstruction = systemInstruction;
-        // }
-        
-        // const model = genAI.getGenerativeModel(modelConfig);
-        
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
+        const model = genAI.getGenerativeModel({ model: modelName });
 
         const prompt = `
           You are an expert brand strategist and storyteller. Your task is to create a detailed, brand-aligned persona based on the provided brand information.
@@ -223,7 +210,7 @@ async function handler(request, response) {
           *   **Unique Selling Proposition (USP):** "${usp}"
 
           **Instructions:**
-          Generate an array of EXACTLY 3 persona profiles. Each persona in the array must be distinct and diverse from the others.
+          Generate an array of EXACTLY 5 persona profiles. Each persona in the array must be distinct and diverse from the others.
           - **Diversity Requirement:** The set of personas must include a mix of genders (male, female) and represent different facets of the target audience (e.g., one could be a seasoned expert, another a curious newcomer).
           - **Uniqueness Requirement:** Do not use the same name or highly similar characteristics for different personas in the array. Each profile should feel like a unique individual.
 

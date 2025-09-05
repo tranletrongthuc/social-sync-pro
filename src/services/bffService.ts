@@ -74,12 +74,13 @@ export const generateImageWithBff = async (
 };
 
 export const generateImageWithBananaBff = async (
+  model: string,
   prompt: string
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/gemini?action=generate-banana-image', {
       method: 'POST',
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ model, prompt }),
     });
     
     return response.image;
@@ -91,12 +92,13 @@ export const generateImageWithBananaBff = async (
 
 export const autoGeneratePersonaWithBff = async (
   mission: string,
-  usp: string
+  usp: string,
+  model: string
 ): Promise<any> => {
   try {
     const response = await bffFetch('/api/gemini?action=auto-generate-persona', {
       method: 'POST',
-      body: JSON.stringify({ mission, usp }),
+      body: JSON.stringify({ mission, usp, model }),
     });
     
     return response;

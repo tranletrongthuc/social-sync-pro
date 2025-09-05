@@ -15,7 +15,7 @@ interface MediaPlanWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: Settings;
-  onGenerate: (prompt: string, useSearch: boolean, totalPosts: number, selectedPlatforms: string[], options: GenerationOptions, selectedProductId: string | null, personaId: string | null) => void; // Updated onGenerate signature
+  onGenerate: (prompt: string, useSearch: boolean, selectedPlatforms: string[], options: GenerationOptions, selectedProductId: string | null, personaId: string | null) => void; // Updated onGenerate signature
   isGenerating: boolean;
   personas: Persona[];
   generatedImages: Record<string, string>;
@@ -44,7 +44,6 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const [step, setStep] = useState(1);
     const [prompt, setPrompt] = useState(initialPrompt || '');
     const [useSearch, setUseSearch] = useState(false);
-    const [totalPosts, setTotalPosts] = useState(settings.totalPostsPerMonth);
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest']);
     
     // New state for advanced options
@@ -67,7 +66,6 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             setStep(initialPrompt ? 2 : 1);
             setPrompt(initialPrompt || '');
             setUseSearch(false);
-            setTotalPosts(settings.totalPostsPerMonth);
             setSelectedPlatforms(['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest']);
             setTone('Friendly & Casual');
             setWritingStyle('Storytelling');
@@ -182,7 +180,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const handleGenerate = async () => {
       // Use selectedProductId if available, otherwise fall back to initialProductId
       const productIdToUse = selectedProductId || initialProductId || null;
-      onGenerate(prompt, useSearch, totalPosts, selectedPlatforms, { tone, style: writingStyle, length: postLength, includeEmojis }, productIdToUse, selectedPersonaId);
+      onGenerate(prompt, useSearch, selectedPlatforms, { tone, style: writingStyle, length: postLength, includeEmojis }, productIdToUse, selectedPersonaId);
       onClose();
     };
 
@@ -320,10 +318,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
                                         />
                                         <p className="text-sm text-gray-500 mt-1">{texts.useSearchModeDesc} <span className="font-bold text-gray-600">{texts.geminiOnly}</span></p>
                                     </div>
-                                    <div className="p-4 bg-gray-50 rounded-lg border">
-                                         <label htmlFor="totalPosts" className="font-medium text-gray-700">{texts.totalPosts}</label>
-                                         <Input id="totalPosts" type="number" min="4" max="40" value={totalPosts} onChange={(e) => setTotalPosts(parseInt(e.target.value))} className="mt-1" />
-                                    </div>
+                                    
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                      <div>
