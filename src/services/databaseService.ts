@@ -494,67 +494,19 @@ const saveIdeasToDatabase = async (ideas: Idea[], brandId: string): Promise<Idea
   }
 };
 
-/**
- * Save AI service to MongoDB
- */
-const saveAIServiceToDatabase = async (service: { id: string; name: string; description: string }): Promise<void> => {
-  try {
-    const response = await fetch('/api/mongodb?action=save-ai-service', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ service }),
-    });
 
-    if (!response.ok) {
-      throw new Error(`Failed to save AI service: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    console.log('AI service saved successfully:', result);
-  } catch (error) {
-    console.error('Failed to save AI service to database:', error);
-    throw error;
-  }
-};
-
-/**
- * Delete AI service from MongoDB
- */
-const deleteAIServiceFromDatabase = async (serviceId: string): Promise<void> => {
-  try {
-    const response = await fetch('/api/mongodb?action=delete-ai-service', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ serviceId }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete AI service: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-    console.log('AI service deleted successfully:', result);
-  } catch (error) {
-    console.error('Failed to delete AI service from database:', error);
-    throw error;
-  }
-};
 
 /**
  * Save AI model to MongoDB
  */
-const saveAIModelToDatabase = async (model: { id: string; name: string; provider: string; capabilities: string[] }, serviceId: string): Promise<void> => {
+const saveAIModelToDatabase = async (model: { id?: string; name: string; provider: string; capabilities: string[], service: string }): Promise<void> => {
   try {
     const response = await fetch('/api/mongodb?action=save-ai-model', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ model, serviceId }),
+      body: JSON.stringify({ model }),
     });
 
     if (!response.ok) {
@@ -595,11 +547,11 @@ const deleteAIModelFromDatabase = async (modelId: string): Promise<void> => {
 };
 
 /**
- * Load AI services from MongoDB
+ * Load all dynamic data needed for the settings modal.
  */
-const loadAIServicesFromDatabase = async (): Promise<AIService[]> => {
+const loadSettingsDataFromDatabase = async (): Promise<{ services: AIService[], adminSettings: Settings }> => {
   try {
-    const response = await fetch('/api/mongodb?action=load-ai-services', {
+    const response = await fetch('/api/mongodb?action=load-settings-data', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -608,13 +560,13 @@ const loadAIServicesFromDatabase = async (): Promise<AIService[]> => {
     });
 
     if (!response.ok) {
-      throw new Error(`Failed to load AI services: ${response.statusText}`);
+      throw new Error(`Failed to load settings data: ${response.statusText}`);
     }
 
     const result = await response.json();
-    return result.services;
+    return result;
   } catch (error) {
-    console.error('Failed to load AI services from database:', error);
+    console.error('Failed to load settings data from database:', error);
     throw error;
   }
 };
@@ -1078,11 +1030,10 @@ export {
     saveTrendToDatabase,
     deleteTrendFromDatabase,
     saveIdeasToDatabase,
-    saveAIServiceToDatabase,
-    deleteAIServiceFromDatabase,
+    
     saveAIModelToDatabase,
     deleteAIModelFromDatabase,
-    loadAIServicesFromDatabase,
+    loadSettingsDataFromDatabase,
     listMediaPlanGroupsForBrandFromDatabase,
     loadMediaPlanFromDatabase,
     bulkPatchPostsInDatabase,

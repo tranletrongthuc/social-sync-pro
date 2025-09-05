@@ -77,35 +77,26 @@ async function handler(request, response) {
 
       console.log('--- Received request for /api/gemini/generate-image ---');
       try {
-        const { model, prompt, config } = request.body;
+        const { model, prompt } = request.body;
 
         if (!model || !prompt) {
           return response.status(400).json({ error: 'Missing required fields: model and prompt' });
         }
 
-        const generationConfig = { ...config };
-        const systemInstruction = generationConfig?.systemInstruction;
-        if (systemInstruction) {
-          delete generationConfig.systemInstruction;
-        }
+        const geminiModel = genAI.getGenerativeModel({ model: model });
+        console.log(`Generating image with Gemini model: ${model}...`);
 
-        const modelConfig = { model: model };
-        if (systemInstruction) {
-          modelConfig.systemInstruction = systemInstruction;
-        }
+        const result = await geminiModel.generateContent(prompt);
+        const resultResponse = result.response;
 
-        const geminiModel = genAI.getGenerativeModel(modelConfig);
-        console.log('Generating image with Gemini...');
+        const inlineDataPart = resultResponse.candidates[0].content.parts.find(part => part.inlineData);
 
-        const result = await geminiModel.generateImages({ prompt, config: generationConfig });
-        
-        console.log('--- generateImages call SUCCEEDED ---');
-        
-        if (result.generatedImages && result.generatedImages.length > 0) {
-          const base64Image = result.generatedImages[0].image.imageBytes;
-          response.status(200).json({ image: `data:image/jpeg;base64,${base64Image}` });
+        if (inlineDataPart) {
+          const imageData = inlineDataPart.inlineData.data;
+          const mimeType = inlineDataPart.inlineData.mimeType;
+          response.status(200).json({ image: `data:${mimeType};base64,${imageData}` });
         } else {
-          response.status(500).json({ error: 'No image was generated' });
+          throw new Error("No inline image data found in Gemini response.");
         }
 
         console.log('--- Image response sent to client ---');
@@ -158,7 +149,52 @@ async function handler(request, response) {
       }
       break;
     }
-    case 'auto-generate-persona': {
+    case 'generate-banana-image': {
+      if (request.method !== 'POST') {
+        return response.status(405).json({ error: 'Method Not Allowed' });
+      }
+
+      console.log('--- Received request for /api/gemini/generate-banana-image ---');
+      try {
+        const { prompt } = request.body;
+
+        if (!prompt) {
+          return response.status(400).json({ error: 'Missing required field: prompt' });
+        }
+        
+        // const modelConfig = { model: model };
+        // if (systemInstruction) {
+        //   modelConfig.systemInstruction = systemInstruction;
+        // }
+        
+        // const model = genAI.getGenerativeModel(modelConfig);
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
+        
+        console.log('Generating banana image with Gemini 2.5 Flash Image Preview...');
+
+        const result = await model.generateContent(prompt);
+        const resultResponse = result.response;
+
+        const inlineDataPart = resultResponse.candidates[0].content.parts.find(part => part.inlineData);
+
+        if (inlineDataPart) {
+          const imageData = inlineDataPart.inlineData.data;
+          const mimeType = inlineDataPart.inlineData.mimeType;
+          response.status(200).json({ image: `data:${mimeType};base64,${imageData}` });
+        } else {
+          throw new Error("No inline image data found in Gemini response.");
+        }
+
+        console.log('--- Banana image response sent to client ---');
+
+      } catch (error) {
+        console.error('--- CRASH in /api/gemini/generate-banana-image ---');
+        console.error('Error object:', error);
+        response.status(500).json({ error: 'Failed to generate banana image from Gemini API: ' + error.message });
+      }
+      break;
+    }
+    case 'auto-generate-persona': {''
       if (request.method !== 'POST') {
         return response.status(405).json({ error: 'Method Not Allowed' });
       }
@@ -170,7 +206,14 @@ async function handler(request, response) {
           return response.status(400).json({ error: 'Missing required fields: mission and usp' });
         }
 
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        // const modelConfig = { model: model };
+        // if (systemInstruction) {
+        //   modelConfig.systemInstruction = systemInstruction;
+        // }
+        
+        // const model = genAI.getGenerativeModel(modelConfig);
+        
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-image-preview" });
 
         const prompt = `
           You are an expert brand strategist and storyteller. Your task is to create a detailed, brand-aligned persona based on the provided brand information.

@@ -2,143 +2,79 @@ import React, { useState, useEffect } from 'react';
 import { Button, Input } from './ui';
 import { TrashIcon, PencilIcon, PlusIcon } from './icons';
 import sampleAIServices from '../sampleAIServices';
-import { saveAIServiceToDatabase as saveAIService, deleteAIServiceFromDatabase as deleteAIService, saveAIModelToDatabase as saveAIModel, deleteAIModelFromDatabase as deleteAIModel, loadAIServicesFromDatabase as loadAIServices } from '../services/databaseService';
-import { configService, AiModelConfig } from '../services/configService';
-import type { Settings } from '../../types';
-import type { AIService, AIModel } from '../../types';
+import { saveAIModelToDatabase as saveAIModel, deleteAIModelFromDatabase as deleteAIModel, loadSettingsDataFromDatabase as loadSettingsData, saveAdminDefaultsToDatabase } from '../services/databaseService';
+import type { Settings, AIService, AIModel } from '../../types';
 
-
-// Define our own simple types instead of using Pick
-interface NewService {
-  name: string;
-  description: string;
-  models: AIModel[];
-}
-
-interface NewModel {
-  name: string;
-  provider: string;
-  capabilities: string[];
-}
+// Define a simplified model type for the form state
+type EditableAIModel = Omit<AIModel, 'id'> & { id?: string };
 
 const AdminPage: React.FC = () => {
   const [services, setServices] = useState<AIService[]>([]);
-  const [editingService, setEditingService] = useState<AIService | null>(null);
-  const [newService, setNewService] = useState<NewService>({ 
-    name: '', 
-    description: '', 
-    models: [] 
-  });
-  
-  const [editingModel, setEditingModel] = useState<AIModel | null>(null);
-  const [newModel, setNewModel] = useState<NewModel>({ 
+  const [editingModel, setEditingModel] = useState<EditableAIModel | null>(null);
+  const [newModel, setNewModel] = useState<EditableAIModel>({ 
     name: '', 
     provider: '', 
-    capabilities: [] 
+    capabilities: [],
+    service: ''
   });
   
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [appSettings, setAppSettings] = useState<Settings | null>(null);
 
-  // New states for app settings and AI model config
-  const [appSettings, setAppSettings] = useState<Settings>(configService.getAppSettings());
-  const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig>(configService.getAiModelConfig());
-
-  // Load data from MongoDB and configService on component mount
-        // Load AI services from MongoDB (existing functionality)
-      // Add a small delay to ensure the service is properly saved in MongoDB
-      // Save sample services to MongoDB
-
-  const handleUpdateService = async () => {
-    if (!editingService) return;
-    
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      await saveAIService(editingService);
-      setServices(services.map(s => s.id === editingService.id ? editingService : s));
-      setEditingService(null);
+      const { services: loadedServices, adminSettings } = await loadSettingsData();
+      setServices(loadedServices);
+      setAppSettings(adminSettings);
     } catch (err) {
-      setError('Failed to update AI service');
-      console.error('Error updating AI service:', err);
+      setError('Failed to load admin configuration.');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleDeleteService = async (id: string) => {
-    try {
-      await deleteAIService(id);
-      setServices(services.filter(s => s.id !== id));
-    } catch (err) {
-      setError('Failed to delete AI service');
-      console.error('Error deleting AI service:', err);
-    }
-  };
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const handleAddModel = async (serviceId: string) => {
-    if (!newModel.name.trim()) return;
+  const handleAddModel = async () => {
+    if (!newModel.name.trim() || !newModel.service.trim()) return;
     
     try {
-      const model: AIModel = {
-        id: 'model-' + Date.now(),
-        name: newModel.name,
-        provider: newModel.provider,
-        capabilities: newModel.capabilities,
-      };
-      
-      await saveAIModel(model, serviceId);
-      
-      setServices(services.map(service => {
-        if (service.id === serviceId) {
-          return {
-            ...service,
-            models: [...service.models, model]
-          };
-        }
-        return service;
-      }));
-      
-      setNewModel({ name: '', provider: '', capabilities: [] });
+      await saveAIModel(newModel as AIModel);
+      setNewModel({ name: '', provider: '', capabilities: [], service: '' });
+      setSuccessMessage(`Model "${newModel.name}" added successfully.`);
+      fetchData(); // Refresh data
     } catch (err) {
       setError('Failed to add AI model');
       console.error('Error adding AI model:', err);
     }
   };
 
-  const handleUpdateModel = async (serviceId: string) => {
+  const handleUpdateModel = async () => {
     if (!editingModel) return;
     
     try {
-      await saveAIModel(editingModel, serviceId);
-      
-      setServices(services.map(service => {
-        if (service.id === serviceId) {
-          return {
-            ...service,
-            models: service.models.map(m => m.id === editingModel.id ? editingModel : m)
-          };
-        }
-        return service;
-      }));
-      
+      await saveAIModel(editingModel as AIModel);
       setEditingModel(null);
+      setSuccessMessage(`Model "${editingModel.name}" updated successfully.`);
+      fetchData(); // Refresh data
     } catch (err) {
       setError('Failed to update AI model');
       console.error('Error updating AI model:', err);
     }
   };
 
-  const handleDeleteModel = async (serviceId: string, modelId: string) => {
+  const handleDeleteModel = async (modelId: string) => {
+    if (!window.confirm('Are you sure you want to delete this model?')) return;
     try {
       await deleteAIModel(modelId);
-      
-      setServices(services.map(service => {
-        if (service.id === serviceId) {
-          return {
-            ...service,
-            models: service.models.filter(m => m.id !== modelId)
-          };
-        }
-        return service;
-      }));
+      setSuccessMessage('Model deleted successfully.');
+      fetchData(); // Refresh data
     } catch (err) {
       setError('Failed to delete AI model');
       console.error('Error deleting AI model:', err);
@@ -146,78 +82,35 @@ const AdminPage: React.FC = () => {
   };
 
   const handleLoadSampleData = async () => {
-    if (services.length > 0 && !window.confirm('This will replace all existing services. Continue?')) {
+    if (!window.confirm('This will replace all existing models with the sample data. Continue?')) {
       return;
     }
     
     try {
-      // Create new services with simpler IDs
-      const servicesWithIds = sampleAIServices.map((service, index) => ({
-        ...service,
-        id: `service-${Date.now()}-${index}`
-      }));
-      
-      // Save sample services to MongoDB
-      for (const service of servicesWithIds) {
-        await saveAIService(
-          { id: service.id, name: service.name, description: service.description }
-        );
+      const sampleModels = sampleAIServices.flatMap(service => 
+        service.models.map(model => ({...model, service: service.name}))
+      );
+
+      for (const model of sampleModels) {
+        await saveAIModel(model as AIModel);
       }
       
-      // Save models for each service
-      for (const service of servicesWithIds) {
-        // Create models with simpler IDs
-        const modelsWithIds = service.models.map((model, index) => ({
-          ...model,
-          id: `model-${Date.now()}-${index}`
-        }));
-        
-        // Save models for this service
-        for (const model of modelsWithIds) {
-          await saveAIModel(model, service.id);
-        }
-      }
-      
-      // Reload services to reflect changes
-      const loadedServices = await loadAIServices();
-      setServices(loadedServices);
+      setSuccessMessage('Sample models loaded successfully.');
+      fetchData(); // Refresh data
     } catch (err) {
       setError('Failed to load sample data');
       console.error('Error loading sample data:', err);
     }
   };
 
-  const handleLogout = () => {
-    // Clear authentication status
-    window.location.href = '/';
-  };
-
   const handleSaveAppSettings = async () => {
+    if (!appSettings) return;
     try {
-      // Merge appSettings and aiModelConfig into a single settings object
-      const mergedSettings = { ...appSettings, ...aiModelConfig };
-      console.log("Saving admin app settings:", mergedSettings);
-      await configService.saveAdminDefaults(mergedSettings);
+      await saveAdminDefaultsToDatabase(appSettings);
       setSuccessMessage('Application settings saved successfully!');
       setError(null);
     } catch (err) {
       const errorMessage = 'Failed to save application settings: ' + (err instanceof Error ? err.message : 'Unknown error');
-      setError(errorMessage);
-      setSuccessMessage(null);
-      console.error(errorMessage, err);
-    }
-  };
-
-  const handleSaveAiModelConfig = async () => {
-    try {
-      // Merge appSettings and aiModelConfig into a single settings object
-      const mergedSettings = { ...appSettings, ...aiModelConfig };
-      console.log("Saving AI model config:", mergedSettings);
-      await configService.saveAdminDefaults(mergedSettings);
-      setSuccessMessage('AI Model Configuration saved successfully!');
-      setError(null);
-    } catch (err) {
-      const errorMessage = 'Failed to save AI Model Configuration: ' + (err instanceof Error ? err.message : 'Unknown error');
       setError(errorMessage);
       setSuccessMessage(null);
       console.error(errorMessage, err);
@@ -229,7 +122,7 @@ const AdminPage: React.FC = () => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-brand-green border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading AI services...</p>
+          <p className="mt-4 text-gray-600">Loading Admin Configuration...</p>
         </div>
       </div>
     );
@@ -239,421 +132,92 @@ const AdminPage: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-6xl mx-auto p-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">AI Services Administration</h1>
-          <div className="flex gap-2">
-            <Button 
-              onClick={handleLoadSampleData}
-              variant="tertiary"
-              className="flex items-center gap-2"
-            >
-              Load Sample Data
-            </Button>
-            <Button 
-              onClick={handleLogout}
-              variant="tertiary"
-              className="flex items-center gap-2"
-            >
-              Logout
-            </Button>
-          </div>
+          <h1 className="text-3xl font-bold">AI Model Administration</h1>
+          <Button 
+            onClick={handleLoadSampleData}
+            variant="tertiary"
+            className="flex items-center gap-2"
+          >
+            Load Sample Data
+          </Button>
         </div>
         
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
-            <p className="text-red-700">{error}</p>
+        {error && <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">{error}</div>}
+        {successMessage && <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-4" role="alert">{successMessage}</div>}
+        
+        {appSettings && (
+          <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 className="text-xl font-semibold mb-4">Global Default Settings</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Render settings fields here, for example: */}
+                <label className="block"><span className="text-gray-700">Default Language</span><Input value={appSettings.language} onChange={(e) => setAppSettings({ ...appSettings, language: e.target.value })} /></label>
+                <label className="block"><span className="text-gray-700">Default Text Model</span><Input value={appSettings.textGenerationModel} onChange={(e) => setAppSettings({ ...appSettings, textGenerationModel: e.target.value })} /></label>
+                <label className="block"><span className="text-gray-700">Default Image Model</span><Input value={appSettings.imageGenerationModel} onChange={(e) => setAppSettings({ ...appSettings, imageGenerationModel: e.target.value })} /></label>
+            </div>
+            <Button className="mt-4" onClick={handleSaveAppSettings}>Save Global Settings</Button>
           </div>
         )}
-        
-        {successMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-6">
-            <p className="text-green-700">{successMessage}</p>
-          </div>
-        )}
-        
-        {/* Application Settings */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Application Settings</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="block">
-              <span className="text-gray-700">Language</span>
-              <Input
-                value={appSettings.language}
-                onChange={(e) => setAppSettings({ ...appSettings, language: e.target.value })}
-              />
-            </label>
-            <label className="block">
-              <span className="text-gray-700">Total Posts Per Month</span>
-              <Input
-                type="number"
-                value={appSettings.totalPostsPerMonth}
-                onChange={(e) => setAppSettings({ ...appSettings, totalPostsPerMonth: parseInt(e.target.value) })}
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="text-gray-700">Media Prompt Suffix</span>
-              <Input
-                value={appSettings.mediaPromptSuffix}
-                onChange={(e) => setAppSettings({ ...appSettings, mediaPromptSuffix: e.target.value })}
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="text-gray-700">Text Generation Model</span>
-              <Input
-                value={appSettings.textGenerationModel}
-                onChange={(e) => setAppSettings({ ...appSettings, textGenerationModel: e.target.value })}
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="text-gray-700">Image Generation Model</span>
-              <Input
-                value={appSettings.imageGenerationModel}
-                onChange={(e) => setAppSettings({ ...appSettings, imageGenerationModel: e.target.value })}
-              />
-            </label>
-            <label className="block md:col-span-2">
-              <span className="text-gray-700">Affiliate Content Kit</span>
-              <textarea
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-brand-blue focus:ring focus:ring-brand-blue focus:ring-opacity-50"
-                rows={10}
-                value={appSettings.affiliateContentKit}
-                onChange={(e) => setAppSettings({ ...appSettings, affiliateContentKit: e.target.value })}
-              ></textarea>
-            </label>
-          </div>
-          <Button 
-            className="mt-4 flex items-center gap-2"
-            onClick={handleSaveAppSettings}
-          >
-            Save Application Settings
-          </Button>
-        </div>
 
-        {/* AI Model Configuration */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">AI Model Configuration</h2>
-
-          {/* Text Model Fallback Order */}
-          <div className="mb-6">
-            <h3 className="text-lg font-medium mb-3">Text Model Fallback Order</h3>
-            <div className="space-y-2">
-              {aiModelConfig.textModelFallbackOrder.map((model, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Input
-                    value={model}
-                    onChange={(e) => {
-                      const newOrder = [...aiModelConfig.textModelFallbackOrder];
-                      newOrder[index] = e.target.value;
-                      setAiModelConfig({ ...aiModelConfig, textModelFallbackOrder: newOrder });
-                    }}
-                    className="flex-grow"
-                  />
-                  <Button
-                    variant="tertiary"
-                    onClick={() => {
-                      const newOrder = aiModelConfig.textModelFallbackOrder.filter((_, i) => i !== index);
-                      setAiModelConfig({ ...aiModelConfig, textModelFallbackOrder: newOrder });
-                    }}
-                  >
-                    <TrashIcon className="h-5 w-5 text-red-600" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <Button
-              className="mt-3 flex items-center gap-2"
-              onClick={() => setAiModelConfig({ ...aiModelConfig, textModelFallbackOrder: [...aiModelConfig.textModelFallbackOrder, ''] })}
-            >
-              <PlusIcon className="h-5 w-5" />
-              Add Text Model
-            </Button>
-          </div>
-
-          {/* Vision Models */}
-          <div>
-            <h3 className="text-lg font-medium mb-3">Vision Models</h3>
-            <div className="space-y-2">
-              {aiModelConfig.visionModels.map((model, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <Input
-                    value={model}
-                    onChange={(e) => {
-                      const newModels = [...aiModelConfig.visionModels];
-                      newModels[index] = e.target.value;
-                      setAiModelConfig({ ...aiModelConfig, visionModels: newModels });
-                    }}
-                    className="flex-grow"
-                  />
-                  <Button
-                    variant="tertiary"
-                    onClick={() => {
-                      const newModels = aiModelConfig.visionModels.filter((_, i) => i !== index);
-                      setAiModelConfig({ ...aiModelConfig, visionModels: newModels });
-                    }}
-                  >
-                    <TrashIcon className="h-5 w-5 text-red-600" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-            <Button
-              className="mt-3 flex items-center gap-2"
-              onClick={() => setAiModelConfig({ ...aiModelConfig, visionModels: [...aiModelConfig.visionModels, ''] })}
-            >
-              <PlusIcon className="h-5 w-5" />
-              Add Vision Model
-            </Button>
-          </div>
-
-          <Button 
-            className="mt-4 flex items-center gap-2"
-            onClick={handleSaveAiModelConfig}
-          >
-            Save AI Model Configuration
-          </Button>
-        </div>
-
-        {/* Add New Service */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Add New AI Service</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Input
-              placeholder="Service Name"
-              value={newService.name}
-              onChange={(e) => setNewService({...newService, name: e.target.value})}
-            />
-            <Input
-              placeholder="Description"
-              value={newService.description}
-              onChange={(e) => setNewService({...newService, description: e.target.value})}
-            />
-          </div>
-          <Button 
-            className="mt-4 flex items-center gap-2"
-            onClick={handleAddService}
-          >
-            <PlusIcon className="h-5 w-5" />
-            Add Service
-          </Button>
-        </div>
-
-        {/* Services List */}
-        <div className="space-y-6">
-          {services.map(service => (
-            <div key={service.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-              <div className="p-6">
-                {editingService?.id === service.id ? (
-                  // Edit Service Form
-                  <div className="space-y-4">
-                    <h2 className="text-xl font-semibold">Edit Service</h2>
-                    <Input
-                      placeholder="Service Name"
-                      value={editingService.name}
-                      onChange={(e) => setEditingService({...editingService, name: e.target.value})}
-                    />
-                    <Input
-                      placeholder="Description"
-                      value={editingService.description}
-                      onChange={(e) => setEditingService({...editingService, description: e.target.value})}
-                    />
-                    <div className="flex gap-2">
-                      <Button onClick={handleUpdateService}>Save</Button>
-                      <Button variant="tertiary" onClick={() => setEditingService(null)}>Cancel</Button>
-                    </div>
-                  </div>
-                ) : (
-                  // Service Display
-                  <div className="flex justify-between items-start">
+        <div className="bg-white rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-semibold mb-4">Manage AI Models</h2>
+            {/* Simplified Add/Edit Form */}
+            <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <h3 className="font-medium mb-3">{editingModel ? 'Edit Model' : 'Add New Model'}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <Input placeholder="Service (e.g. Google)" value={editingModel?.service || newModel.service} onChange={(e) => editingModel ? setEditingModel({...editingModel, service: e.target.value}) : setNewModel({...newModel, service: e.target.value})} />
+                    <Input placeholder="Model Name" value={editingModel?.name || newModel.name} onChange={(e) => editingModel ? setEditingModel({...editingModel, name: e.target.value}) : setNewModel({...newModel, name: e.target.value})} />
+                    <Input placeholder="Provider" value={editingModel?.provider || newModel.provider} onChange={(e) => editingModel ? setEditingModel({...editingModel, provider: e.target.value}) : setNewModel({...newModel, provider: e.target.value})} />
+                    {/* Simplified Capabilities Checkbox */}
                     <div>
-                      <h2 className="text-xl font-semibold">{service.name}</h2>
-                      <p className="text-gray-600 mt-1">{service.description}</p>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Capabilities</label>
+                        <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md bg-white">
+                            {['text', 'image'].map(cap => (
+                                <label key={cap} className="inline-flex items-center"><input type="checkbox" className="rounded" checked={(editingModel?.capabilities || newModel.capabilities).includes(cap)} onChange={(e) => {
+                                    const currentCaps = editingModel?.capabilities || newModel.capabilities;
+                                    const newCaps = e.target.checked ? [...currentCaps, cap] : currentCaps.filter(c => c !== cap);
+                                    editingModel ? setEditingModel({...editingModel, capabilities: newCaps}) : setNewModel({...newModel, capabilities: newCaps});
+                                }} /><span className="ml-1 text-sm">{cap}</span></label>
+                            ))}
+                        </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button 
-                        variant="tertiary" 
-                        onClick={() => setEditingService(service)}
-                        className="flex items-center gap-1"
-                      >
-                        <PencilIcon className="h-4 w-4" />
-                        Edit
-                      </Button>
-                      <Button 
-                        variant="tertiary" 
-                        onClick={() => handleDeleteService(service.id)}
-                        className="flex items-center gap-1 text-red-600 hover:bg-red-50"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              {/* Models Section */}
-              <div className="border-t border-gray-200 p-6">
-                <h3 className="text-lg font-medium mb-4">Models</h3>
-                
-                {/* Add New Model */}
-                <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                  <h4 className="font-medium mb-3">Add New Model</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Input
-                      placeholder="Model Name"
-                      value={newModel.name}
-                      onChange={(e) => setNewModel({...newModel, name: e.target.value})}
-                    />
-                    <Input
-                      placeholder="Provider"
-                      value={newModel.provider}
-                      onChange={(e) => setNewModel({...newModel, provider: e.target.value})}
-                    />
-                    <div className="relative">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Capabilities</label>
-                      <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md">
-                        {['text', 'image', 'audio', 'video', 'code'].map((capability) => (
-                          <label key={capability} className="inline-flex items-center">
-                            <input
-                              type="checkbox"
-                              className="rounded border-gray-300 text-brand-blue focus:ring-brand-blue"
-                              checked={newModel.capabilities.includes(capability)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setNewModel({
-                                    ...newModel,
-                                    capabilities: [...newModel.capabilities, capability]
-                                  });
-                                } else {
-                                  setNewModel({
-                                    ...newModel,
-                                    capabilities: newModel.capabilities.filter(c => c !== capability)
-                                  });
-                                }
-                              }}
-                            />
-                            <span className="ml-1 text-sm text-gray-700">{capability}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <Button 
-                    className="mt-3 flex items-center gap-2"
-                    onClick={() => handleAddModel(service.id)}
-                  >
-                    <PlusIcon className="h-4 w-4" />
-                    Add Model
-                  </Button>
                 </div>
-                
-                {/* Models List */}
-                {service.models.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
+                <div className="flex gap-2 mt-3">
+                    <Button onClick={editingModel ? handleUpdateModel : handleAddModel}>{editingModel ? 'Update Model' : 'Add Model'}</Button>
+                    {editingModel && <Button variant="tertiary" onClick={() => setEditingModel(null)}>Cancel</Button>}
+                </div>
+            </div>
+
+            {/* Models List Table */}
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
                         <tr>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capabilities</th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Service</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model Name</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Provider</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Capabilities</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                         </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {service.models.map(model => (
-                          <tr key={model.id}>
-                            {editingModel?.id === model.id ? (
-                              // Edit Model Row
-                              <td colSpan={4} className="px-6 py-4">
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                                  <Input
-                                    placeholder="Model Name"
-                                    value={editingModel.name}
-                                    onChange={(e) => setEditingModel({...editingModel, name: e.target.value})}
-                                  />
-                                  <Input
-                                    placeholder="Provider"
-                                    value={editingModel.provider}
-                                    onChange={(e) => setEditingModel({...editingModel, provider: e.target.value})}
-                                  />
-                                  <div className="relative">
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Capabilities</label>
-                                    <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md">
-                                      {['text', 'image', 'audio', 'video', 'code'].map((capability) => (
-                                        <label key={capability} className="inline-flex items-center">
-                                          <input
-                                            type="checkbox"
-                                            className="rounded border-gray-300 text-brand-blue focus:ring-brand-blue"
-                                            checked={editingModel.capabilities.includes(capability)}
-                                            onChange={(e) => {
-                                              if (e.target.checked) {
-                                                setEditingModel({
-                                                  ...editingModel,
-                                                  capabilities: [...editingModel.capabilities, capability]
-                                                });
-                                              } else {
-                                                setEditingModel({
-                                                  ...editingModel,
-                                                  capabilities: editingModel.capabilities.filter(c => c !== capability)
-                                                });
-                                              }
-                                            }}
-                                          />
-                                          <span className="ml-1 text-sm text-gray-700">{capability}</span>
-                                        </label>
-                                      ))}
-                                    </div>
-                                  </div>
-                                  <div className="flex gap-2 mt-6">
-                                    <Button onClick={() => handleUpdateModel(service.id)}>Save</Button>
-                                    <Button variant="tertiary" onClick={() => setEditingModel(null)}>Cancel</Button>
-                                  </div>
-                                </div>
-                              </td>
-                            ) : (
-                              // Display Model Row
-                              <>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {services.flatMap(s => s.models).map(model => (
+                            <tr key={model.id}>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{services.find(s => s.models.some(m => m.id === model.id))?.name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{model.name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{model.provider}</td>
-                                <td className="px-6 py-4 text-sm text-gray-500">{model.capabilities}</td>
+                                <td className="px-6 py-4 text-sm text-gray-500">{model.capabilities.join(', ')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                                  <div className="flex gap-2">
-                                    <Button 
-                                      variant="tertiary" 
-                                      onClick={() => setEditingModel(model)}
-                                      className="flex items-center gap-1"
-                                    >
-                                      <PencilIcon className="h-4 w-4" />
-                                      Edit
-                                    </Button>
-                                    <Button 
-                                      variant="tertiary" 
-                                      onClick={() => handleDeleteModel(service.id, model.id)}
-                                      className="flex items-center gap-1 text-red-600 hover:bg-red-50"
-                                    >
-                                      <TrashIcon className="h-4 w-4" />
-                                      Delete
-                                    </Button>
-                                  </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="tertiary" onClick={() => setEditingModel(model)}><PencilIcon className="h-4 w-4" /></Button>
+                                        <Button variant="tertiary" onClick={() => handleDeleteModel(model.id)}><TrashIcon className="h-4 w-4 text-red-600" /></Button>
+                                    </div>
                                 </td>
-                              </>
-                            )}
-                          </tr>
+                            </tr>
                         ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p className="text-gray-500 italic">No models added for this service yet.</p>
-                )}
-              </div>
+                    </tbody>
+                </table>
             </div>
-          ))}
         </div>
-        
-        {services.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No AI services configured yet. Add your first service above.</p>
-          </div>
-        )}
       </div>
     </div>
   );

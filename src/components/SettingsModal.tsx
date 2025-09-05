@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { Settings, AIService } from '../../types';
 import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
-import { loadAIServicesFromDatabase as loadAIServices } from '../services/databaseService';
+import { loadSettingsDataFromDatabase as loadSettingsData } from '../services/databaseService';
+import SettingField from './SettingField';
 
 // Helper function to get models by capability from AI services
 const getModelsByCapability = (aiServices: AIService[], capability: 'text' | 'image') => {
@@ -19,6 +20,7 @@ interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: Settings;
+  adminSettings: Settings | null;
   onSave: (newSettings: Settings) => Promise<void>;
 }
 
@@ -41,30 +43,6 @@ const TabButton: React.FC<{
         {text}
     </button>
 );
-
-const styleTemplates = [
-    {
-        name: 'Photorealistic',
-        suffix: ', photorealistic, 8k, high quality, cinematic lighting, sharp focus',
-        previewUrl: 'https://images.pexels.com/photos/1647976/pexels-photo-1647976.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-    },
-    {
-        name: 'Minimalist',
-        suffix: ', minimalist, clean background, simple, elegant, studio lighting, flat design style',
-        previewUrl: 'https://images.pexels.com/photos/262391/pexels-photo-262391.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-    },
-    {
-        name: 'Vintage',
-        suffix: ', vintage style, retro, 1970s film photography, faded colors, film grain, nostalgic',
-        previewUrl: 'https://images.pexels.com/photos/725255/pexels-photo-725255.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-    },
-    {
-        name: 'Vibrant & Abstract',
-        suffix: ', vibrant abstract illustration, colorful, geometric shapes, energetic, modern art',
-        previewUrl: 'https://images.pexels.com/photos/1616403/pexels-photo-1616403.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1'
-    }
-];
-
 
 // Define texts before using it
 const T = {
@@ -116,10 +94,11 @@ const T = {
   }
 };
 
-const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings: initialSettings, onSave }) => {
+const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings: initialSettings, adminSettings, onSave }) => {
   const [settings, setSettings] = useState<Settings>(initialSettings);
   const [activeTab, setActiveTab] = useState<ActiveTab>('general');
   const [aiServices, setAiServices] = useState<AIService[]>([]);
+  const [dynamicAdminSettings, setDynamicAdminSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
@@ -127,18 +106,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   useEffect(() => {
     if (isOpen) {
       setSettings(initialSettings);
-      const fetchAiServices = async () => {
+      const fetchSettingsData = async () => {
         setLoading(true);
         try {
-          const loadedServices = await loadAIServices();
-          setAiServices(loadedServices);
+          const { services, adminSettings: loadedAdminSettings } = await loadSettingsData();
+          setAiServices(services);
+          setDynamicAdminSettings(loadedAdminSettings);
         } catch (err) {
-          setError('Failed to load AI models configuration.');
+          setError('Failed to load settings configuration.');
         } finally {
           setLoading(false);
         }
       };
-      fetchAiServices();
+      fetchSettingsData();
     }
   }, [isOpen, initialSettings]);
 
@@ -197,18 +177,19 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
         <div className="mt-6 space-y-6 flex-grow overflow-y-auto pr-2">
             {activeTab === 'general' && (
                  <div className="space-y-4">
-                    <label htmlFor="language" className="block text-lg font-medium text-gray-800">{texts.language}</label>
-                     <select
+                    <SettingField
                         id="language"
-                        name="language"
-                        value={settings.language}
+                        label={texts.language}
+                        description={texts.language_desc}
+                        brandValue={settings.language}
+                        adminValue={adminSettings?.language}
                         onChange={handleInputChange}
-                        className="w-full bg-white border border-gray-300 rounded-md py-2 px-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-green focus:border-transparent transition-colors"
-                    >
-                        <option value="Việt Nam">Việt Nam</option>
-                        <option value="English">English</option>
-                    </select>
-                    <p className="text-sm text-gray-500 font-serif">{texts.language_desc}</p>
+                        type="select"
+                        options={[
+                            { value: "Việt Nam", label: "Việt Nam" },
+                            { value: "English", label: "English" }
+                        ]}
+                    />
                 </div>
             )}
             {activeTab === 'generation' && (
@@ -237,48 +218,34 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                         <p className="text-sm text-gray-500 mt-1 font-serif">{texts.textGenerationModel_desc}</p>
                         {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
                     </div>
-                     <div>
-                        <label htmlFor="imageGenerationModel" className="block text-lg font-medium text-gray-800">{texts.imageGenerationModel}</label>
-                        <Select
+                                          <div>
+                        <SettingField
                             id="imageGenerationModel"
-                            name="imageGenerationModel"
-                            value={settings.imageGenerationModel}
+                            label={texts.imageGenerationModel}
+                            description={texts.imageGenerationModel_desc}
+                            brandValue={settings.imageGenerationModel}
+                            adminValue={adminSettings?.imageGenerationModel}
                             onChange={handleInputChange}
-                            className="mt-1"
-                        >
-                            {loading && <option>Loading AI models...</option>}
-                            {error && <option>Error loading models</option>}
-                            {imageGenerationModels.map(model => (
-                                <option key={model.value} value={model.value}>{model.label}</option>
-                            ))}
-                            {!loading && !error && !imageGenerationModels.some(model => model.value === settings.imageGenerationModel) && settings.imageGenerationModel && (
-                                <option value={settings.imageGenerationModel}>{settings.imageGenerationModel} (Custom)</option>
-                            )}
-                            {!loading && !error && imageGenerationModels.length === 0 && !settings.imageGenerationModel && (
-                                <option value="">No models available</option>
-                            )}
-                        </Select>
-                        <p className="text-sm text-gray-500 mt-1 font-serif">{texts.imageGenerationModel_desc}</p>
+                            type="select"
+                            options={imageGenerationModels}
+                        />
                         {error && <p className="text-sm text-red-500 mt-1">{error}</p>}
                     </div>
                     <div>
-                        <label htmlFor="totalPostsPerMonth" className="block text-lg font-medium text-gray-800">{texts.total_posts_per_month}</label>
-                        <Input
+                        <SettingField
                             id="totalPostsPerMonth"
-                            name="totalPostsPerMonth"
-                            type="number"
-                            value={settings.totalPostsPerMonth}
+                            label={texts.total_posts_per_month}
+                            description={texts.total_posts_per_month_desc}
+                            brandValue={settings.totalPostsPerMonth}
+                            adminValue={adminSettings?.totalPostsPerMonth}
                             onChange={handleInputChange}
-                            min="4"
-                            max="40"
-                            className="mt-1"
+                            type="number"
                         />
-                        <p className="text-sm text-gray-500 mt-1 font-serif">{texts.total_posts_per_month_desc}</p>
                     </div>
                      <div>
                         <label className="block text-lg font-medium text-gray-800">{texts.visual_style_templates}</label>
                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                            {styleTemplates.map((template) => (
+                            {(dynamicAdminSettings?.visualStyleTemplates || []).map((template) => (
                                 <button
                                     key={template.name}
                                     onClick={() => setSettings(prev => ({...prev, mediaPromptSuffix: template.suffix}))}
@@ -294,101 +261,33 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                          </div>
                     </div>
                      <div>
-                        <label htmlFor="mediaPromptSuffix" className="block text-lg font-medium text-gray-800">{texts.media_prompt_suffix}</label>
-                        <TextArea
+                        <SettingField
                             id="mediaPromptSuffix"
-                            name="mediaPromptSuffix"
-                            value={settings.mediaPromptSuffix}
+                            label={texts.media_prompt_suffix}
+                            description={texts.media_prompt_suffix_desc}
+                            brandValue={settings.mediaPromptSuffix}
+                            adminValue={adminSettings?.mediaPromptSuffix}
                             onChange={handleInputChange}
-                            rows={3}
-                            className="mt-1 font-mono text-sm"
+                            type="textarea"
                         />
-                        <p className="text-sm text-gray-500 mt-1 font-serif">{texts.media_prompt_suffix_desc}</p>
                     </div>
 
-                    <div className="mb-6">
-                        <label className="block text-lg font-medium text-gray-800">Text Model Fallback Order</label>
-                        <div className="space-y-2">
-                            {(settings.textModelFallbackOrder || []).map((model, index) => (
-                                <div key={index} className="flex items-center gap-2">
-                                    <Input
-                                        value={model}
-                                        onChange={(e) => {
-                                            const newOrder = [...(settings.textModelFallbackOrder || [])];
-                                            newOrder[index] = e.target.value;
-                                            setSettings({ ...settings, textModelFallbackOrder: newOrder });
-                                        }}
-                                        className="flex-grow"
-                                    />
-                                    <Button
-                                        variant="tertiary"
-                                        onClick={() => {
-                                            const newOrder = (settings.textModelFallbackOrder || []).filter((_, i) => i !== index);
-                                            setSettings({ ...settings, textModelFallbackOrder: newOrder });
-                                        }}
-                                    >
-                                        <TrashIcon className="h-5 w-5 text-red-600" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                        <Button
-                            className="mt-3 flex items-center gap-2"
-                            onClick={() => setSettings({ ...settings, textModelFallbackOrder: [...(settings.textModelFallbackOrder || []), ''] })}
-                        >
-                            <PlusIcon className="h-5 w-5" />
-                            Add Text Model
-                        </Button>
-                    </div>
+                    
 
-                    <div>
-                        <label className="block text-lg font-medium text-gray-800">Vision Models</label>
-                        <div className="space-y-2">
-                            {(settings.visionModels || []).map((model, index) => (
-                                <div key={index} className="flex items-center gap-2">
-                                    <Input
-                                        value={model}
-                                        onChange={(e) => {
-                                            const newModels = [...(settings.visionModels || [])];
-                                            newModels[index] = e.target.value;
-                                            setSettings({ ...settings, visionModels: newModels });
-                                        }}
-                                        className="flex-grow"
-                                    />
-                                    <Button
-                                        variant="tertiary"
-                                        onClick={() => {
-                                            const newModels = (settings.visionModels || []).filter((_, i) => i !== index);
-                                            setSettings({ ...settings, visionModels: newModels });
-                                        }}
-                                    >
-                                        <TrashIcon className="h-5 w-5 text-red-600" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                        <Button
-                            className="mt-3 flex items-center gap-2"
-                            onClick={() => setSettings({ ...settings, visionModels: [...(settings.visionModels || []), ''] })}
-                        >
-                            <PlusIcon className="h-5 w-5" />
-                            Add Vision Model
-                        </Button>
-                    </div>
+                    
                 </div>
             )}
              {activeTab === 'affiliate' && (
                 <div>
-                    <label htmlFor="affiliateContentKit" className="block text-lg font-medium text-gray-800">{texts.affiliate_kit_rules}</label>
-                    <TextArea
+                    <SettingField
                         id="affiliateContentKit"
-                        name="affiliateContentKit"
-                        value={settings.affiliateContentKit}
+                        label={texts.affiliate_kit_rules}
+                        description={texts.affiliate_kit_rules_desc}
+                        brandValue={settings.affiliateContentKit}
+                        adminValue={adminSettings?.affiliateContentKit}
                         onChange={handleInputChange}
-                        rows={15}
-                        className="mt-1 font-mono text-sm"
+                        type="textarea"
                     />
-                    <p className="text-sm text-gray-500 mt-1 font-serif">{texts.affiliate_kit_rules_desc}</p>
                 </div>
             )}
         </div>

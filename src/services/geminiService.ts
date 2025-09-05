@@ -1,5 +1,15 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { generateContentWithBff, generateImageWithBff, autoGeneratePersonaWithBff } from './bffService';
+import { generateContentWithBff, generateImageWithBff, autoGeneratePersonaWithBff, generateImageWithBananaBff } from './bffService';
+
+export const generateImageWithBanana = async (
+    prompt: string,
+    promptSuffix: string
+): Promise<string> => {
+    // Use BFF for image generation to keep API keys secure
+    const fullPrompt = `${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}`;
+    
+    return await generateImageWithBananaBff(fullPrompt);
+};
 import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../../types';
 
 

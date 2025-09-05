@@ -13,7 +13,7 @@ const AutoPersonaResultModal = lazy(() => import('./components/AutoPersonaResult
 import { ActiveTab } from './components/Header';
 import Loader from './components/Loader';
 import Toast from './components/Toast';
-import { generateImage, autoGeneratePersonaProfile } from './services/geminiService';
+import { generateImage, autoGeneratePersonaProfile, generateImageWithBanana } from './services/geminiService';
 import { createDocxBlob, createMediaPlanXlsxBlob } from './services/exportService';
 import { suggestProductsForPost } from './services/khongminhService';
 import { generateImageWithOpenRouter } from './services/openrouterService';
@@ -463,6 +463,7 @@ const App: React.FC = () => {
         textGenerationModel: 'gemini-2.5-pro',
         imageGenerationModel: '@cf/stabilityai/stable-diffusion-xl-base-1.0'
     });
+    const [adminSettings, setAdminSettings] = useState<Settings | null>(null);
     const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig | null>(null);
     
     // Admin authentication state
@@ -543,23 +544,7 @@ const App: React.FC = () => {
         }
     }, [mongoBrandId, dispatchAssets, setError]);
 
-    // Set brandId in configService when it changes
-    useEffect(() => {
-        if (mongoBrandId) {
-            configService.setBrandId(mongoBrandId).then(() => {
-                // Update the settings state after the brand config is loaded
-                const updatedSettings = configService.getAppSettings();
-                setSettings(updatedSettings);
-                setAiModelConfig(configService.getAiModelConfig());
-            }).catch(error => {
-                console.error("Failed to set brand ID:", error);
-            });
-        } else {
-            // Reset to default settings when no brand is selected
-            setSettings(configService.getAppSettings());
-            setAiModelConfig(configService.getAiModelConfig());
-        }
-    }, [mongoBrandId]);
+    
 
     // Media Plan On-Demand Loading State
     const [mediaPlanGroupsList, setMediaPlanGroupsList] = useState<{id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]>([]);
@@ -624,6 +609,7 @@ const App: React.FC = () => {
                 const { credentialsSet, brands, adminDefaults } = await initializeApp();
 
                 await configService.initializeConfig(adminDefaults);
+                setAdminSettings(configService.getAdminDefaults());
                 setSettings(configService.getAppSettings());
                 setAiModelConfig(configService.getAiModelConfig());
 
@@ -1266,8 +1252,8 @@ const App: React.FC = () => {
         const model = settings.imageGenerationModel;
         if (model.startsWith('@cf/')) {
             return generateImageWithCloudflare(mediaPrompt, model, imagesToUse);
-        } else if (model.startsWith('imagen-')) {
-            return generateImage(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse);
+        } else if (model.startsWith('banana/')) {
+            return generateImageWithBanana(mediaPrompt, settings.mediaPromptSuffix);
         } else {
             return generateImageWithOpenRouter(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse);
         }
@@ -1991,6 +1977,14 @@ const App: React.FC = () => {
             setCurrentStep('assets');
             setActiveTab('brandKit'); // Redirect to brandKit tab for instant rendering
 
+            // Explicitly set the loaded brand's settings into the main settings state
+            if (brandKitData.settings && Object.keys(brandKitData.settings).length > 0) {
+                setSettings(brandKitData.settings);
+            } else {
+                // If the brand has no specific settings, fall back to the admin defaults
+                setSettings(adminSettings || configService.getAppSettings());
+            }
+
             // Step 2: Load media plan groups list in background
             const loadedPlansList = await loadMediaPlanGroups(brandId);
             setMediaPlanGroupsList(loadedPlansList);
@@ -2565,21 +2559,18 @@ const App: React.FC = () => {
         setIsSavingSettings(true);
         setError(null);
         try {
-            // Update settings in the central config service (in-memory)
-            await configService.updateAppSettings(newSettings);
-
             // Persist settings to the database
             if (mongoBrandId) {
                 await saveSettings(newSettings, mongoBrandId);
             } else {
                 // If there is no brand context, save as system-wide defaults.
-                // This might happen if settings are changed from a global admin page.
                 await saveAdminDefaultsToDatabase(newSettings);
+                // Also update the adminSettings state so it's reflected if we open a brand right after.
+                setAdminSettings(newSettings);
             }
 
-            // Update local state from the single source of truth
-            setSettings(configService.getAppSettings());
-            setAiModelConfig(configService.getAiModelConfig());
+            // Update local state directly
+            setSettings(newSettings);
 
             setIsSettingsModalOpen(false);
             setSuccessMessage("Settings saved successfully!");
@@ -2909,6 +2900,7 @@ const App: React.FC = () => {
                                 isOpen={isSettingsModalOpen}
                                 onClose={() => setIsSettingsModalOpen(false)}
                                 settings={settings}
+                                adminSettings={adminSettings}
                                 onSave={handleSaveSettings}
                             />
                         </Suspense>

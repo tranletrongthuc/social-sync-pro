@@ -382,3 +382,87 @@ The primary goal of this session was to diagnose and fix a critical performance 
 *   **Data Flow:** The session highlighted the importance of a clear, top-down data flow. The final, correct pattern involved the top-level `App.tsx` component fetching all necessary initial data once, and then passing that data down to child components via props. This should be the preferred pattern over having individual child components fetch their own data.
 *   **Assume Nothing About Imports:** The errors I introduced were from making assumptions about which modules were importing the functions I deleted. A future best practice will be to actively search for usages of a function across the codebase *before* deleting it.
 *   **Browser Cache:** While the issues in this session were code-related, the initial symptoms (old API calls still appearing) were characteristic of a browser cache issue. It's important to remember to instruct users to perform a hard refresh (Ctrl+Shift+R) after significant frontend changes are deployed.
+
+### Session Summary (2025-09-04) [3]
+
+This session focused on integrating a new image generation service and fixing several related bugs in the API and frontend services.
+
+### 1. New Feature: "Google Banana" Image Generation
+
+A new image generation service using Google's `gemini-1.5-flash-image-preview` model was successfully integrated.
+
+*   **Backend (`api/gemini.js`):** Instead of creating a new file, a new action `generate-banana-image` was added to the existing `api/gemini.js`. This action uses the `generateContent` method from the `@google/genai` SDK and extracts the image data from the `inlineData` part of the response.
+*   **Services (`bffService.ts`, `geminiService.ts`):** Corresponding functions (`generateImageWithBananaBff`, `generateImageWithBanana`) were added to the frontend services to facilitate calling the new backend action.
+*   **Configuration (`SettingsModal.tsx` & Database):** It was discovered that the list of available AI models is dynamically populated from the `aiServices` collection in MongoDB. The integration was completed by adding a routing case in `App.tsx` for models prefixed with `banana/`, requiring the user to add the new model to their database to make it selectable in the UI.
+
+### 2. Bug Fixes
+
+*   **Gemini `generate-image` Crash:**
+    *   **Problem:** A `TypeError: geminiModel.generateImages is not a function` was crashing the generic Gemini image generation endpoint.
+    *   **Fix:** The `generate-image` action in `api/gemini.js` was refactored to use the correct `generateContent` method, aligning it with the modern SDK usage and the new "Banana" implementation. The incorrect frontend routing for `imagen-` models in `App.tsx` was also removed to prevent future errors.
+
+*   **Cloudflare Image Generation 404 Error:**
+    *   **Problem:** Calls to the Cloudflare image generator were failing with a `404 Not Found` error.
+    *   **Analysis:** The frontend was calling an incorrect URL (`/api/cloudflare/generate-image`) that did not match the project's standardized API route structure (`/api/cloudflare?action=generate-image`).
+    *   **Fix:** The URL was corrected in the `generateImageWithCloudflareBff` function within `src/services/bffService.ts`.
+
+### 3. Notes for Future Development
+
+*   **My Misunderstanding of Existing Libraries:** My initial plan was overly complex, involving new files and dependencies. The user correctly pointed out that the feature could be implemented with the existing `@google/genai` library. **Recommendation:** Before adding new dependencies or files, always thoroughly investigate if the desired functionality can be achieved with the tools already present in the project.
+
+*   **API Route Consistency:** The Cloudflare 404 error was a regression bug caused by a single endpoint being missed during a previous, large-scale API refactoring. **Recommendation:** When performing project-wide refactoring, use global search and other tools to ensure *all* call sites are identified and updated. Inconsistency in API patterns is a common source of bugs.
+
+*   **Frontend/Backend Contract:** Both bugs fixed in this session were caused by a mismatch between the frontend's request and the backend's expectation (either an incorrect URL or an incorrect SDK method call). **Recommendation:** When debugging, always verify the entire request-response chain, from the initial frontend call to the specific backend handler logic, to ensure they match perfectly.
+
+Session Summary (2025-09-05)[1]
+---
+
+### 1. Summary of Accomplishments
+
+This session focused on a significant enhancement to the application's settings management system, implementing a "Dynamic Opt-in Settings" feature.
+
+*   **Implemented "Dynamic Opt-in Settings":** The application now supports a more advanced settings flow where client brands can selectively "opt-in" to updated global admin default values.
+*   **New `SettingField` Component:** A reusable React component (`SettingField.tsx`) was created to encapsulate the logic for displaying individual settings, comparing brand-specific values against admin defaults, and providing an "opt-in" mechanism via dynamic dropdowns.
+*   **Refactored `App.tsx`:** The main application component was updated to manage the global `adminSettings` state and correctly pass it down to the `SettingsModal`. It also includes a unified `handleSaveSettings` function to save either brand-specific or admin default settings.
+*   **Refactored `SettingsModal.tsx`:** The settings modal UI was overhauled to utilize the new `SettingField` component for all configurable settings, replacing static input elements. It now receives and processes both brand-specific and admin default settings.
+*   **Removed Obsolete Settings Sections:** The "Text Model Fallback Order" and "Vision Models" sections were removed from the `SettingsModal` UI as per user request.
+
+### 2. Key Technical Changes
+
+*   **`src/components/SettingField.tsx` (New File):**
+    *   Created to render individual setting fields.
+    *   Props: `id`, `label`, `description`, `brandValue`, `adminValue`, `onChange`, `type`, `options`.
+    *   Displays "Customized" badge if `brandValue !== adminValue`.
+    *   For `type="select"`, dynamically generates options including `brandValue` and `adminValue` (labeled as "Default").
+*   **`src/App.tsx` Modifications:**
+    *   **State:** Added `const [adminSettings, setAdminSettings] = useState<Settings | null>(null);`.
+    *   **Initialization:** Modified `useEffect` (where `initializeApp` is called) to set `adminSettings` using `configService.getAdminDefaults()`.
+    *   **`handleSaveSettings`:** Implemented a unified `useCallback` function to handle saving. It checks `mongoBrandId` to determine whether to call `saveSettings` (for brand) or `saveAdminDefaultsToDatabase` (for admin).
+    *   **`SettingsModal` Invocation:** Updated the `<SettingsModal />` component to pass `adminSettings={adminSettings}` and `onSave={handleSaveSettings}`.
+*   **`src/components/SettingsModal.tsx` Modifications:**
+    *   **Props:** Updated `SettingsModalProps` interface to include `adminSettings: Settings | null;`.
+    *   **Destructuring:** Corrected the component's function signature to destructure `adminSettings` from props.
+    *   **Imports:** Added `import SettingField from './SettingField';`.
+    *   **UI Refactor:** Replaced direct `Input`, `TextArea`, `Select` elements with `<SettingField />` components for `language`, `textGenerationModel`, `imageGenerationModel`, `totalPostsPerMonth`, `mediaPromptSuffix`, and `affiliateContentKit`.
+    *   **Removal:** Deleted the `div` blocks corresponding to "Text Model Fallback Order" and "Vision Models" sections.
+
+### 3. Bug Fixes During Session
+
+*   **`Identifier 'handleSaveSettings' has already been declared` (in `App.tsx`):**
+    *   **Cause:** A duplicate `handleSaveSettings` function was introduced during the initial `App.tsx` modification.
+    *   **Fix:** The redundant `handleSaveSettings` declaration at line ~808 in `App.tsx` was removed.
+*   **`Uncaught ReferenceError: adminSettings is not defined` (in `SettingsModal.tsx`):**
+    *   **Cause:** The `adminSettings` prop was passed to `SettingsModal` but was not correctly destructured in the component's function signature.
+    *   **Fix:** `adminSettings` was added to the destructuring list in the `SettingsModal` component's function signature.
+*   **`imageGenerationModel` (Custom) label bug:**
+    *   **Cause:** The original `SettingsModal.tsx` had a bug where the custom option label for `imageGenerationModel` incorrectly referenced `settings.textGenerationModel`.
+    *   **Fix:** This was implicitly corrected when replacing the old `Select` component with `SettingField`, as `SettingField` dynamically generates its options and labels correctly.
+
+### 4. Notes for Future Development / Lessons Learned
+
+*   **Precision in `replace` Operations:** The session highlighted the critical importance of absolute precision when using `replace` for code modification, especially in large files. Even minor whitespace differences or subtle bugs in the `old_string` can cause failures.
+    *   **Recommendation:** When `replace` fails, re-read the target file with `read_file` to get the *exact* current content. Consider replacing smaller, more isolated blocks if large replacements are problematic.
+*   **Contextual Awareness of Codebase:** Before introducing new functions or modifying existing logic, perform a quick `search_file_content` to check for existing implementations. The duplicate `handleSaveSettings` function was a direct result of lacking this initial contextual check.
+*   **Incremental Verification:** After significant changes, especially to core components like `App.tsx` or shared modals, it's beneficial to run tests or check the application's behavior incrementally rather than waiting for a large set of changes to be complete.
+*   **Robust Error Handling in Components:** The `SettingField` component's design to gracefully handle `adminValue` being `null` or `undefined` (e.g., `adminSettings?.language`) is a good practice for dealing with potentially incomplete data.
+*   **Refactoring Debt:** The original `SettingsModal.tsx` had some hardcoded logic and a bug (e.g., `textGenerationModel` reference). Refactoring often exposes such technical debt, and it's good practice to address it as part of the change.

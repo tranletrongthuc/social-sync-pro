@@ -138,7 +138,8 @@ async function handler(request, response) {
               textGenerationModel: settingsRecord.textGenerationModel,
               imageGenerationModel: settingsRecord.imageGenerationModel,
               textModelFallbackOrder: settingsRecord.textModelFallbackOrder || [],
-              visionModels: settingsRecord.visionModels || []
+              visionModels: settingsRecord.visionModels || [],
+              visualStyleTemplates: settingsRecord.visualStyleTemplates || []
             };
           }
 
@@ -209,13 +210,21 @@ async function handler(request, response) {
               };
   
               if (brandId) {
+                // This is an existing brand. Update it.
                 await brandsCollection.updateOne(
                   { _id: new ObjectId(brandId) },
                   { $set: brandDocument },
-                  { upsert: true }
+                  { upsert: true } // Use upsert to be safe, though a brandId should always exist here.
                 );
                 response.status(200).json({ brandId: brandId });
               } else {
+                // This is a new brand. Fetch admin defaults and copy them.
+                const adminSettingsCollection = db.collection('adminSettings');
+                const adminSettings = await adminSettingsCollection.findOne({});
+                
+                // If admin settings exist, use them. Otherwise, use the (likely empty) settings from the client.
+                brandDocument.settings = adminSettings ? adminSettings : brandDocument.settings;
+
                 const newBrandObjectId = new ObjectId();
                 const newBrandId = newBrandObjectId.toString();
                 const fullDocument = {
@@ -267,22 +276,6 @@ async function handler(request, response) {
           console.log('--- AI model deleted ---');
         } catch (error) {
           console.error('--- CRASH in /api/mongodb/delete-ai-model ---');
-          throw error;
-        }
-        break;
-
-      case 'delete-ai-service':
-        console.log('--- Received request for /api/mongodb/delete-ai-service ---');
-        try {
-          const { serviceId } = request.body;
-          
-          const aiServicesCollection = db.collection('aiServices');
-          const result = await aiServicesCollection.deleteOne({ _id: new ObjectId(serviceId) });
-          
-          response.status(200).json({ success: result.deletedCount > 0 });
-          console.log('--- AI service deleted ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/delete-ai-service ---');
           throw error;
         }
         break;
@@ -441,48 +434,48 @@ async function handler(request, response) {
         }
         break;
 
-      case 'load-ai-services':
-        console.log('--- Received request for /api/mongodb/load-ai-services ---');
+      case 'load-settings-data':
+        console.log('--- Received request for /api/mongodb/load-settings-data ---');
         try {
-          const aiServicesCollection = db.collection('aiServices');
           const aiModelsCollection = db.collection('aiModels');
-          
-          const serviceRecords = await aiServicesCollection.find({}).toArray();
-          const modelRecords = await aiModelsCollection.find({}).toArray();
+          const adminSettingsCollection = db.collection('adminSettings');
+
+          // Fetch all data in parallel
+          const [
+            modelRecords,
+            adminSettingsRecord
+          ] = await Promise.all([
+            aiModelsCollection.find({}).toArray(),
+            adminSettingsCollection.findOne({})
+          ]);
           
           // Group models by service
-          const serviceIdToModelsMap = new Map();
-          modelRecords.forEach(modelRecord => {
-            const serviceId = modelRecord.serviceId;
-            if (serviceId) {
-              if (!serviceIdToModelsMap.has(serviceId)) {
-                serviceIdToModelsMap.set(serviceId, []);
-              }
-              serviceIdToModelsMap.get(serviceId).push(modelRecord);
+          const servicesMap = new Map();
+          modelRecords.forEach(model => {
+            if (!servicesMap.has(model.service)) {
+              servicesMap.set(model.service, {
+                id: model.service, // In the new schema, the service name is the ID
+                name: model.service,
+                models: []
+              });
             }
+            servicesMap.get(model.service).models.push({
+              id: model._id.toString(),
+              name: model.name,
+              provider: model.provider,
+              capabilities: model.capabilities || []
+            });
           });
+
+          const services = Array.from(servicesMap.values());
+
+          // Sanitize admin settings to ensure it's not null
+          const adminSettings = adminSettingsRecord || {};
           
-          const services = serviceRecords.map(serviceRecord => {
-            const serviceId = serviceRecord._id.toString();
-            const models = serviceIdToModelsMap.get(serviceId) || [];
-            
-            return {
-              id: serviceId,
-              name: serviceRecord.name,
-              description: serviceRecord.description,
-              models: models.map(modelRecord => ({
-                id: modelRecord._id.toString(),
-                name: modelRecord.name,
-                provider: modelRecord.provider,
-                capabilities: modelRecord.capabilities || []
-              }))
-            };
-          });
-          
-          response.status(200).json({ services });
-          console.log('--- AI services loaded ---');
+          response.status(200).json({ services, adminSettings });
+          console.log('--- Settings data loaded ---');
         } catch (error) {
-          console.error('--- CRASH in /api/mongodb/load-ai-services ---');
+          console.error('--- CRASH in /api/mongodb/load-settings-data ---');
           throw error;
         }
         break;
@@ -597,6 +590,7 @@ async function handler(request, response) {
                     imageGenerationModel: settings.imageGenerationModel,
                     textModelFallbackOrder: settings.textModelFallbackOrder || [],
                     visionModels: settings.visionModels || [],
+                    visualStyleTemplates: settings.visualStyleTemplates || [],
                     updatedAt: new Date()
                   }
                 },
@@ -672,7 +666,7 @@ async function handler(request, response) {
           case 'save-ai-model':
             console.log('--- Received request for /api/mongodb/save-ai-model ---');
             try {
-              const { model, serviceId } = request.body;
+              const { model } = request.body; // Service name is now part of the model object
               
               const aiModelsCollection = db.collection('aiModels');
               
@@ -681,7 +675,7 @@ async function handler(request, response) {
                 name: model.name,
                 provider: model.provider,
                 capabilities: model.capabilities || [],
-                serviceId: serviceId,
+                service: model.service, // New unified field
                 updatedAt: new Date()
               };
               
@@ -708,47 +702,6 @@ async function handler(request, response) {
               console.log('--- AI model saved ---');
             } catch (error) {
               console.error('--- CRASH in /api/mongodb/save-ai-model ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-ai-service':
-            console.log('--- Received request for /api/mongodb/save-ai-service ---');
-            try {
-              const { service } = request.body;
-              
-              const aiServicesCollection = db.collection('aiServices');
-              
-              // Prepare service document
-              const serviceDocument = {
-                name: service.name,
-                description: service.description,
-                updatedAt: new Date()
-              };
-              
-              // If service.id exists, update; otherwise create new
-              if (service.id) {
-                await aiServicesCollection.updateOne(
-                  { _id: new ObjectId(service.id) },
-                  { $set: serviceDocument },
-                  { upsert: true }
-                );
-                response.status(200).json({ id: service.id });
-              } else {
-                const newServiceObjectId = new ObjectId();
-                const newServiceId = newServiceObjectId.toString();
-                const fullServiceDocument = {
-                    ...serviceDocument,
-                    _id: newServiceObjectId,
-                    id: newServiceId
-                };
-                await aiServicesCollection.insertOne(fullServiceDocument);
-                response.status(200).json({ id: newServiceId });
-              }
-              
-              console.log('--- AI service saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-ai-service ---');
               throw error;
             }
             break;

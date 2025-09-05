@@ -73,6 +73,22 @@ export const generateImageWithBff = async (
   }
 };
 
+export const generateImageWithBananaBff = async (
+  prompt: string
+): Promise<string> => {
+  try {
+    const response = await bffFetch('/api/gemini?action=generate-banana-image', {
+      method: 'POST',
+      body: JSON.stringify({ prompt }),
+    });
+    
+    return response.image;
+  } catch (error) {
+    console.error(`Error calling BFF endpoint /api/gemini/generate-banana-image:`, error);
+    throw error;
+  }
+};
+
 export const autoGeneratePersonaWithBff = async (
   mission: string,
   usp: string
@@ -201,14 +217,14 @@ export const generateImageWithCloudflareBff = async (
   image?: number[]
 ): Promise<string> => {
   try {
-    const response = await bffFetch('/api/cloudflare/generate-image', {
+    const response = await bffFetch('/api/cloudflare?action=generate-image', {
       method: 'POST',
       body: JSON.stringify({ prompt, model, image }),
     });
     
     return response.image;
   } catch (error) {
-    console.error(`Error calling BFF endpoint /api/cloudflare/generate-image:`, error);
+    console.error(`Error calling BFF endpoint /api/cloudflare?action=generate-image:`, error);
     throw error;
   }
 };
