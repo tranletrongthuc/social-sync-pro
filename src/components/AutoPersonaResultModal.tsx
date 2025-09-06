@@ -14,19 +14,20 @@ const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen,
   const [selectedPersonas, setSelectedPersonas] = useState<Partial<Persona>[]>([]);
 
   useEffect(() => {
-    // Pre-select all personas when the modal opens with new data
     if (personaData) {
-      setSelectedPersonas(personaData);
+      // Assign a temporary client-side ID for selection handling
+      const personasWithId = personaData.map(p => ({ ...p, tempId: crypto.randomUUID() }));
+      setSelectedPersonas(personasWithId);
     }
   }, [personaData]);
 
   if (!isOpen || !personaData) return null;
 
-  const handleToggleSelection = (persona: Partial<Persona>) => {
+  const handleToggleSelection = (personaToToggle: Partial<Persona> & { tempId: string }) => {
     setSelectedPersonas(prev =>
-      prev.some(p => p.nickName === persona.nickName) // Simple check based on name
-        ? prev.filter(p => p.nickName !== persona.nickName)
-        : [...prev, persona]
+      prev.some(p => (p as any).tempId === personaToToggle.tempId)
+        ? prev.filter(p => (p as any).tempId !== personaToToggle.tempId)
+        : [...prev, personaToToggle]
     );
   };
 
@@ -40,16 +41,16 @@ const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen,
       subtitle: "Chọn những persona bạn muốn lưu vào dự án của mình.",
       save: "Lưu các Persona đã chọn",
       cancel: "Hủy",
-      coreCharacteristics: "Đặc điểm cốt lõi",
-      keyMessages: "Thông điệp chính",
+      backstory: "Câu chuyện nền",
+      personality: "Tính cách & Giọng nói",
     },
     'English': {
       title: "AI Generated Personas",
       subtitle: "Select the personas you want to save to your project.",
       save: "Save Selected Personas",
       cancel: "Cancel",
-      coreCharacteristics: "Core Characteristics",
-      keyMessages: "Key Messages",
+      backstory: "Backstory",
+      personality: "Personality & Voice",
     }
   };
   const texts = T[language as keyof typeof T] || T['English'];
@@ -60,11 +61,11 @@ const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen,
         <h2 className="text-2xl font-bold mb-1">{texts.title}</h2>
         <p className="text-gray-500 mb-4">{texts.subtitle}</p>
         <div className="overflow-y-auto flex-grow pr-2 space-y-4">
-          {personaData.map((persona, index) => (
+          {(personaData.map(p => ({ ...p, tempId: crypto.randomUUID() }))).map((persona, index) => (
             <GeneratedPersonaCard
               key={index}
               persona={persona}
-              isSelected={selectedPersonas.some(p => p.nickName === persona.nickName)}
+              isSelected={selectedPersonas.some(p => (p as any).tempId === persona.tempId)}
               onToggleSelection={handleToggleSelection}
               texts={texts}
             />
@@ -80,9 +81,9 @@ const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen,
 };
 
 const GeneratedPersonaCard: React.FC<{ 
-  persona: Partial<Persona>; 
+  persona: Partial<Persona> & { tempId: string }; 
   isSelected: boolean; 
-  onToggleSelection: (p: Partial<Persona>) => void;
+  onToggleSelection: (p: Partial<Persona> & { tempId: string }) => void;
   texts: any;
 }> = ({ persona, isSelected, onToggleSelection, texts }) => {
   return (
@@ -91,17 +92,17 @@ const GeneratedPersonaCard: React.FC<{
         <Checkbox
           checked={isSelected}
           onCheckedChange={() => onToggleSelection(persona)}
-          id={`persona-checkbox-${persona.nickName}`}
+          id={`persona-checkbox-${persona.tempId}`}
           className="mt-1"
         />
         <div className="flex-grow">
-          <label htmlFor={`persona-checkbox-${persona.nickName}`} className="cursor-pointer">
+          <label htmlFor={`persona-checkbox-${persona.tempId}`} className="cursor-pointer">
             <h3 className="font-bold text-lg text-gray-900">{persona.nickName}</h3>
-            <p className="text-sm text-gray-600">{persona.mainStyle} | {persona.activityField}</p>
+            <p className="text-sm text-gray-600">{`${persona.demographics?.age}, ${persona.demographics?.occupation}`}</p>
           </label>
           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 text-sm">
-            <InfoSection title={texts.coreCharacteristics} content={<ul className="list-disc list-inside">{(persona.coreCharacteristics || []).map((c, i) => <li key={i}>{c}</li>)}</ul>} />
-            <InfoSection title={texts.keyMessages} content={<ul className="list-disc list-inside">{(persona.keyMessages || []).map((m, i) => <li key={i}>{m}</li>)}</ul>} />
+            <InfoSection title={texts.backstory} content={<p>{persona.backstory}</p>} />
+            <InfoSection title={texts.personality} content={<ul className="list-disc list-inside text-xs">{(persona.voice?.personalityTraits || []).map((c, i) => <li key={i}>{c}</li>)}</ul>} />
           </div>
         </div>
       </div>

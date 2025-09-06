@@ -892,12 +892,14 @@ const App: React.FC = () => {
     }, [settings?.language, settings?.textGenerationModel, ensureMongoProject, executeTextGenerationWithFallback]);
 
     const handleGenerateMediaPlanGroup = useCallback((
-        prompt: string, 
+        objective: string,
+        keywords: string[],
         useSearch: boolean, 
         selectedPlatforms: string[],
         options: { tone: string; style: string; length: string; includeEmojis: boolean; },
         selectedProductId: string | null, 
-        personaId: string | null
+        personaId: string | null,
+        pillar: string // <-- Added
     ) => {
         // Wrap the async logic in an async IIFE
         (async () => {
@@ -908,15 +910,16 @@ const App: React.FC = () => {
 
             // Use the setting from the state
             const totalPosts = settings.totalPostsPerMonth;
+            const userPrompt = `${objective}${keywords.length > 0 ? `\n\nKeywords to include: ${keywords.join(', ')}` : ''}`;
             
             const planSteps = settings?.language === 'Việt Nam' ? [
-                `Phân tích mục tiêu của bạn: "${prompt.substring(0, 50)}..."`,
+                `Phân tích mục tiêu của bạn: "${objective.substring(0, 50)}"...`,
                 "Thiết lập chủ đề hàng tuần...",
                 "Soạn thảo bài đăng...",
                 "Tạo các hashtag hấp dẫn và CTA...",
                 "Hoàn thiện kế hoạch..."
             ] : [
-                `Analyzing your goal: "${prompt.substring(0, 50)}..."`,
+                `Analyzing your goal: "${objective.substring(0, 50)}"...`,
                 "Establishing weekly themes...",
                 "Drafting posts...",
                 "Generating engaging hashtags and CTAs...",
@@ -932,7 +935,7 @@ const App: React.FC = () => {
                 const generationTask = async (model: string) => {
                     return textGenerationService.generateMediaPlanGroup(
                         generatedAssets.brandFoundation,
-                        prompt,
+                        userPrompt,
                         settings.language,
                         totalPosts,
                         useSearch,
@@ -941,7 +944,8 @@ const App: React.FC = () => {
                         settings.affiliateContentKit,
                         model,
                         persona,
-                        selectedProduct
+                        selectedProduct,
+                        pillar // <-- Added
                     );
                 };
                 const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1411,6 +1415,48 @@ const App: React.FC = () => {
             return text; // Return original text on failure
         }
     }, [settings.textGenerationModel, executeTextGenerationWithFallback]);
+
+    const [isRefining, setIsRefining] = useState(false);
+
+    const handleGenerateInCharacterPost = useCallback(async (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => {
+        setIsRefining(true);
+        setError(null);
+        try {
+            if (!settings || !generatedAssets?.personas) {
+                setError("Settings or personas not loaded.");
+                return;
+            }
+            const plan = generatedAssets.mediaPlans.find(p => p.id === postInfo.planId);
+            if (!plan?.personaId) {
+                setError("No persona is assigned to this media plan. Please assign a persona in the Media Plan tab.");
+                return;
+            }
+
+            const generationTask = (model: string) => {
+                return textGenerationService.generateInCharacterPost(objective, platform, plan.personaId!, model, keywords, pillar);
+            };
+            
+            const newContent = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
+
+            const updates = { content: newContent, pillar: pillar }; // Also save the pillar
+            dispatchAssets({ type: 'UPDATE_POST', payload: { planId: postInfo.planId, weekIndex: postInfo.weekIndex, postIndex: postInfo.postIndex, updates } });
+            
+            const updatedPost = { ...postInfo.post, ...updates };
+            setViewingPost({ ...postInfo, post: updatedPost });
+
+            if (mongoBrandId) {
+                updateAutoSaveStatus('saving');
+                await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId);
+                updateAutoSaveStatus('saved');
+            }
+
+        } catch (err) {
+            console.error("Failed to generate in-character post:", err);
+            setError(err instanceof Error ? err.message : "Failed to generate post.");
+        } finally {
+            setIsRefining(false);
+        }
+    }, [settings, generatedAssets, mongoBrandId, executeTextGenerationWithFallback, updateAutoSaveStatus]);
 
     const handleUpdatePost = useCallback((postInfo: PostInfo) => {
         const { planId, weekIndex, postIndex, post } = postInfo;
@@ -2513,7 +2559,10 @@ const App: React.FC = () => {
         setLoaderContent({ title: "AI is Generating Personas...", steps: ["Analyzing brand identity...", "Crafting diverse persona profiles...", "Finalizing results..."] });
         setError(null);
         try {
-            const personaDataArray = await autoGeneratePersonaProfile(mission, usp, settings.textGenerationModel);
+            const generationTask = (model: string) => {
+                return autoGeneratePersonaProfile(mission, usp, model);
+            };
+            const personaDataArray = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             setAutoGeneratedPersonas(personaDataArray);
             setIsAutoPersonasModalOpen(true);
         } catch (err) {
@@ -2532,18 +2581,31 @@ const App: React.FC = () => {
 
         const personasToSave = selectedPersonas.map(p => {
             const newId = crypto.randomUUID(); // Keep client-side ID for reducer key, backend will create the final unified ID
+            
+            // The incoming 'p' is a rich object from the AI. Spread it to preserve all fields.
             const fullPersona: Persona = {
-                id: newId,
-                nickName: p.nickName || 'Generated Persona',
-                mainStyle: p.mainStyle || '',
-                activityField: p.activityField || '',
-                outfitDescription: p.visualCharacteristics || p.outfitDescription || '',
-                photos: Array.from({ length: 5 }, (_, i) => ({ id: crypto.randomUUID(), imageKey: `persona_${newId}_photo_${i}` })),
+                // Default values for fields that might be missing on a partial object
+                demographics: { age: 0, location: '', occupation: '' },
+                backstory: '',
+                voice: { personalityTraits: [], communicationStyle: { formality: 50, energy: 50 }, linguisticRules: [] },
+                knowledgeBase: [],
+                brandRelationship: { originStory: '', coreAffinity: '', productUsage: '' },
+                outfitDescription: '',
+                mainStyle: '',
+                activityField: '',
+                avatarImageKey: undefined,
+                avatarImageUrl: undefined,
                 socialAccounts: [],
-                contentTone: p.contentTone,
-                visualCharacteristics: p.visualCharacteristics,
-                coreCharacteristics: p.coreCharacteristics,
-                keyMessages: p.keyMessages,
+                contentTone: undefined,
+                visualCharacteristics: undefined,
+                coreCharacteristics: undefined,
+                keyMessages: undefined,
+                gender: undefined,
+
+                ...p, // Spread the incoming partial persona to overwrite defaults with AI-generated data
+
+                id: newId, // Ensure a unique client-side ID
+                photos: Array.from({ length: 5 }, (_, i) => ({ id: crypto.randomUUID(), imageKey: `persona_${newId}_photo_${i}` })), // Ensure photos array exists
             };
             return fullPersona;
         });
@@ -2778,6 +2840,7 @@ const App: React.FC = () => {
                     <>
                         <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
                             <MainDisplay
+                                settings={settings}
                                 assets={generatedAssets}
                                 onGenerateImage={handleGenerateImage}
                                 onSetImage={handleSetImage}
@@ -2813,6 +2876,7 @@ const App: React.FC = () => {
                                 activePlanId={activePlanId}
                                 onUpdatePost={handleUpdatePost}
                                 onRefinePost={handleRefinePost}
+                                onGenerateInCharacterPost={handleGenerateInCharacterPost}
                                 onAssignPersonaToPlan={handleAssignPersonaToPlan}
                                 // Affiliate Vault props
                                 onSaveAffiliateLink={handleSaveAffiliateLink}

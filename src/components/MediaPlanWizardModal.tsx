@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Settings, Persona, AffiliateLink } from '../../types';
 import { Button, TextArea, Switch, Input, Select } from './ui';
-import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, CheckCircleIcon, SparklesIcon, UsersIcon } from './icons';
+import TagInput from './TagInput';
+import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, CheckCircleIcon, SparklesIcon, UsersIcon, InformationCircleIcon } from './icons';
 import ProductSelector from './ProductSelector'; // Import the new component
 
 interface GenerationOptions {
@@ -15,7 +16,7 @@ interface MediaPlanWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: Settings;
-  onGenerate: (prompt: string, useSearch: boolean, selectedPlatforms: string[], options: GenerationOptions, selectedProductId: string | null, personaId: string | null) => void; // Updated onGenerate signature
+  onGenerate: (objective: string, keywords: string[], useSearch: boolean, selectedPlatforms: string[], options: GenerationOptions, selectedProductId: string | null, personaId: string | null, pillar: string) => void;
   isGenerating: boolean;
   personas: Persona[];
   generatedImages: Record<string, string>;
@@ -42,7 +43,8 @@ const getStrategyTemplates = (language: string) => {
 
 export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOpen, onClose, settings, onGenerate, isGenerating, personas, generatedImages, initialPrompt, affiliateLinks, initialProductId }) => {
     const [step, setStep] = useState(1);
-    const [prompt, setPrompt] = useState(initialPrompt || '');
+    const [objective, setObjective] = useState(initialPrompt || '');
+    const [keywords, setKeywords] = useState<string[]>([]);
     const [useSearch, setUseSearch] = useState(false);
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>(['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest']);
     
@@ -55,6 +57,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
 
     // New state for selected product ID
     const [selectedProductId, setSelectedProductId] = useState<string | null>(initialProductId || null);
+    const [pillar, setPillar] = useState<string>('');
 
     const { language } = settings;
     const isGeminiModel = settings.textGenerationModel.startsWith('gemini-');
@@ -63,8 +66,9 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
 
     useEffect(() => {
         if (isOpen) {
-            setStep(initialPrompt ? 2 : 1);
-            setPrompt(initialPrompt || '');
+            setStep(1);
+            setObjective(initialPrompt || '');
+            setKeywords([]);
             setUseSearch(false);
             setSelectedPlatforms(['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest']);
             setTone('Friendly & Casual');
@@ -74,6 +78,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             setSelectedPersonaId(null);
             // Initialize selectedProductId with initialProductId if provided, otherwise null
             setSelectedProductId(initialProductId || null);
+            setPillar('');
         }
     }, [isOpen, initialPrompt, settings.totalPostsPerMonth, initialProductId]);
 
@@ -110,6 +115,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             // Step 3
             step3Title: "Chọn một KOL/KOC (Tùy chọn)",
             step3Subtitle: "Chọn một nhân vật để làm gương mặt đại diện cho chiến dịch này. Nội dung sẽ được tạo từ góc nhìn của họ.",
+            personaInfo: "Lưu ý: Các bài đăng sẽ được tạo ban đầu bằng giọng điệu của KOL/KOC đã chọn. Nút 'Viết lại với Persona' trong chi tiết bài đăng dùng để tinh chỉnh sau khi chỉnh sửa thủ công.",
             noPersona: "Không có KOL/KOC",
             noPersonasAvailable: "Chưa có KOL/KOC nào được định nghĩa. Bạn có thể thêm họ trong tab 'KOL/KOC'.",
             // Step 4 - Updated
@@ -150,6 +156,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
             // Step 3
             step3Title: "Select a KOL/KOC (Optional)",
             step3Subtitle: "Choose a persona to be the face of this campaign. Content will be generated from their perspective.",
+            personaInfo: "Note: Posts will be initially generated in the selected persona's voice. The 'Rewrite with Persona' button in the post details is for refinements after manual edits.",
             noPersona: "No KOL/KOC",
             noPersonasAvailable: "No KOLs/KOCs have been defined yet. You can add them in the 'KOL/KOC' tab.",
             // Step 4 - Updated
@@ -180,12 +187,12 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const handleGenerate = async () => {
       // Use selectedProductId if available, otherwise fall back to initialProductId
       const productIdToUse = selectedProductId || initialProductId || null;
-      onGenerate(prompt, useSearch, selectedPlatforms, { tone, style: writingStyle, length: postLength, includeEmojis }, productIdToUse, selectedPersonaId);
+      onGenerate(objective, keywords, useSearch, selectedPlatforms, { tone, style: writingStyle, length: postLength, includeEmojis }, productIdToUse, selectedPersonaId, pillar);
       onClose();
     };
 
     const isNextDisabled = () => {
-        if (step === 1 && !prompt.trim()) return true;
+        if (step === 1 && (!objective.trim() || !pillar)) return true;
         if (step === 2 && selectedPlatforms.length === 0) return true;
         return false;
     }
@@ -214,31 +221,29 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
                             <h3 className="text-2xl font-bold font-sans text-center text-gray-900">{texts.step1Title}</h3>
                             <p className="text-gray-500 font-serif text-center mt-1">{texts.step1Subtitle}</p>
                             <div className="mt-8 space-y-6">
-                                <div>
-                                    <label className="text-sm font-medium text-gray-700">{texts.startWithStrategy}</label>
-                                    <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {strategyTemplates.map((template: any) => (
-                                            <button 
-                                                key={template.name} 
-                                                onClick={() => setPrompt(template.prompt)}
-                                                className={`p-4 rounded-lg border-2 text-left transition-colors ${prompt === template.prompt ? 'bg-green-50 border-brand-green' : 'bg-white hover:bg-gray-100 border-gray-200'}`}
-                                            >
-                                                <h4 className="font-bold font-sans text-gray-900">{template.name}</h4>
-                                                <p className="text-sm text-gray-500 mt-1 font-serif">{template.description}</p>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
                                  <div>
-                                     <label htmlFor="prompt" className="text-sm font-medium text-gray-700">{texts.orWriteYourOwn}</label>
+                                     <label htmlFor="objective" className="text-sm font-medium text-gray-700">{texts.orWriteYourOwn}</label>
                                     <TextArea
-                                        id="prompt"
-                                        value={prompt}
-                                        onChange={(e) => setPrompt(e.target.value)}
+                                        id="objective"
+                                        value={objective}
+                                        onChange={(e) => setObjective(e.target.value)}
                                         rows={4}
                                         placeholder={texts.placeholder}
                                         className="mt-1"
                                     />
+                                </div>
+                                <div>
+                                     <label htmlFor="keywords" className="text-sm font-medium text-gray-700">Keywords</label>
+                                     <TagInput tags={keywords} setTags={setKeywords} placeholder="Add keywords..." />
+                                </div>
+                                <div>
+                                    <label htmlFor="pillar" className="text-sm font-medium text-gray-700">Content Pillar</label>
+                                    <Select id="pillar" value={pillar} onChange={e => setPillar(e.target.value)} className="mt-1" required>
+                                        <option value="" disabled>Select a pillar...</option>
+                                        {(settings.contentPillars || []).map(p => (
+                                            <option key={p.name} value={p.name}>{p.name}</option>
+                                        ))}
+                                    </Select>
                                 </div>
                             </div>
                         </div>
@@ -286,6 +291,10 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
                                 })}
                             </div>
                              {personas.length === 0 && <p className="text-center mt-8 text-gray-500">{texts.noPersonasAvailable}</p>}
+                            <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
+                                <InformationCircleIcon className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+                                <p className="text-sm text-blue-700">{texts.personaInfo}</p>
+                            </div>
                         </div>
                     )}
                     {step === 4 && (

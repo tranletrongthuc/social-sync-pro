@@ -3,7 +3,7 @@
 
 import React, { useRef, useState, useEffect } from 'react';
 import { Button } from './ui';
-import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, CheckCircleIcon, PencilIcon, CopyIcon, CheckSolidIcon, DotsVerticalIcon, KhongMinhIcon, ChatBubbleLeftIcon, VideoCameraIcon } from './icons';
+import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, CheckCircleIcon, PencilIcon, CopyIcon, CheckSolidIcon, DotsVerticalIcon, KhongMinhIcon, ChatBubbleLeftIcon, VideoCameraIcon, TagIcon } from './icons';
 import type { MediaPlanPost, PostInfo } from '../../types';
 
 const platformIcons: Record<string, React.FC<any>> = {
@@ -20,7 +20,6 @@ export interface PostCardProps {
     onViewDetails: (postInfo: PostInfo) => void;
     imageUrl?: string;
     videoUrl?: string;
-    isDraft: boolean;
     isSelected: boolean;
     onToggleSelection: (postId: string) => void;
     scheduledAt?: string;
@@ -29,7 +28,7 @@ export interface PostCardProps {
 }
 
 const PostCard: React.FC<PostCardProps> = (props) => {
-    const { postInfo, language, onViewDetails, imageUrl, videoUrl, isDraft, isSelected, onToggleSelection, scheduledAt, publishedAt, publishedUrl } = props;
+    const { postInfo, language, onViewDetails, imageUrl, videoUrl, isSelected, onToggleSelection, scheduledAt, publishedAt, publishedUrl } = props;
     const { post } = postInfo;
     const Icon = platformIcons[post.platform] || SparklesIcon;
     const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -196,19 +195,33 @@ const PostCard: React.FC<PostCardProps> = (props) => {
             </div>
             
             <div className="mt-auto flex-shrink-0 pt-2 flex justify-start items-center flex-wrap gap-2">
-                 {isDraft && !publishedAt && !scheduledAt && (
-                    <div className="text-xs px-2 py-0.5 rounded-full font-medium text-gray-800 bg-gray-100">
-                        {texts.draft}
+                 {post.status && (
+                    <div className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        {
+                            draft: 'text-gray-800 bg-gray-100',
+                            needs_review: 'text-yellow-800 bg-yellow-100',
+                            approved: 'text-teal-800 bg-teal-100',
+                            scheduled: 'text-blue-800 bg-blue-100',
+                            published: 'text-indigo-800 bg-indigo-100',
+                            error: 'text-red-800 bg-red-100',
+                        }[post.status] || 'text-gray-800 bg-gray-100'
+                    }`}>
+                        {
+                            {
+                                draft: texts.draft,
+                                needs_review: 'Needs Review',
+                                approved: 'Approved',
+                                scheduled: texts.scheduled,
+                                published: texts.published,
+                                error: 'Error',
+                            }[post.status] || texts.draft
+                        }
                     </div>
                  )}
-                 {scheduledAt && !publishedAt && (
-                    <div className="text-xs px-2 py-0.5 rounded-full font-medium text-green-800 bg-green-100">
-                        {texts.scheduled} {scheduledAt}
-                    </div>
-                 )}
-                 {publishedAt && (
-                    <div className="text-xs px-2 py-0.5 rounded-full font-medium text-blue-800 bg-blue-100">
-                        {texts.published} {publishedAt}
+                 {post.pillar && (
+                    <div className="text-xs px-2 py-0.5 rounded-full font-medium text-pink-800 bg-pink-100 flex items-center gap-1">
+                        <TagIcon className="h-3 w-3" />
+                        <span>{post.pillar}</span>
                     </div>
                  )}
                  {post.videoKey && (

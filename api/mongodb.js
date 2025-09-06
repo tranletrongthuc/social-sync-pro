@@ -853,6 +853,7 @@ async function handler(request, response) {
                           publishedUrl: post.publishedUrl,
                           autoComment: post.autoComment,
                           status: post.status || 'draft',
+                          pillar: post.pillar || '',
                           isPillar: post.isPillar,
                           brandId: brandId,
                           mediaPlanId: post.mediaPlanId, // Use the ObjectId for database consistency
@@ -886,22 +887,28 @@ async function handler(request, response) {
               
               const personasCollection = db.collection('personas');
               
-              // Prepare persona document
+              // Prepare persona document with the new rich structure
               const personaDocument = {
                 nickName: persona.nickName,
-                mainStyle: persona.mainStyle,
-                activityField: persona.activityField,
-                outfitDescription: persona.outfitDescription,
+                demographics: persona.demographics || { age: 0, location: '', occupation: '' },
+                backstory: persona.backstory || '',
+                voice: persona.voice || { personalityTraits: [], communicationStyle: { formality: 50, energy: 50 }, linguisticRules: [] },
+                knowledgeBase: persona.knowledgeBase || [],
+                brandRelationship: persona.brandRelationship || { originStory: '', coreAffinity: '', productUsage: '' },
+                visualCharacteristics: persona.visualCharacteristics || '',
+
+                // Legacy fields
+                outfitDescription: persona.outfitDescription || '',
+                mainStyle: persona.mainStyle || '',
+                activityField: persona.activityField || '',
                 avatarImageKey: persona.avatarImageKey,
                 avatarImageUrl: persona.avatarImageUrl,
+                photos: persona.photos || [],
+                socialAccounts: persona.socialAccounts || [],
+                gender: persona.gender,
+
                 brandId: brandId,
                 updatedAt: new Date(),
-                // New auto-generation fields
-                contentTone: persona.contentTone,
-                visualCharacteristics: persona.visualCharacteristics,
-                coreCharacteristics: persona.coreCharacteristics || [],
-                keyMessages: persona.keyMessages || [],
-                gender: persona.gender
               };
               
               // If persona.id exists AND it's a valid ObjectId, it's an update.
@@ -913,8 +920,7 @@ async function handler(request, response) {
                 );
                 response.status(200).json({ id: persona.id });
               } else {
-                // Otherwise, it's a new persona (even if it has a client-side UUID).
-                // We generate a new, unified ID on the backend.
+                // Otherwise, it's a new persona. Generate a new, unified ID.
                 const newPersonaObjectId = new ObjectId();
                 const newPersonaId = newPersonaObjectId.toString();
                 const fullPersonaDocument = {
@@ -1061,6 +1067,7 @@ async function handler(request, response) {
                 publishedUrl: post.publishedUrl,
                 autoComment: post.autoComment,
                 status: post.status,
+                pillar: post.pillar,
                 isPillar: post.isPillar,
                 brandId: brandId, // Comes from request body separately
                 mediaPlanId: post.mediaPlanId,
@@ -1544,19 +1551,8 @@ async function handler(request, response) {
                 // Transform MongoDB records to match the expected API response format
                 // Convert _id to id and remove _id field
                 const personas = personaRecords.map((record) => ({
-                    id: record._id.toString(),
-                    nickName: record.nickName,
-                    mainStyle: record.mainStyle,
-                    activityField: record.activityField,
-                    outfitDescription: record.outfitDescription,
-                    avatarImageKey: record.avatarImageKey,
-                    avatarImageUrl: record.avatarImageUrl,
-                    photos: record.photos || [],
-                    socialAccounts: record.socialAccounts || [],
-                    contentTone: record.contentTone,
-                    visualCharacteristics: record.visualCharacteristics,
-                    coreCharacteristics: record.coreCharacteristics,
-                    keyMessages: record.keyMessages
+                    ...record, // Spread all fields from the database record
+                    id: record._id.toString(), // Ensure 'id' is the string representation of '_id'
                 }));
     
                 response.status(200).json({ personas });

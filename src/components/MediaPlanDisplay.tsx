@@ -56,6 +56,7 @@ interface MediaPlanDisplayProps {
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
+  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], postInfo: PostInfo) => Promise<void>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
   // KhongMinh Props
   analyzingPostIds: Set<string>;
@@ -105,6 +106,8 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     activePlanId, 
     isAnyAnalysisRunning, 
     onUpdatePost, 
+    onRefinePost,
+    onGenerateInCharacterPost,
     onOpenScheduleModal, 
     onOpenBulkScheduleModal, 
     onPostDrop, 
@@ -687,7 +690,6 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                                 language={language}
                                 imageUrl={postInfo.post.imageKey ? props.generatedImages[postInfo.post.imageKey] : undefined}
                                 videoUrl={postInfo.post.videoKey ? props.generatedVideos[postInfo.post.videoKey] : undefined}
-                                isDraft={postInfo.post.status === 'draft' || (!postInfo.post.status && !postInfo.post.scheduledAt)}
                                 isSelected={props.selectedPostIds.has(postInfo.post.id)}
                                 onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}
                                 onViewDetails={handleViewDetails}
@@ -828,6 +830,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
              isOpen={!!viewingPost}
              onClose={() => setViewingPost(null)}
              postInfo={viewingPost}
+             settings={settings}
              language={language}
              weekTheme={selectedPlan?.plan[viewingPost.weekIndex]?.theme}
              onUpdatePost={(updatedInfo) => {
@@ -865,6 +868,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                }
              }}
              onRefinePost={props.onRefinePost}
+             onGenerateInCharacterPost={props.onGenerateInCharacterPost}
              onSetImage={props.onSetImage}
              isGeneratingComment={props.generatingCommentPostIds.has(viewingPost.post.id)}
              onGenerateComment={async (postInfo) => {

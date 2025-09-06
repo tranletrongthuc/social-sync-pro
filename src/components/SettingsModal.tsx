@@ -102,6 +102,44 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [newPillar, setNewPillar] = useState({ name: '', targetPercentage: 0 });
+
+  const handleAddPillar = () => {
+    if (newPillar.name && newPillar.targetPercentage > 0) {
+        setSettings(prev => ({
+            ...prev,
+            contentPillars: [...(prev.contentPillars || []), newPillar]
+        }));
+        setNewPillar({ name: '', targetPercentage: 0 }); // Reset form
+    }
+  };
+
+  const handleRemovePillar = (index: number) => {
+      setSettings(prev => ({
+          ...prev,
+          contentPillars: (prev.contentPillars || []).filter((_, i) => i !== index)
+      }));
+  };
+
+  const handlePillarChange = (index: number, field: 'name' | 'targetPercentage', value: string | number) => {
+    setSettings(prev => {
+        const updatedPillars = [...(prev.contentPillars || [])];
+        const pillarToUpdate = { ...updatedPillars[index] };
+
+        if (field === 'name') {
+            pillarToUpdate.name = value as string;
+        } else {
+            pillarToUpdate.targetPercentage = Number(value) || 0;
+        }
+        
+        updatedPillars[index] = pillarToUpdate;
+
+        return {
+            ...prev,
+            contentPillars: updatedPillars
+        };
+    });
+  };
 
   useEffect(() => {
     if (isOpen) {
@@ -176,7 +214,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
 
         <div className="mt-6 space-y-6 flex-grow overflow-y-auto pr-2">
             {activeTab === 'general' && (
-                 <div className="space-y-4">
+                 <div className="space-y-6">
                     <SettingField
                         id="language"
                         label={texts.language}
@@ -190,6 +228,58 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                             { value: "English", label: "English" }
                         ]}
                     />
+                    
+                    {/* Content Pillars Section */}
+                    <div>
+                        <label className="block text-lg font-medium text-gray-800">Content Pillars</label>
+                        <p className="text-sm text-gray-500 mt-1 font-serif">Define the core themes of your content strategy.</p>
+                        <div className="mt-4 space-y-3">
+                            {(settings.contentPillars || []).map((pillar, index) => (
+                                <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border">
+                                    <Input
+                                        type="text"
+                                        value={pillar.name}
+                                        onChange={(e) => handlePillarChange(index, 'name', e.target.value)}
+                                        className="flex-grow"
+                                        placeholder="Pillar Name"
+                                    />
+                                    <Input
+                                        type="number"
+                                        value={pillar.targetPercentage}
+                                        onChange={(e) => handlePillarChange(index, 'targetPercentage', e.target.value)}
+                                        className="w-24"
+                                        placeholder="%"
+                                    />
+                                    <span className="text-gray-500">%</span>
+                                    <Button onClick={() => handleRemovePillar(index)} variant="icon" aria-label="Remove Pillar">
+                                        <TrashIcon className="h-5 w-5" />
+                                    </Button>
+                                </div>
+                            ))}
+                            
+                            {/* Add New Pillar Form */}
+                            <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-dashed">
+                                <Input
+                                    type="text"
+                                    value={newPillar.name}
+                                    onChange={(e) => setNewPillar(p => ({ ...p, name: e.target.value }))}
+                                    className="flex-grow"
+                                    placeholder="New Pillar Name"
+                                />
+                                <Input
+                                    type="number"
+                                    value={newPillar.targetPercentage || ''}
+                                    onChange={(e) => setNewPillar(p => ({ ...p, targetPercentage: Number(e.target.value) }))}
+                                    className="w-24"
+                                    placeholder="%"
+                                />
+                                <span className="text-gray-500">%</span>
+                                <Button onClick={handleAddPillar} variant="icon" aria-label="Add Pillar">
+                                    <PlusIcon className="h-5 w-5" />
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
             {activeTab === 'generation' && (

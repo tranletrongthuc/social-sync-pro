@@ -108,6 +108,27 @@ export const autoGeneratePersonaWithBff = async (
   }
 };
 
+export const generateInCharacterPostWithBff = async (
+  model: string,
+  personaId: string,
+  objective: string,
+  platform: string,
+  keywords: string[],
+  pillar: string
+): Promise<string> => {
+  try {
+    const response = await bffFetch('/api/gemini?action=generate-in-character-post', {
+      method: 'POST',
+      body: JSON.stringify({ model, personaId, objective, platform, keywords, pillar }),
+    });
+    
+    return response.text;
+  } catch (error) {
+    console.error(`Error calling BFF endpoint /api/gemini?action=generate-in-character-post:`, error);
+    throw error;
+  }
+};
+
 // --- OpenRouter API Functions ---
 
 export const generateContentWithOpenRouterBff = async (

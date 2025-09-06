@@ -466,3 +466,160 @@ This session focused on a significant enhancement to the application's settings 
 *   **Incremental Verification:** After significant changes, especially to core components like `App.tsx` or shared modals, it's beneficial to run tests or check the application's behavior incrementally rather than waiting for a large set of changes to be complete.
 *   **Robust Error Handling in Components:** The `SettingField` component's design to gracefully handle `adminValue` being `null` or `undefined` (e.g., `adminSettings?.language`) is a good practice for dealing with potentially incomplete data.
 *   **Refactoring Debt:** The original `SettingsModal.tsx` had some hardcoded logic and a bug (e.g., `textGenerationModel` reference). Refactoring often exposes such technical debt, and it's good practice to address it as part of the change.
+
+## Session Summary (2025-09-05) [2]
+
+This session focused on a deep refactoring and debugging of the application's hierarchical settings system, moving from a conceptual design to a fully implemented and corrected feature. The primary goal was to ensure that brand-specific settings correctly override global defaults and that all features dynamically use these settings.
+
+---
+
+### 1. Key Accomplishments & Technical Changes
+
+**A. Database Schema Refactoring (AI Models):**
+-   **Merged Collections:** To improve maintainability, the `aiServices` and `aiModels` collections were merged into a single, unified `aiModels` collection in MongoDB. The user later renamed this to `aiModels` (camelCase) and the code was updated to match.
+-   **Migration Script:** A script (`scripts/migrate-ai-models.js`) was created to handle the data transition. It was subsequently debugged to use ES Module `import` syntax instead of `require`.
+-   **Backend Refactoring:** All backend actions in `api/mongodb.js` (`load-settings-data`, `save-ai-model`, `delete-ai-model`) were refactored to work with the new unified `aiModels` collection. Obsolete actions for managing services were removed.
+
+**B. Frontend Refactoring (Admin & Services):**
+-   **`databaseService.ts`:** This service was updated to remove all functions related to the obsolete `aiServices` collection.
+-   **`AdminPage.tsx`:** This component was significantly refactored. The UI for managing services was removed, and the component was simplified to provide a single interface for managing the unified list of AI models.
+
+**C. Core Feature Implementation & Bug Fixes:**
+
+1.  **Brand Settings Initialization:**
+    -   **Requirement:** New brands should receive a *copy* of the global admin settings upon creation.
+    -   **Fix:** The `create-or-update-brand` action in `api/mongodb.js` was modified. When a new brand is created, the backend now fetches the `adminSettings` document and saves it as the initial settings for the new brand, ensuring the correct behavior.
+
+2.  **Incorrect Settings Loading Bug:**
+    -   **Problem:** The `SettingsModal` was incorrectly displaying global settings instead of the loaded brand's specific settings.
+    -   **Root Cause:** A `useEffect` hook in `App.tsx` that watched `mongoBrandId` was re-fetching default settings from a `configService` and overwriting the brand-specific settings that had just been loaded.
+    -   **Fix:** The problematic `useEffect` was removed. The `handleLoadFromDatabase` function was updated to explicitly call `setSettings()` with the brand's specific data. The `handleSaveSettings` function was also refactored to remove its dependency on `configService` and update the state directly.
+
+3.  **Hardcoded Settings Bug:**
+    -   **Problem:** Several features were using hardcoded model names instead of the dynamic values from the `settings` object.
+    -   **Root Cause:** An incomplete initial analysis that did not check all possible code paths.
+    -   **Fixes:**
+        -   The `generate-banana-image` and `auto-generate-persona` actions in `api/gemini.js` were modified to accept a `model` name from the request body.
+        -   The full call stack for these features (`App.tsx` -> `geminiService.ts` -> `bffService.ts`) was updated to pass the dynamic `textGenerationModel` or `imageGenerationModel` to the backend.
+
+4.  **`totalPostsPerMonth` Setting Bug:**
+    -   **Problem:** The Media Plan Wizard was not using the `totalPostsPerMonth` setting.
+    -   **Fix:** The `handleGenerateMediaPlanGroup` function in `App.tsx` was refactored to ignore parameters from the wizard and use `settings.totalPostsPerMonth` directly from the state. The redundant UI and state were removed from `MediaPlanWizardModal.tsx`.
+
+**D. Documentation:**
+-   A comprehensive feature description document, `Settings_Management_Feature.md`, was created to document the final, correct behavior of the entire settings system.
+
+---
+
+### 2. Notes for Future Development & Lessons Learned
+
+-   **Analysis Thoroughness is Critical:** The hardcoded model bug highlighted a flaw in my analysis process. It is not enough to verify where a setting *is used*; one must also audit features that *should* use a setting to confirm they are not hardcoded. Future analysis must be more rigorous.
+-   **Beware Indirect State Management:** The bug where brand settings were being overwritten was caused by a complex and indirect data flow (`useEffect` -> `configService` -> `setSettings`). This created a race condition that was difficult to debug. **Recommendation:** State updates should be as direct and explicit as possible. The final fix, which involved calling `setSettings` directly in the data loading callback (`handleLoadFromDatabase`), is a much more robust pattern.
+-   **Backend-Driven Business Logic:** The final, correct implementation for initializing a new brand's settings was performed on the backend. This is the correct approach. The client should not be responsible for knowing system defaults; it should simply request an action, and the server should correctly implement the business logic.
+-   **My Own Errors:** This session revealed several errors in my own process, including the accidental deletion of the `T` constant in `SettingsModal.tsx` and the incomplete fix for the hardcoded models. This serves as a reminder to be more systematic and to double-check the scope of all `replace` operations before executing them.
+
+### Session Summary (2025-09-05) [3]
+
+This session focused on implementing the "Believable Persona" feature, which involved a significant refactoring of the persona data model and the content generation workflow.
+
+---
+
+### 1. Key Accomplishments
+
+*   **Phase 1: Persona Core Enhancement**
+    *   **Evolved Data Model:** The `Persona` interface in `types.ts` was successfully expanded to include a rich, nested structure for the "Persona Bible," accommodating detailed fields like `demographics`, `backstory`, `voice`, `knowledgeBase`, and `brandRelationship`.
+    *   **Upgraded Backend:**
+        *   The `save-persona` action in `api/mongodb.js` was updated to correctly persist the new, rich `Persona` object structure to the database.
+        *   The `auto-generate-persona` action in `api/gemini.js` was enhanced to generate these new detailed fields.
+    *   **Refactored UI:**
+        *   The old inline persona editor was removed from `PersonasDisplay.tsx`.
+        *   A new, dedicated `PersonaEditorModal.tsx` was created with a tabbed interface to provide a comprehensive editor for all "Persona Bible" fields.
+        *   A new `TagInput.tsx` component was created to support the new editing capabilities.
+        *   The main `PersonasDisplay.tsx` component was simplified to show read-only summary cards and launch the new modal for all edits.
+
+*   **Phase 2: Guided Prompt Builder Implementation**
+    *   **Created In-Character Generation Endpoint:** A new `generate-in-character-post` action was added to `api/gemini.js`. This endpoint uses a new helper function, `constructBelievablePersonaPrompt`, to dynamically build advanced, layered prompts using the full persona object.
+    *   **Updated Frontend Service:** The `geminiService.ts` was updated with a `generateInCharacterPost` function to call the new backend endpoint.
+    *   **Upgraded Content Generation UI:** The "Refine with AI" functionality in `PostDetailModal.tsx` was replaced with a "Guided Prompt Builder" UI, allowing users to generate content by providing a simple "Objective" that is then executed using the full context of the assigned persona.
+
+*   **Bug Fix: Incomplete Auto-Generated Personas**
+    *   **Identified Root Cause:** A critical bug was identified where auto-generated personas were saved with many empty fields. The root cause was a data-flow issue on the frontend: the `AutoPersonaResultModal.tsx` and the `handleSaveSelectedPersonas` function in `App.tsx` were not structured to handle the new rich persona object, causing the detailed fields to be discarded before saving.
+    *   **Resolution:** The bug was fixed by refactoring both `AutoPersonaResultModal.tsx` and the `handleSaveSelectedPersonas` function in `App.tsx` to ensure the complete, rich persona data structure is preserved throughout the entire workflow, from AI generation to database persistence.
+
+---
+
+### 2. Notes for Future Development & Lessons Learned
+
+*   **Holistic Data Flow Analysis:** The most critical lesson from this session was that when a data model is changed, the *entire data flow* must be audited. The bug was not just in the backend (prompt) issue but a full data-flow problem across the stack (backend -> frontend state -> modal -> save handler). In the future, I must trace data from its origin (API) to its final destination (database), inspecting every component, state, and function along the way.
+*   **Component Prop Contracts:** The bug was caused by a component (`AutoPersonaResultModal`) and a handler (`handleSaveSelectedPersonas`) not being updated to match the new, richer `Persona` data type they were receiving. This highlights the importance of treating component props as a strict contract that must be updated whenever the underlying data model changes.
+*   **Tooling Sensitivity (`replace` vs. `write_file`):** The `replace` tool proved unreliable for large, complex files due to its sensitivity to subtle formatting like line endings. The `write_file` command (which overwrites the entire file) is a more robust and definitive method for applying large-scale refactoring to a single file, avoiding issues with matching `old_string`.
+*   **Defensive AI Consumption:** While the primary bug was in the frontend code, it was compounded by the AI's initial failure to perfectly adhere to the requested JSON schema. The final fix included making the backend prompt stricter, but the key takeaway is to always validate and handle data from an AI defensively, as its output can be unpredictable.
+
+# Session Summary (2025-09-05) [4]
+
+---
+
+### 1. Summary of Accomplishments
+
+This session focused on completing the implementation of the "Guided Prompt Builder," fixing several critical bugs related to API error handling and service layer implementation, and improving user experience based on feedback.
+
+*   **Completed Phase 2: Guided Prompt Builder**
+    *   **Backend (`api/gemini.js`):** The `generate-in-character-post` action was enhanced to accept and utilize `keywords` for more specific content generation.
+    *   **Services (`bffService.ts`, `geminiService.ts`):** The `keywords` parameter was propagated through the entire service layer.
+    *   **UI (`PostDetailModal.tsx`):** The "Rewrite with Persona" feature was upgraded to a full "Guided Prompt Builder" with distinct inputs for `Objective`, `Platform`, and `Keywords`.
+    *   **UI (`MediaPlanWizardModal.tsx`):** The first step of the wizard was refactored to use the new Guided Prompt Builder, replacing the old freeform prompt.
+    *   **State & Props (`App.tsx`, `MainDisplay.tsx`, `MediaPlanDisplay.tsx`):** A new handler (`handleGenerateInCharacterPost`) was created and correctly passed down through the component tree to power the new UI.
+
+*   **Bug Fix: `TypeError: textGenerationService.generateInCharacterPost is not a function`**
+    *   **Root Cause:** The `textGenerationService.ts` file defined the function in its TypeScript interface but was missing the implementation in the `googleService` and `openRouterService` objects.
+    *   **Fix:** The service was updated to correctly import and delegate the `generateInCharacterPost` call to the appropriate underlying service (`geminiService`), resolving the runtime error.
+
+*   **Bug Fix: Model Fallback Failure on 503 Errors**
+    *   **Root Cause:** The frontend `withFallback` helper was not correctly interpreting the wrapped error message coming from the BFF when the Gemini API returned a 503 "Service Unavailable" error. The backend was not resilient and crashed, preventing the frontend from attempting a fallback to a different model.
+    *   **Fix:** The `withFallback` function in `textGenerationService.ts` was made more robust. Its error checking is now more lenient, allowing it to correctly identify 503-related errors within the BFF's response and trigger the model fallback logic as intended by the `textModelFallbackOrder` setting.
+
+*   **UX Improvement: Clarified Persona Generation Workflow**
+    *   **Feedback:** The user correctly pointed out that it was unclear why a "Rewrite with Persona" button was needed if plans were already generated in-character.
+    *   **Fix:** An informational note was added to the persona selection step in the `MediaPlanWizardModal.tsx` to clarify that initial generation is already in-character and the button is for later, granular refinements.
+
+### 2. Notes for Future Development & Lessons Learned
+
+*   **My Misunderstanding of Fallback vs. Retry:** My initial approach to the 503 error was to add a *retry* loop to the backend. The user correctly guided me to use the existing *fallback* mechanism on the frontend. The backend should fail clearly to allow the more intelligent frontend logic to handle it. This is a key architectural principle of the application I must adhere to.
+
+*   **Trace Props, Don't Assume:** I made an incorrect assumption that an existing prop (`onRefinePost`) was being used for a new feature. This led to wasted effort. I must always trace the prop chain from `App.tsx` downwards to ensure I am modifying the correct handlers.
+
+*   **Thorough Service Layer Implementation:** The `TypeError` was a direct result of an incomplete implementation of a service interface. When adding a function to an interface, I must ensure it is implemented in all concrete service objects (`googleService`, `openRouterService`, etc.).
+
+*   **Robust Error Inspection:** The fallback logic failed because the `catch` block was too strict in its inspection of the error message. When dealing with errors that are wrapped by other services (like our BFF), error inspection logic must be more robust and check the full string representation of the error, not just the `.message` property.
+
+### Session Summary (2025-09-06) [1]
+
+This session focused on implementing the "Content Strategy & Workflow" features, enhancing the AI's content generation capabilities through advanced prompt engineering, and fixing several bugs that arose during testing.
+
+---
+
+### 1. Key Accomplishments
+
+*   **Implemented Phase 3: Content Strategy & Workflow:**
+    *   **Content Pillars:** A full system for defining, managing, and utilizing content pillars was integrated. This included adding a pillar management UI to the `SettingsModal`, updating the database schema, and making the "Pillar" a mandatory selection in the `MediaPlanWizardModal` and `PostDetailModal`. The selected pillar is now passed through the entire service layer and incorporated into the backend generation prompt.
+    *   **Workflow Statuses:** The `PostStatus` system was enhanced to include `'needs_review'` and `'approved'`. The UI was updated across `PostCard`, `CalendarView`, and `PostDetailModal` to display and manage these new statuses, allowing for a more granular content approval workflow.
+
+*   **Advanced Prompt Engineering:**
+    *   **Initial Refactor:** The core `generateMediaPlanGroup` prompt was significantly improved to better leverage the rich persona data, focusing on first-person embodiment and more creative outputs.
+    *   **"Realistic Photos" Guide:** A guide on creating realistic AI photos was fetched from an external URL and saved as a new markdown document in the project (`feature_descriptions/how-to-make-realistic-ai-photos.md`).
+    *   **Hyper-Detailed Image Prompts:** Based on the new guide, the `generateMediaPlanGroup` prompt was refactored a second time. It now contains a "Hyper-Detailed" section that strictly requires every generated `mediaPrompt` to include 8 key elements for realism (e.g., Atmosphere, Lighting, Camera Settings, Composition, Negative Prompts, etc.), complete with examples for the AI to follow.
+
+*   **Bug Fixes & UX Improvements:**
+    *   **Pillar Saving Bug:** Resolved an issue where not all content pillars were being saved correctly. The `handlePillarChange` function in `SettingsModal.tsx` was refactored to use a functional `setState` update, preventing stale state.
+    *   **Wizard Crash:** Fixed a critical `ReferenceError: setTags is not defined` in the `MediaPlanWizardModal` by correcting a prop name typo.
+    *   **Wizard UX Flow:** Corrected the media plan wizard's flow so that it always starts at Step 1 (allowing for pillar selection), even when initiated from a content idea.
+    *   **AI JSON Response Failure:** Fixed a critical bug where the AI would return markdown instead of JSON. The root cause was an incorrect `JSON.stringify()` call on the prompt text in `api/gemini.js`, which has been corrected.
+
+---
+
+### 2. Notes for Future Development & Lessons Learned
+
+*   **My Misunderstanding of the `replace` Tool:** The tool is extremely sensitive to whitespace and invisible characters. Multiple attempts to replace large blocks of code failed. **Future Strategy:** I must be more surgical, isolating the smallest unique string possible for replacement rather than entire functions, and re-reading the file immediately before a complex replacement.
+*   **Stale State in React:** The pillar-saving bug was a classic React stale state issue. I must be more vigilant in using the functional update form of `useState`'s setter (`setState(prev => ...)`), especially when the new state depends on the previous state.
+*   **AI Prompt Formatting:** The JSON parsing error was a critical bug caused by incorrectly formatting the request to the Gemini API. I must remember to ensure that the data being sent matches the exact format expected by the external service's SDK. `JSON.stringify` should be used on the *body object*, not on the *content string* within it.
+*   **Thoroughness in Refactoring:** The wizard crash was a simple typo that I missed during a larger refactoring. This highlights the need to double-check all props and function calls related to any component I modify.

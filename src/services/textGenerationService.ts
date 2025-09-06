@@ -9,7 +9,8 @@ import {
   generateContentPackage,
   generateFacebookTrends,
   generatePostsForFacebookTrend,
-  generateIdeasFromProduct
+  generateIdeasFromProduct,
+  generateInCharacterPost
 } from './geminiService';
 import { 
   refinePostContentWithOpenRouter, 
@@ -52,7 +53,8 @@ export interface TextGenerationService {
     affiliateContentKitSystemInstruction: string,
     model: string,
     persona: Persona | null,
-    selectedProduct: AffiliateLink | null
+    selectedProduct: AffiliateLink | null,
+    pillar: string
   ) => Promise<MediaPlanGroup>;
   generateMediaPromptForPost: (
     postContent: { title: string; content: string; contentType: string },
@@ -96,11 +98,19 @@ export interface TextGenerationService {
     language: string,
     model: string
   ) => Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]>;
-  generateIdeasFromProduct: (
+    generateIdeasFromProduct: (
     product: AffiliateLink,
     language: string,
     model: string
   ) => Promise<Omit<Idea, 'id' | 'trendId'>[]>;
+    generateInCharacterPost: (
+    objective: string,
+    platform: string,
+    personaId: string,
+    model: string,
+    keywords: string[],
+    pillar: string
+  ) => Promise<string>;
 }
 
 // Determine if a model is a Google model
@@ -120,14 +130,15 @@ const googleService: TextGenerationService = {
   generateContentPackage,
   generateFacebookTrends,
   generatePostsForFacebookTrend,
-  generateIdeasFromProduct
+  generateIdeasFromProduct,
+  generateInCharacterPost
 };
 
 const openRouterService: TextGenerationService = {
   refinePostContent: refinePostContentWithOpenRouter,
   generateBrandProfile: generateBrandProfileWithOpenRouter,
   generateBrandKit: generateBrandKitWithOpenRouter,
-  generateMediaPlanGroup: (brandFoundation, userPrompt, language, totalPosts, useSearch, selectedPlatforms, options, affiliateContentKitSystemInstruction, model, persona, selectedProduct) => {
+  generateMediaPlanGroup: (brandFoundation, userPrompt, language, totalPosts, useSearch, selectedPlatforms, options, affiliateContentKitSystemInstruction, model, persona, selectedProduct, pillar) => {
     // OpenRouter doesn't use the useSearch parameter, so we ignore it
     // Add type checking to ensure selectedPlatforms is an array
     if (!Array.isArray(selectedPlatforms)) {
@@ -143,7 +154,8 @@ const openRouterService: TextGenerationService = {
       affiliateContentKitSystemInstruction,
       model,
       persona,
-      selectedProduct
+      selectedProduct,
+      pillar
     );
   },
   generateMediaPromptForPost: generateMediaPromptForPostWithOpenRouter,
@@ -161,7 +173,10 @@ const openRouterService: TextGenerationService = {
   generatePostsForFacebookTrend: async () => {
     throw new Error('Facebook post generation is not supported with OpenRouter models');
   },
-  generateIdeasFromProduct: generateIdeasFromProductWithOpenRouter
+  generateIdeasFromProduct: generateIdeasFromProductWithOpenRouter,
+  generateInCharacterPost: async () => {
+    throw new Error('In-character post generation is not supported with OpenRouter models');
+  }
 };
 
 // Generic function to handle API calls with fallback
@@ -181,8 +196,9 @@ async function withFallback<T>(
     } catch (error: any) {
       lastError = error;
       // Check for 503 Service Unavailable or similar errors
-      if (error.message.includes('503') || error.message.toLowerCase().includes('overloaded')) {
-        console.warn(`Model ${model} is overloaded. Trying next model...`);
+      const errorMessage = String(error).toLowerCase();
+      if (errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('service unavailable')) {
+        console.warn(`Model ${model} is overloaded or unavailable. Trying next model...`);
         continue; // Try the next model
       }
       // For other errors, fail immediately
@@ -229,7 +245,8 @@ export const textGenerationService: TextGenerationService = {
     affiliateContentKitSystemInstruction: string,
     model: string,
     persona: Persona | null,
-    selectedProduct: AffiliateLink | null
+    selectedProduct: AffiliateLink | null,
+    pillar: string
   ): Promise<MediaPlanGroup> => {
     return withFallback((currentModel) => {
       const service = isGoogleModel(currentModel) ? googleService : openRouterService;
@@ -250,7 +267,8 @@ export const textGenerationService: TextGenerationService = {
         affiliateContentKitSystemInstruction,
         currentModel,
         persona,
-        selectedProduct
+        selectedProduct,
+        pillar
       );
     }, model);
   },
@@ -358,6 +376,16 @@ export const textGenerationService: TextGenerationService = {
     return withFallback((currentModel) => {
       const service = isGoogleModel(currentModel) ? googleService : openRouterService;
       return service.generateIdeasFromProduct(product, language, currentModel);
+    }, model);
+  },
+
+  generateInCharacterPost: async (objective: string, platform: string, personaId: string, model: string, keywords: string[], pillar: string): Promise<string> => {
+    return withFallback((currentModel) => {
+      if (!isGoogleModel(currentModel)) {
+        throw new Error('In-character post generation is not supported with non-Google models');
+      }
+      // Note: We are not passing keywords to the service call yet.
+      return googleService.generateInCharacterPost(objective, platform, personaId, currentModel, keywords, pillar);
     }, model);
   }
 };

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, GenerateContentResponse } from "@google/genai";
-import { generateContentWithBff, generateImageWithBff, autoGeneratePersonaWithBff, generateImageWithBananaBff } from './bffService';
+import { generateContentWithBff, generateImageWithBff, autoGeneratePersonaWithBff, generateImageWithBananaBff, generateInCharacterPostWithBff } from './bffService';
 
 export const generateImageWithBanana = async (
     model: string,
@@ -474,62 +474,64 @@ export const generateMediaPlanGroup = async (
     affiliateContentKitSystemInstruction: string,
     model: string,
     persona: Persona | null,
-    selectedProduct: AffiliateLink | null
+    selectedProduct: AffiliateLink | null,
+    pillar: string
 ): Promise<MediaPlanGroup> => {
     const personaInstruction = persona ? `
-**KOL/KOC Persona (Crucial):**
-All content MUST be generated from the perspective of the following KOL/KOC. They are the face of this campaign.
-- **Nickname:** ${persona.nickName}
-- **Main Style:** ${persona.mainStyle}
-- **Field of Activity:** ${persona.activityField}
-- **Detailed Description (for media generation):** ${persona.outfitDescription}
-- **Tone:** The content's tone must perfectly match this persona's style.
-- **Media Prompts (VERY IMPORTANT):** For any post that requires an image, the 'mediaPrompt' MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.outfitDescription}, [description of the scene]".
+**Persona Embodiment (CRITICAL):**
+- You MUST write entirely from the first-person ("I", "me", "my") perspective of the following persona. Do NOT act as an assistant; you ARE this person. Before writing, take a moment to get into character. Think about their mood, their recent experiences from their backstory, and how they would genuinely feel about the post's topic.
+- **Name:** ${persona.nickName}
+- **Identity:** ${persona.demographics.age}-year-old ${persona.demographics.occupation} from ${persona.demographics.location}.
+- **Backstory & Values:** Your worldview is shaped by this: "${persona.backstory}". Your content must reflect these experiences and values. For example, if your backstory involves a struggle, you might write with more empathy.
+- **Knowledge & Interests:** You are an expert in and passionate about: ${persona.knowledgeBase.join(', ')}. Weave these topics into your posts naturally. For example, if you're interested in "vintage film", you might compare a product's color palette to an old movie.
+- **Voice & Style:**
+  - **Personality:** You are ${persona.voice.personalityTraits.join(', ')}.
+  - **Linguistic Quirks:** You MUST follow these specific rules: ${(persona.voice.linguisticRules || []).join('; ')}.
+  - **Tone:** Your tone for this campaign should be ${options.tone}.
 ` : '';
 
-    const prompt = `You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation and User Goal.
+    const prompt = `You are a world-class social media content creator and strategist, writing in the persona of a specific individual.
+Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation, Persona, and User Goal.
 The output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.
 
-**Brand Foundation (Use this as your guide):**
+**Brand Foundation (Your Guide):**
 - Brand Name: ${brandFoundation.brandName}
 - Mission: ${brandFoundation.mission}
-- USP: ${brandFoundation.usp}
-- Values: ${(brandFoundation.values || []).join(', ')}
 - Target Audience: ${brandFoundation.targetAudience}
 - Personality: ${brandFoundation.personality}
 
 ${personaInstruction}
 
-**User's Goal for the Plan:**
-"${userPrompt}"
+**Campaign Goal & Pillar:**
+- **User's Goal:** "${userPrompt}"
+- **Content Pillar:** This entire plan MUST focus on the content pillar: "${pillar}".
 
-**Content Customization Instructions:**
-- **Tone of Voice**
-: Generate all content with a '${options.tone}' tone.
-- **Writing Style**
-: The primary style should be '${options.style}'.
-- **Post Length**
-: Adhere to a '${options.length}' post length. For example, 'Short' is suitable for Instagram captions (2-4 sentences), 'Medium' for Facebook (1-2 paragraphs), and 'Long' could be a detailed script or a mini-blog post.
-- **Emojis**
-: ${options.includeEmojis ? "Use emojis appropriately to enhance engagement and match the brand personality." : "Do not use any emojis."}
+**Content Generation Rules (CRITICAL):**
+- **Believability & Storytelling:** Every post's 'content' must feel like a real person wrote it.
+    - **BAD:** "Check out our new product! It has great features."
+    - **GOOD:** "I've been secretly using this for a few weeks now and I have to tell you about it. The other day, [personal anecdote related to the product]..."
+    - Use personal anecdotes, conversational language, and vary sentence structure. Ask engaging questions to the audience.
+- **Platform-Specific:**
+    - **Instagram:** Use more line breaks for readability. The first sentence must be a strong visual hook.
+    - **Facebook:** Can be more narrative and community-focused.
+    - **TikTok:** The 'content' should be a hooky caption that complements the 'script'.
+- **Media Prompt Quality (Hyper-Detailed):** Every 'mediaPrompt' must be a rich, artistic, and detailed instruction that includes ALL of the following 8 elements to ensure realism.
+  - **1. Atmosphere and Mood:** Describe the overall feeling. Examples: "A serene and tranquil forest scene with muted colors", "a high-energy, chaotic urban environment with vibrant, clashing tones", "a nostalgic and dreamy mood".
+  - **2. Lighting:** Be extremely specific about light. Examples: "soft, diffused natural light streaming through a large window", "dramatic, hard-edged studio spotlight from above", "warm, golden hour sunlight backlighting the subject", "cool, blue-toned dusk lighting".
+  - **3. Composition & Depth of Field:** Specify the shot type and focus. Examples: "close-up portrait with a shallow depth of field (f/1.8) and a soft, blurry bokeh background", "wide-angle environmental shot with a deep depth of field (f/11) keeping everything from foreground to background in sharp focus".
+  - **4. Camera & Film Settings:** Describe the virtual camera setup. Examples: "shot on a DSLR with a 50mm prime lens", "fast shutter speed for crisp, frozen motion", "low ISO for a clean, noise-free image", "shot on 35mm Kodak Portra 400 film for a warm, grainy, vintage look".
+  - **5. Subject & Action:** What is the persona doing? Be specific. Examples: "The persona is laughing candidly mid-conversation", "The persona is looking thoughtfully out a rain-streaked window", "The persona is unboxing a product with a look of genuine surprise".
+  - **6. Setting & Environment:** Describe the background in detail. Examples: "in a cluttered, cozy artist's studio filled with plants", "on a bustling city street at dusk with neon lights reflecting on wet pavement".
+  - **7. Realism & Detail:** Add details that enhance realism. Examples: "4K resolution with hyper-detailed textures", "realistic skin texture with natural imperfections". For portraits, add "perfectly symmetrical and natural facial proportions".
+  - **8. Negative Prompts:** Specify what to AVOID. Examples: "Negative prompt: no distortion, no unrealistic textures, not a stock photo, no exaggerated features, no blurry edges".
 
-Based on the Brand Foundation, User's Goal, and Customization Instructions, generate a complete 4-week media plan group.
-- **Name**
-: Create a concise, meaningful, and easy-to-understand title for this entire plan. The title should summarize the main goal of the plan. For example: "Q3 Product Launch for Eco-Friendly Sneakers", "Summer Skincare Campaign for Oily Skin", "Engagement Boost for YouTube Channel".
-- **Plan Structure**
-: The plan must have 4 weekly objects. Each week must have a clear 'theme' (e.g., "Week 1: Brand Introduction & Values").
-- **Content**
-: The entire 4-week plan must contain a total of approximately ${totalPosts} posts, distributed logically across the 4 weeks. The number of posts per week can vary if it makes thematic sense, but the total must be close to ${totalPosts}. The posts should be distributed *only* across the following selected platforms: ${selectedPlatforms.join(', ')}. Do not generate content for any other platform not in this list.
-- **Post Details (CRITICAL):
-    -   **contentType**: e.g., "Image Post", "Video Idea", "Story", "Carousel Post", "Shorts Idea".
-    -   **content**: This is ALWAYS the user-facing text caption for the post.
-    -   **script**: For video contentTypes ("Video Idea", "Shorts Idea", "Story"), this field MUST contain the video script, storyboard, or detailed scene-by-scene description. For non-video posts, this should be null.
-    -   **mediaPrompt**: This is the prompt for the visual media. It MUST be in English.
-        -   For "Image Post": A single, detailed DALL-E prompt to generate the image.
-        -   For "Video Idea", "Shorts Idea", "Story": A concise, one-paragraph summary of the visual concept, suitable for a text-to-video model.
-        -   For "Carousel Post": An array of detailed, English DALL-E prompts, one for each image in the carousel (2-5 prompts).
-- **Consistency**
-: The entire media plan must be thematically consistent with the Brand Foundation.
+**JSON Output Instructions:**
+- **Plan Structure:** Generate a 4-week plan with a clear 'theme' for each week.
+- **Post Count:** The total plan should have approximately ${totalPosts} posts, distributed logically across the selected platforms: ${selectedPlatforms.join(', ')}.
+- **Post Fields:**
+  - **content:** The human-like post caption, written in the persona's voice, following all rules above.
+  - **script:** For video content, provide a detailed script or storyboard.
+  - **mediaPrompt:** The hyper-detailed, artistic, English prompt for the visual, following all rules above. For carousels, this must be an array of prompts.
 `;
 
     const config: any = {
@@ -581,6 +583,7 @@ Based on the Brand Foundation, User's Goal, and Customization Instructions, gene
                 ...restOfPost,
                 id: crypto.randomUUID(),
                 status: 'draft',
+                pillar: pillar,
                 promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
             } as MediaPlanPost;
         }),
@@ -1249,4 +1252,17 @@ export const autoGeneratePersonaProfile = async (mission: string, usp: string, m
 
     // The bffFetch service already parses the JSON array.
     return personaProfiles as Partial<Persona>[];
+};
+
+export const generateInCharacterPost = async (
+    objective: string, 
+    platform: string, 
+    personaId: string, 
+    model: string,
+    keywords: string[],
+    pillar: string
+): Promise<string> => {
+    // Use BFF for content generation to keep API keys secure
+    const response = await generateInCharacterPostWithBff(model, personaId, objective, platform, keywords, pillar);
+    return response;
 };

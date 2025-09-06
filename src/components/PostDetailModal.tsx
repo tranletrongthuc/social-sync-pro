@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo } from '../../types';
-import { Button, Input, TextArea, HoverCopyWrapper } from './ui';
+import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo, Settings } from '../../types';
+import { Button, Input, TextArea, HoverCopyWrapper, Select } from './ui';
+import TagInput from './TagInput'; // Assuming TagInput component exists
 import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
 
@@ -259,6 +260,7 @@ interface PostDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   postInfo: PostInfo;
+  settings: Settings;
   language: string;
   weekTheme?: string;
   onUpdatePost: (postInfo: PostInfo) => void;
@@ -266,7 +268,9 @@ interface PostDetailModalProps {
   onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo) => void;
   onSetVideo: (dataUrl: string, key: string, postInfo: PostInfo) => void;
   onGeneratePrompt: (postInfo: PostInfo) => void;
-  onRefinePost: (text: string) => Promise<string>;
+  // NEW: In-character post generation
+  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
+  isRefining: boolean;
   onRunKhongMinhForPost: () => void;
   onAcceptSuggestion: (productId: string) => void;
   generatedImages: Record<string, string>;
@@ -288,15 +292,22 @@ interface PostDetailModalProps {
 
 
 const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
-    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo, onPublishPost, publishedAt, publishedUrl } = props;
+    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo, onPublishPost, publishedAt, publishedUrl, onGenerateInCharacterPost, isRefining } = props;
     const [isEditing, setIsEditing] = useState(false);
-    const [isRefining, setIsRefining] = useState(false);
+    const [postObjective, setPostObjective] = useState('');
+    const [postPlatform, setPostPlatform] = useState(postInfo.post.platform);
+    const [postKeywords, setPostKeywords] = useState<string[]>([]);
+    const [selectedPillar, setSelectedPillar] = useState<string>('');
     const [isPublishing, setIsPublishing] = useState(false);
     const [editedPost, setEditedPost] = useState<MediaPlanPost | null>(postInfo.post);
     
     useEffect(() => {
         if (postInfo) {
             setEditedPost(postInfo.post);
+            setPostObjective(''); // Reset objective when post changes
+            setPostPlatform(postInfo.post.platform);
+            setPostKeywords([]);
+            setSelectedPillar(postInfo.post.pillar || '');
         }
         if (isOpen) {
             setIsEditing(false); 
@@ -318,8 +329,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             generatingIdea: "Đang tạo...",
             save: "Lưu",
             cancel: "Hủy",
-            refine_with_ai: "Làm mới bằng AI",
-            refining: "Đang làm mới...",
+            refine_with_ai: "Viết lại với Persona",
+            refining: "Đang viết...",
+            objective_placeholder: "Mục tiêu bài viết (vd: thông báo sản phẩm mới)",
             generate_comment: "Tạo bình luận (NgoSiLien)",
             generating_comment: "Đang tạo (NgoSiLien)...",
             auto_comment: "Bình luận được tạo tự động",
@@ -356,8 +368,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             generatingIdea: "Generating...",
             save: "Save",
             cancel: "Cancel",
-            refine_with_ai: "Refine with AI",
-            refining: "Refining...",
+            refine_with_ai: "Rewrite with Persona",
+            refining: "Rewriting...",
+            objective_placeholder: "Post objective (e.g., announce a new product)",
             generate_comment: "Generate Comment (NgoSiLien)",
             generating_comment: "Generating (NgoSiLien)...",
             auto_comment: "Auto-Generated Comment",
@@ -421,20 +434,17 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
         setIsEditing(false);
     };
 
-    const handleRefine = async () => {
-        if (!editedPost || isRefining) return;
-        const contentToRefine = typeof editedPost.content === 'string' ? editedPost.content : JSON.stringify(editedPost.content, null, 2);
-        if (!contentToRefine.trim()) return;
-
-        setIsRefining(true);
-        try {
-            const refinedText = await props.onRefinePost(contentToRefine);
-            setEditedPost(prev => prev ? { ...prev, content: refinedText } : null);
-        } catch (error) {
-            console.error("Refinement failed in modal:", error);
-        } finally {
-            setIsRefining(false);
+    const handleStatusChange = (newStatus: any) => {
+        if (editedPost) {
+            const updatedPost = { ...editedPost, status: newStatus };
+            setEditedPost(updatedPost);
+            onUpdatePost({ ...postInfo, post: updatedPost });
         }
+    };
+
+    const handleGenerateInCharacter = async () => {
+        if (!postObjective.trim() || !selectedPillar) return;
+        await onGenerateInCharacterPost(postObjective, postPlatform, postKeywords, selectedPillar, postInfo);
     };
     
     const handlePublish = async () => {
@@ -486,6 +496,26 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 <h2 className="text-2xl font-bold font-sans text-gray-900">{editedPost.title}</h2>
                             )}
                             <p className="text-md text-gray-500">{editedPost.platform} - {editedPost.contentType}</p>
+                        </div>
+                        <div className="ml-auto pl-4 flex-shrink-0">
+                            <Select 
+                                value={editedPost.status || 'draft'} 
+                                onChange={(e) => handleStatusChange(e.target.value as any)}
+                                className={`text-sm font-bold rounded-full px-3 py-1 border-2 ${
+                                    {
+                                        draft: 'bg-gray-100 border-gray-200 text-gray-800',
+                                        needs_review: 'bg-yellow-100 border-yellow-200 text-yellow-800',
+                                        approved: 'bg-green-100 border-green-200 text-green-800',
+                                        scheduled: 'bg-blue-100 border-blue-200 text-blue-800',
+                                    }[editedPost.status || 'draft']
+                                }`}
+                                disabled={isPublished}
+                            >
+                                <option value="draft">Draft</option>
+                                <option value="needs_review">Needs Review</option>
+                                <option value="approved">Approved</option>
+                                {editedPost.status === 'scheduled' && <option value="scheduled" disabled>Scheduled</option>}
+                            </Select>
                         </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
@@ -625,19 +655,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             {isEditing && !isPublished ? (
                                 <div className="flex items-center justify-end gap-2">
                                     <Button variant="tertiary" onClick={handleCancelEdit}>{texts.cancel}</Button>
-                                    <Button variant="secondary" onClick={handleRefine} disabled={isRefining || !(typeof editedPost?.content === 'string' && editedPost.content.trim())}>
-                                        {isRefining ? (
-                                            <>
-                                                <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                                <span>{texts.refining}</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <SparklesIcon className="h-4 w-4" />
-                                                <span>{texts.refine_with_ai}</span>
-                                            </>
-                                        )}
-                                    </Button>
                                     <Button onClick={handleSaveEdit}>{texts.save}</Button>
                                 </div>
                             ) : (
@@ -654,8 +671,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                                 ) : (
                                                     <>
                                                         <LinkIcon className="h-4 w-4"/> {texts.publishNow}
-                                                    </>
-                                                )}
+                                                    </>)}
                                             </Button>
                                         </>
                                     )}
@@ -685,6 +701,55 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 texts={texts}
                             />
                         )}
+
+                        <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                            <h5 className="font-bold text-sm text-gray-800 mb-2">{texts.refine_with_ai}</h5>
+                            <div className="space-y-3">
+                                <TextArea 
+                                    value={postObjective}
+                                    onChange={(e) => setPostObjective(e.target.value)}
+                                    placeholder={texts.objective_placeholder}
+                                    rows={3}
+                                    className="text-sm"
+                                />
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-600">Platform</label>
+                                        <Select value={postPlatform} onChange={e => setPostPlatform(e.target.value as any)} className="text-sm mt-1">
+                                            <option value="Facebook">Facebook</option>
+                                            <option value="Instagram">Instagram</option>
+                                            <option value="TikTok">TikTok</option>
+                                            <option value="YouTube">YouTube</option>
+                                            <option value="Pinterest">Pinterest</option>
+                                        </Select>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-600">Pillar</label>
+                                        <Select value={selectedPillar} onChange={e => setSelectedPillar(e.target.value)} className="text-sm mt-1" required>
+                                            <option value="" disabled>Select a pillar</option>
+                                            {(props.settings.contentPillars || []).map(p => (
+                                                <option key={p.name} value={p.name}>{p.name}</option>
+                                            ))}
+                                        </Select>
+                                    </div>
+                                </div>
+                                <div className="mt-3">
+                                    <label className="text-xs font-medium text-gray-600">Keywords</label>
+                                    <TagInput tags={postKeywords} setTags={setPostKeywords} placeholder="Add keywords..." />
+                                </div>
+                            </div>
+                            <Button 
+                                onClick={handleGenerateInCharacter} 
+                                disabled={isRefining || !postObjective.trim()}
+                                className="w-full flex items-center justify-center gap-2 mt-3"
+                            >
+                                {isRefining ? (
+                                    <><div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></div><span>{texts.refining}</span></>
+                                ) : (
+                                    <><SparklesIcon className="h-4 w-4" /><span>{texts.refine_with_ai}</span></>
+                                )}
+                            </Button>
+                        </div>
 
                         {(props.affiliateLinks.length > 0 || acceptedProducts.length > 0) && (
                             <KhongMinhSuggestion

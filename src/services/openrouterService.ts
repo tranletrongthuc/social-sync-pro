@@ -952,3 +952,12 @@ You MUST respond with a single, valid JSON array containing 5 idea objects. Do n
         throw new Error("The AI returned a malformed or unexpected response. This may be a temporary issue with the model. Please try again later or configure a different model in Settings.");
     }
 };
+
+export const generateInCharacterPostWithOpenRouter = async (
+    objective: string, 
+    platform: string, 
+    personaId: string, 
+    model: string
+): Promise<string> => {
+    throw new Error('"In-Character Post Generation" is not supported for OpenRouter models at this time.');
+};

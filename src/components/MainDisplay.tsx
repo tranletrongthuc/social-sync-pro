@@ -58,6 +58,7 @@ interface MainDisplayProps {
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
+  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], postInfo: PostInfo) => Promise<void>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
   // Affiliate Vault Props
   onSaveAffiliateLink: (link: AffiliateLink) => void;
@@ -170,6 +171,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     activePlanId,
     onUpdatePost,
     onRefinePost,
+    onGenerateInCharacterPost,
     onAssignPersonaToPlan,
     onSaveAffiliateLink,
     onDeleteAffiliateLink,
@@ -455,6 +457,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               activePlanId={activePlanId}
               onUpdatePost={onUpdatePost}
               onRefinePost={onRefinePost}
+              onGenerateInCharacterPost={onGenerateInCharacterPost}
               onAssignPersonaToPlan={onAssignPersonaToPlan}
               // KhongMinh Props
               analyzingPostIds={analyzingPostIds}

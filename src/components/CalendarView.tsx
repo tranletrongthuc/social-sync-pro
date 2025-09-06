@@ -27,25 +27,34 @@ const PostLozenge: React.FC<{
     const { post } = postInfo;
     const Icon = platformIcons[post.platform] || SparklesIcon;
 
-    const platformColors: Record<string, string> = {
-        YouTube: 'bg-red-100 border-red-200 text-red-800 hover:bg-red-200',
-        Facebook: 'bg-blue-100 border-blue-200 text-blue-800 hover:bg-blue-200',
-        Instagram: 'bg-purple-100 border-purple-200 text-purple-800 hover:bg-purple-200',
-        TikTok: 'bg-gray-200 border-gray-300 text-gray-800 hover:bg-gray-300',
-        Pinterest: 'bg-red-100 border-red-200 text-red-800 hover:bg-red-200',
+    const statusColors: Record<string, string> = {
+        draft: 'bg-gray-400',
+        needs_review: 'bg-yellow-400',
+        approved: 'bg-green-400',
+        scheduled: 'bg-blue-400',
+        published: 'bg-indigo-400',
+        error: 'bg-red-400',
     };
-    const colorClasses = platformColors[post.platform] || 'bg-gray-100 border-gray-200 text-gray-800 hover:bg-gray-200';
+    const statusColor = statusColors[post.status || 'draft'] || 'bg-gray-400';
 
     return (
         <div
             onClick={onClick}
             draggable={true}
             onDragStart={onDragStart}
-            className={`rounded-md px-2 py-1 flex items-center gap-1.5 cursor-pointer transition-colors ${colorClasses}`}
+            className={`rounded-md p-2 flex flex-col gap-1.5 cursor-pointer transition-colors bg-gray-50 hover:bg-gray-100 border-l-4 ${post.pillar ? 'border-pink-400' : 'border-gray-200'}`}
             title={post.title}
         >
-            <Icon className="h-4 w-4 flex-shrink-0" />
-            <span className="text-xs font-medium truncate flex-1">{post.title}</span>
+            <div className="flex items-center gap-1.5">
+                <Icon className="h-4 w-4 flex-shrink-0 text-gray-600" />
+                <span className="text-xs font-medium truncate flex-1 text-gray-800">{post.title}</span>
+                <div className={`h-2 w-2 rounded-full ${statusColor}`} title={`Status: ${post.status}`}></div>
+            </div>
+            {post.pillar && (
+                <div className="text-xs px-1.5 py-0.5 rounded-full font-medium text-pink-800 bg-pink-100 self-start">
+                    {post.pillar}
+                </div>
+            )}
         </div>
     );
 };

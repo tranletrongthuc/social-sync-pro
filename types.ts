@@ -11,21 +11,49 @@ export interface SocialAccount {
 }
 
 export interface Persona {
-    id: string;
-    nickName: string;
-    outfitDescription: string;
-    mainStyle: string;
-    activityField: string;
-    avatarImageKey?: string;
-    avatarImageUrl?: string;
-    photos: PersonaPhoto[];
-    socialAccounts?: SocialAccount[]; // New field to store social accounts associated with the persona
-    // Fields for auto-generated personas
-    contentTone?: string;
-    visualCharacteristics?: string;
-    coreCharacteristics?: string[];
-    keyMessages?: string[];
-    gender?: string;
+  id: string;
+  nickName: string;
+  // Foundational Info
+  demographics: {
+    age: number;
+    location: string;
+    occupation: string;
+  };
+  backstory: string; // Supports rich text/markdown
+  
+  // Voice & Personality
+  voice: {
+    personalityTraits: string[]; // e.g., ["Witty", "Sarcastic", "Empathetic"]
+    communicationStyle: {
+      formality: number; // Slider value 0-100
+      energy: number;     // Slider value 0-100
+    };
+    linguisticRules: string[]; // e.g., ["Uses slang: 'cháy quá'", "Uses emojis: 🌱, ☕️"]
+  };
+
+  // Interests & Brand Connection
+  knowledgeBase: string[]; // Hobbies & interests, e.g., ["Film Photography", "Indie Music"]
+  brandRelationship: {
+    originStory: string;
+    coreAffinity: string;
+    productUsage: string;
+  };
+
+  // Legacy & Deprecated fields - maintaned for now for compatibility
+  outfitDescription: string;
+  mainStyle: string;
+  activityField: string;
+  avatarImageKey?: string;
+  avatarImageUrl?: string;
+  photos: PersonaPhoto[];
+  socialAccounts?: SocialAccount[];
+
+  // Fields for auto-generated personas
+  contentTone?: string;
+  visualCharacteristics?: string;
+  coreCharacteristics?: string[];
+  keyMessages?: string[];
+  gender?: string;
 }
 
 export interface BrandInfo {
@@ -45,6 +73,7 @@ export interface Settings {
     imageGenerationModel: string;
     textModelFallbackOrder: string[];
     visionModels: string[];
+    contentPillars: { name: string, targetPercentage: number }[];
 }
 
 export interface UnifiedProfileAssets {
@@ -61,7 +90,7 @@ export interface UnifiedProfileAssets {
   coverPhotoImageKey: string;
 }
 
-export type PostStatus = 'draft' | 'scheduled' | 'published' | 'error';
+export type PostStatus = 'draft' | 'needs_review' | 'approved' | 'scheduled';
 
 export interface MediaPlanPost {
     id: string;
@@ -85,6 +114,7 @@ export interface MediaPlanPost {
     autoComment?: string;
     status?: PostStatus;
     // New fields for package context
+    pillar?: string;
     isPillar?: boolean;
 }
 
