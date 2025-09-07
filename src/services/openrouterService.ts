@@ -553,7 +553,8 @@ export const generateImageWithOpenRouter = async (
     promptSuffix: string,
     model: string,
     aspectRatio: "1:1" | "16:9" = "1:1",
-    productImages: File[] = []
+    productImages: File[] = [],
+    settings: any
 ): Promise<string> => {
     if (!prompt || prompt.trim() === '') {
         throw new Error("Prompt cannot be empty for OpenRouter image generation.");
@@ -583,7 +584,8 @@ Description (aspect ratio ${aspectRatio}): "${prompt}${promptSuffix ? `, ${promp
     const response = await generateImageWithOpenRouterBff(
         model,
         messages,
-        { "type": "json_object" }
+        { "type": "json_object" },
+        settings
     );
     
     // The BFF should already return a data URL, so we can return it directly

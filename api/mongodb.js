@@ -1,6 +1,29 @@
 import { getClientAndDb } from './lib/mongodb.js';
 import { allowCors } from './lib/cors.js';
 import { ObjectId } from 'mongodb';
+import { defaultPrompts } from './lib/defaultPrompts.js';
+import { initialSettings } from './lib/defaultSettings.js';
+
+// Helper function for deep merging settings objects
+const isObject = (obj) => obj && typeof obj === 'object' && !Array.isArray(obj);
+
+function deepMerge(target, source) {
+  const output = { ...target };
+  if (isObject(target) && isObject(source)) {
+    Object.keys(source).forEach(key => {
+      if (isObject(source[key])) {
+        if (!(key in target)) {
+          Object.assign(output, { [key]: source[key] });
+        } else {
+          output[key] = deepMerge(target[key], source[key]);
+        }
+      } else {
+        Object.assign(output, { [key]: source[key] });
+      }
+    });
+  }
+  return output;
+}
 
 // Helper function to create a filter based on ID validity
 function createIdFilter(id, fieldName = '_id') {
@@ -118,37 +141,46 @@ async function handler(request, response) {
           }
           await db.command({ ping: 1 });
 
-          // 2. List Brands
+          // 2. List Brands (with robust filtering)
           const brandRecords = await brandsCollection.find({}).toArray();
-          const brands = brandRecords.map(record => ({
-            id: record._id.toString(),
-            name: record.name
-          }));
+          const brands = brandRecords
+            .filter(record => record && record._id && record.name) // Filter out malformed records
+            .map(record => ({
+              id: record._id.toString(),
+              name: record.name
+            }));
 
-          // 3. Fetch Admin Defaults
+          // 3. Fetch Admin Defaults and auto-initialize if needed
           const adminSettingsCollection = db.collection('adminSettings');
-          const settingsRecord = await adminSettingsCollection.findOne({});
-          let adminDefaults = {};
-          if (settingsRecord) {
-            adminDefaults = {
-              language: settingsRecord.language,
-              totalPostsPerMonth: settingsRecord.totalPostsPerMonth,
-              mediaPromptSuffix: settingsRecord.mediaPromptSuffix,
-              affiliateContentKit: settingsRecord.affiliateContentKit,
-              textGenerationModel: settingsRecord.textGenerationModel,
-              imageGenerationModel: settingsRecord.imageGenerationModel,
-              textModelFallbackOrder: settingsRecord.textModelFallbackOrder || [],
-              visionModels: settingsRecord.visionModels || [],
-              visualStyleTemplates: settingsRecord.visualStyleTemplates || []
-            };
+          let settingsRecord = await adminSettingsCollection.findOne({});
+
+          // If no settings record or no prompts exist, this is a first-time setup.
+          // We create the settings document with the hardcoded defaults.
+          if (!settingsRecord || !settingsRecord.prompts) {
+            console.log('No admin prompts found in DB, initializing from defaultSettings.js...');
+            // Use upsert to create the document if it doesn't exist, or update it if it's partial
+            await adminSettingsCollection.updateOne(
+                  {},
+                  { $set: initialSettings },
+                  { upsert: true }
+              );
+            // Re-fetch the record to ensure we use the newly created settings
+            settingsRecord = await adminSettingsCollection.findOne({});
           }
+          
+          // Now, settingsRecord is guaranteed to exist.
+          // We still deepMerge to account for any new prompts added to defaultPrompts.js in a code update.
+          const adminDefaults = {
+            ...settingsRecord,
+            prompts: deepMerge(defaultPrompts, settingsRecord.prompts || {})
+          };
 
           response.status(200).json({ credentialsSet: true, brands: brands, adminDefaults: adminDefaults });
           console.log('--- App init data sent ---');
         } catch (error) {
           console.error('App init failed:', error);
-          // If any part fails, we assume credentials are not fully set or DB is down.
-          response.status(200).json({ credentialsSet: false, brands: [], adminDefaults: {} });
+          // If any part fails, send a proper 500 error with a JSON response
+          response.status(500).json({ error: `App initialization failed: ${error.message}` });
         }
         break;
 
@@ -222,8 +254,9 @@ async function handler(request, response) {
                 const adminSettingsCollection = db.collection('adminSettings');
                 const adminSettings = await adminSettingsCollection.findOne({});
                 
-                // If admin settings exist, use them. Otherwise, use the (likely empty) settings from the client.
-                brandDocument.settings = adminSettings ? adminSettings : brandDocument.settings;
+                // The app-init logic now guarantees that adminSettings from the DB is the complete source of truth for defaults.
+                // We just copy it directly.
+                brandDocument.settings = adminSettings;
 
                 const newBrandObjectId = new ObjectId();
                 const newBrandId = newBrandObjectId.toString();
@@ -470,7 +503,29 @@ async function handler(request, response) {
           const services = Array.from(servicesMap.values());
 
           // Sanitize admin settings to ensure it's not null
-          const adminSettings = adminSettingsRecord || {};
+          let adminSettings = {};
+          if (adminSettingsRecord) {
+            adminSettings = {
+              ...adminSettingsRecord,
+              prompts: {
+                ...defaultPrompts,
+                ...(adminSettingsRecord.prompts || {}),
+              }
+            };
+          } else {
+            adminSettings = {
+                language: 'English',
+                totalPostsPerMonth: 30,
+                mediaPromptSuffix: '',
+                affiliateContentKit: '',
+                textGenerationModel: 'gemini-1.5-pro-latest',
+                imageGenerationModel: 'dall-e-3',
+                textModelFallbackOrder: [],
+                visionModels: [],
+                contentPillars: [],
+                prompts: defaultPrompts
+            };
+          }
           
           response.status(200).json({ services, adminSettings });
           console.log('--- Settings data loaded ---');
@@ -576,21 +631,28 @@ async function handler(request, response) {
               const settings = request.body;
               
               const adminSettingsCollection = db.collection('adminSettings');
+
+              // Deep merge the received settings with the defaults to ensure all prompt fields exist
+              const settingsToSave = {
+                ...settings,
+                prompts: deepMerge(defaultPrompts, settings.prompts || {})
+              };
               
               // Update or insert admin settings
               const result = await adminSettingsCollection.updateOne(
                 {}, // Match any document
                 { 
                   $set: {
-                    language: settings.language,
-                    totalPostsPerMonth: settings.totalPostsPerMonth,
-                    mediaPromptSuffix: settings.mediaPromptSuffix,
-                    affiliateContentKit: settings.affiliateContentKit,
-                    textGenerationModel: settings.textGenerationModel,
-                    imageGenerationModel: settings.imageGenerationModel,
-                    textModelFallbackOrder: settings.textModelFallbackOrder || [],
-                    visionModels: settings.visionModels || [],
-                    visualStyleTemplates: settings.visualStyleTemplates || [],
+                    language: settingsToSave.language,
+                    totalPostsPerMonth: settingsToSave.totalPostsPerMonth,
+                    mediaPromptSuffix: settingsToSave.mediaPromptSuffix,
+                    affiliateContentKit: settingsToSave.affiliateContentKit,
+                    textGenerationModel: settingsToSave.textGenerationModel,
+                    imageGenerationModel: settingsToSave.imageGenerationModel,
+                    textModelFallbackOrder: settingsToSave.textModelFallbackOrder || [],
+                    visionModels: settingsToSave.visionModels || [],
+                    contentPillars: settingsToSave.contentPillars || [],
+                    prompts: settingsToSave.prompts, // Save the full prompts object
                     updatedAt: new Date()
                   }
                 },
@@ -767,6 +829,7 @@ async function handler(request, response) {
               
               const mediaPlanGroupsCollection = db.collection('mediaPlanGroups');
               const postsCollection = db.collection('mediaPlanPosts');
+              let allPosts = []; // Declare allPosts in the outer scope
               
               // ✅ Generate a valid ObjectId and use its string form as the ID
               const groupObjectId = new ObjectId(); // 12-byte ObjectId
@@ -792,7 +855,6 @@ async function handler(request, response) {
               if (group.plan && Array.isArray(group.plan) && group.plan.length > 0) {
                 
                 // Flatten plan into posts
-                const allPosts = [];
                 group.plan.forEach(week => {
                   // Make sure week has the expected structure
                   if (week && week.week !== undefined && week.theme && Array.isArray(week.posts)) {
@@ -870,7 +932,18 @@ async function handler(request, response) {
                 }
               }
               
-              response.status(200).json({ id: groupId });
+              // Reconstruct the full plan to send back to the client
+              const finalPlan = {
+                ...groupDocument,
+                plan: group.plan.map(week => ({
+                  ...week,
+                  posts: allPosts
+                    .filter(p => p.week === week.week)
+                    .map(p => ({ ...p, _id: p._id.toString() })) // Ensure _id is a string for client
+                }))
+              };
+
+              response.status(200).json({ savedPlan: finalPlan });
               console.log('--- Media plan group saved ---');
             } catch (error) {
               console.error('--- CRASH in /api/mongodb/save-media-plan-group ---');
@@ -1749,5 +1822,6 @@ async function handler(request, response) {
         response.status(500).json({ error: `Failed to process action ${action}: ${error.message}` });
       }
 }
+
 
 export default allowCors(handler);

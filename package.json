@@ -42,7 +42,6 @@
     "@types/uuid": "^10.0.0",
     "babel-plugin-transform-import-meta": "^2.3.3",
     "babel-plugin-transform-vite-meta-env": "^1.0.3",
-    "dotenv": "^17.2.1",
     "typescript": "~5.8.2",
     "vite": "^5.2.0",
     "vite-plugin-environment": "^1.1.3"

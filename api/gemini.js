@@ -10,69 +10,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 
 
-/**
- * Constructs a detailed, layered prompt for the AI based on a persona.
- * @param {object} persona - The full persona object.
- * @param {string} objective - The user's simple objective for the post.
- * @param {string} platform - The target social media platform.
- * @returns {string} The fully constructed prompt for the AI.
- */
-function constructBelievablePersonaPrompt(persona, objective, platform, keywords, pillar) {
-  const { 
-    nickName, 
-    demographics, 
-    backstory, 
-    voice, 
-    knowledgeBase, 
-    brandRelationship 
-  } = persona;
-
-  const promptLayers = [];
-
-  // Layer 1: Role-play instruction
-  promptLayers.push(`You are ${nickName}, a ${demographics?.age}-year-old ${demographics?.occupation} from ${demographics?.location}.`);
-
-  // Layer 2: Personality and Voice
-  if (voice) {
-    promptLayers.push(`Your personality is: ${voice.personalityTraits?.join(', ')}.`);
-    promptLayers.push(`Your writing style is defined by these rules: ${voice.linguisticRules?.join('. ')}.`);
-  }
-
-  // Layer 3: Backstory and Values
-  if (backstory) {
-    promptLayers.push(`Your personal backstory is: ${backstory}`);
-  }
-
-  // Layer 4: Interests
-  if (knowledgeBase && knowledgeBase.length > 0) {
-    promptLayers.push(`You are knowledgeable about and interested in: ${knowledgeBase.join(', ')}.`);
-  }
-
-  // Layer 5: Context and Task
-  promptLayers.push(`
----
-`);
-  promptLayers.push(`CONTEXT: Today is ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}.`);
-  promptLayers.push(`TASK: Write a social media post for the ${platform} platform.`);
-  promptLayers.push(`The simple objective of the post is: "${objective}".`);
-  if (pillar) {
-    promptLayers.push(`The post MUST align with the following content pillar: "${pillar}".`);
-  }
-  if (keywords && keywords.length > 0) {
-    promptLayers.push(`You MUST naturally incorporate the following keywords into the post: ${keywords.join(', ')}.`);
-  }
-  promptLayers.push(`Write the post naturally from your perspective. Weave in your personality, interests, and backstory where it feels authentic.`);
-
-  // Layer 6: Negative Constraints
-  promptLayers.push(`
-DO NOT:
-`);
-  promptLayers.push(`- Do not sound like a generic advertisement or AI.`);
-  promptLayers.push(`- Do not break character.`);
-  promptLayers.push(`- Do not use generic hashtags unless they fit your personality.`);
-
-  return promptLayers.join('\n');
-}
+// The constructBelievablePersonaPrompt function is removed as its logic is now handled by configurable prompts.
 
 async function handler(request, response) {
   const { action } = request.query;
@@ -262,59 +200,22 @@ async function handler(request, response) {
       }
       console.log('--- Received request for /api/gemini/auto-generate-persona ---');
       try {
-        const { mission, usp, model: modelName } = request.body;
+        const { mission, usp, model: modelName, settings } = request.body;
 
-        if (!mission || !usp || !modelName) {
-          return response.status(400).json({ error: 'Missing required fields: mission, usp, and model' });
+        if (!mission || !usp || !modelName || !settings || !settings.prompts) {
+          return response.status(400).json({ error: 'Missing required fields: mission, usp, model, and settings with prompts' });
         }
+
+        const prompts = settings.prompts.autoGeneratePersona;
 
         const model = genAI.getGenerativeModel({ 
           model: modelName,
-          systemInstruction: "You are a helpful assistant that only returns valid, minified JSON objects in a single array. Do not include any markdown formatting or extra text outside of the JSON array.",
+          systemInstruction: prompts.systemInstruction,
         });
 
-        const prompt = `
-          Based on the following brand information, generate an array of EXACTLY 3 diverse and detailed persona profiles.
-
-          **Brand Information:**
-          *   **Mission Statement:** "${mission}"
-          *   **Unique Selling Proposition (USP):** "${usp}"
-
-          **Instructions:**
-          - Generate 3 distinct personas with a mix of genders.
-          - Each field in the JSON structure MUST be filled with meaningful, creative, and relevant content. Do not leave fields empty.
-          - The entire output must be a single, minified JSON array.
-          - CRITICAL: The final output must be a perfectly valid JSON array. Do not use trailing commas.
-
-          **JSON Structure:**
-          [
-            {
-              "nickName": "Realistic first and last name",
-              "gender": "Male or Female",
-              "demographics": {
-                "age": A number between 20 and 55,
-                "location": "A specific city and country",
-                "occupation": "A specific, modern job title"
-              },
-              "backstory": "A 2-3 sentence backstory explaining their journey, motivations, and what they value, connecting them to the brand mission.",
-              "voice": {
-                "personalityTraits": ["Trait 1", "Trait 2", "Trait 3"],
-                "communicationStyle": {
-                  "formality": "A number between 0 and 100",
-                  "energy": "A number between 0 and 100"
-                },
-                "linguisticRules": ["A specific linguistic quirk, e.g., Uses a certain slang term", "A rule about sentence structure", "A rule about emoji usage"]
-              },
-              "knowledgeBase": ["Interest 1", "Interest 2", "Interest 3"],
-              "brandRelationship": {
-                "originStory": "How did they discover the brand? Connect it to their values.",
-                "coreAffinity": "Which specific brand value resonates most with them?",
-                "productUsage": "How do they use the brand’s products/services in their daily life?"
-              },
-              "visualCharacteristics": "Detailed descriptions of the persona's appearance, clothing, and style for avatar generation."
-            }
-          ]
-        `;
+        const prompt = prompts.mainPrompt
+          .replace('{mission}', mission)
+          .replace('{usp}', usp);
 
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
@@ -339,10 +240,10 @@ async function handler(request, response) {
       }
       console.log('--- Received request for /api/gemini/generate-in-character-post ---');
       try {
-        const { model: modelName, personaId, objective, platform, keywords, pillar } = request.body;
+        const { model: modelName, personaId, objective, platform, keywords, pillar, settings } = request.body;
 
-        if (!modelName || !personaId || !objective || !platform) {
-          return response.status(400).json({ error: 'Missing required fields: model, personaId, objective, and platform' });
+        if (!modelName || !personaId || !objective || !platform || !settings || !settings.prompts) {
+          return response.status(400).json({ error: 'Missing required fields: model, personaId, objective, platform, and settings with prompts' });
         }
 
         // Fetch the persona from the database
@@ -353,9 +254,43 @@ async function handler(request, response) {
           return response.status(404).json({ error: `Persona with id ${personaId} not found.` });
         }
 
-        const model = genAI.getGenerativeModel({ model: modelName });
+        const p = settings.prompts.generateInCharacterPost;
+        const promptLayers = [];
 
-        const prompt = constructBelievablePersonaPrompt(persona, objective, platform, keywords, pillar);
+        promptLayers.push(p.rolePlayInstruction
+            .replace('{nickName}', persona.nickName)
+            .replace('{demographics.age}', persona.demographics?.age)
+            .replace('{demographics.occupation}', persona.demographics?.occupation)
+            .replace('{demographics.location}', persona.demographics?.location)
+        );
+
+        if (persona.voice) {
+            promptLayers.push(p.personalityInstruction.replace('{voice.personalityTraits}', persona.voice.personalityTraits?.join(', ')));
+            promptLayers.push(p.writingStyleInstruction.replace('{voice.linguisticRules}', persona.voice.linguisticRules?.join('. ')));
+        }
+        if (persona.backstory) {
+            promptLayers.push(p.backstoryInstruction.replace('{backstory}', persona.backstory));
+        }
+        if (persona.knowledgeBase && persona.knowledgeBase.length > 0) {
+            promptLayers.push(p.interestsInstruction.replace('{knowledgeBase}', persona.knowledgeBase.join(', ')));
+        }
+
+        promptLayers.push(p.contextPreamble.replace('{date}', new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })));
+        promptLayers.push(p.taskInstruction.replace('{platform}', platform));
+        promptLayers.push(p.objectiveInstruction.replace('{objective}', objective));
+
+        if (pillar) {
+            promptLayers.push(p.pillarInstruction.replace('{pillar}', pillar));
+        }
+        if (keywords && keywords.length > 0) {
+            promptLayers.push(p.keywordsInstruction.replace('{keywords}', keywords.join(', ')));
+        }
+        promptLayers.push(p.perspectiveInstruction);
+        promptLayers.push(p.negativeConstraints);
+
+        const prompt = promptLayers.join('\n');
+        
+        const model = genAI.getGenerativeModel({ model: modelName });
         
         console.log(`--- Constructed Prompt for ${persona.nickName} ---`, prompt);
 

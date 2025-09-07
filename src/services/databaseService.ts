@@ -372,7 +372,7 @@ const saveMediaPlanGroupToDatabase = async (
   group: MediaPlanGroup,
   imageUrls: Record<string, string>,
   brandId: string
-): Promise<void> => {
+): Promise<{ savedPlan: MediaPlanGroup }> => {
   try {
     const response = await fetch('/api/mongodb?action=save-media-plan-group', {
       method: 'POST',
@@ -383,11 +383,14 @@ const saveMediaPlanGroupToDatabase = async (
     });
 
     if (!response.ok) {
+      const errorBody = await response.text();
+      console.error("Failed to save media plan group. Body:", errorBody);
       throw new Error(`Failed to save media plan group: ${response.statusText}`);
     }
 
     const result = await response.json();
     console.log('Media plan group saved successfully:', result);
+    return result; // Return the full saved plan
   } catch (error) {
     console.error('Failed to save media plan group to database:', error);
     throw error;

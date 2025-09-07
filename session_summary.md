@@ -623,3 +623,145 @@ This session focused on implementing the "Content Strategy & Workflow" features,
 *   **Stale State in React:** The pillar-saving bug was a classic React stale state issue. I must be more vigilant in using the functional update form of `useState`'s setter (`setState(prev => ...)`), especially when the new state depends on the previous state.
 *   **AI Prompt Formatting:** The JSON parsing error was a critical bug caused by incorrectly formatting the request to the Gemini API. I must remember to ensure that the data being sent matches the exact format expected by the external service's SDK. `JSON.stringify` should be used on the *body object*, not on the *content string* within it.
 *   **Thoroughness in Refactoring:** The wizard crash was a simple typo that I missed during a larger refactoring. This highlights the need to double-check all props and function calls related to any component I modify.
+
+## Session Summary (2025-09-06) [2]
+
+### 1. Summary of Accomplishments
+
+This session focused on implementing a **Prompt Configuration Modal** to externalize hardcoded AI prompts, significantly enhancing the application's configurability.
+
+*   **Data Model Extension:**
+    *   The `types.ts` file was updated with a comprehensive `Prompts` interface, including nested structures for `AutoGeneratePersonaPrompts`, `GenerateInCharacterPostPrompts`, `MediaPlanGenerationPrompts`, `SimplePrompts` (for various single-string prompts), and `ContentPackagePrompts`. This new `prompts` object was added to the main `Settings` interface.
+*   **Backend Database Refactoring (`api/mongodb.js`):**
+    *   A new file, `api/lib/defaultPrompts.js`, was created to centralize all default prompt values.
+    *   The `save-admin-defaults` action was modified to perform a deep merge of incoming settings with `defaultPrompts`, ensuring a complete `prompts` object is always saved to the `adminSettings` collection.
+    *   The `create-or-update-brand` action was updated to ensure new brands inherit a complete `prompts` object from `adminSettings` (which are themselves merged with `defaultPrompts`).
+    *   The `app-init` and `load-settings-data` actions were updated to correctly return the `prompts` field within the `adminSettings` object, including a fallback for initial empty settings.
+*   **Backend AI Service Refactoring (`api/gemini.js`):**
+    *   The `auto-generate-persona` action was refactored to dynamically construct its prompt using templates from `settings.prompts.autoGeneratePersona`.
+    *   The hardcoded `constructBelievablePersonaPrompt` helper function was removed.
+    *   The `generate-in-character-post` action was refactored to dynamically build its prompt using templates from `settings.prompts.generateInCharacterPost` and persona data.
+*   **Frontend AI Service Refactoring (`src/services/geminiService.ts`):**
+    *   The `generateMediaPlanGroup` function was refactored to use configurable prompts from `settings.prompts.mediaPlanGeneration`.
+    *   All other prompt-based functions (`refinePostContentWithGemini`, `generateBrandProfile`, `generateBrandKit`, `generateMediaPromptForPost`, `generateAffiliateComment`, `generateViralIdeas`, `generateContentPackage`, `generateFacebookTrends`, `generatePostsForFacebookTrend`, `generateIdeasFromProduct`) were refactored to use their respective configurable prompts from `settings.prompts.simple` and `settings.prompts.contentPackage`.
+    *   Function signatures across these services were updated to accept the `settings: Settings` object.
+*   **Frontend Service Layer (`src/services/textGenerationService.ts`):**
+    *   The `TextGenerationService` interface was updated to reflect the new function signatures (passing `settings: Settings`).
+    *   The `googleService` and `openRouterService` implementations were updated to correctly pass the `settings` object to their underlying `geminiService` or `openrouterService` functions.
+*   **Frontend UI Component (`src/components/PromptManager.tsx`):**
+    *   A new React component, `PromptManager.tsx`, was created. It provides a UI for editing prompt configurations, allowing comparison with global admin defaults.
+*   **Frontend UI Integration (`src/components/AdminPage.tsx`):**
+    *   The `AdminPage.tsx` was refactored to include a new tabbed interface, with a dedicated "Prompt Management" tab that renders the `PromptManager` component for global prompt configuration.
+*   **Frontend UI Integration (`src/components/SettingsModal.tsx`):**
+    *   The `SettingsModal.tsx` was updated to include a new "Prompts" tab, rendering the `PromptManager` component for brand-specific prompt overrides.
+
+### 2. Notes for Future Development
+
+*   **`replace` tool precision:** The session highlighted the extreme sensitivity of the `replace` tool to exact string matching, including whitespace and line endings. Future complex replacements should involve `read_file` immediately before execution to ensure the `old_string` is precise.
+*   **Missing Frontend `settings` propagation (CRITICAL):** The `settings` object is now expected by many backend and service-layer functions. However, the calls to these functions from `App.tsx` and `bffService.ts` have *not yet* been updated to pass this `settings` object. This will cause runtime errors and must be addressed immediately in the next session.
+*   **OpenRouter limitations:** Note that OpenRouter models currently do not support content package generation, Facebook trend generation, or in-character post generation, leading to explicit errors in the code. This is a known limitation of the OpenRouter integration.
+
+## Session Summary (2025-09-07) [1]
+
+This session was primarily focused on a series of critical bug fixes, followed by a significant refactoring of the application's settings initialization logic.
+
+### 1. Key Accomplishments
+
+*   **Critical Bug Fixes:** Resolved multiple application-breaking bugs:
+    *   Fixed several server-side startup crashes (rs is not defined, corrupted defaultPrompts.js) caused by faulty file modifications.
+    *   Eliminated a data-loss bug in the settings logic by replacing a shallow object merge with a proper deepMerge implementation in api/mongodb.js.
+    *   Fixed multiple UI crashes on the Admin Page, including a TypeError related to model.capabilities (by adding an Array.isArray check) and a TypeError in the PromptManager (by adding a null check).
+    *   Corrected several syntax errors introduced during previous refactoring attempts.
+
+*   **Settings Logic Refactoring:** The logic for handling default settings was completely overhauled to be more robust and maintainable.
+    *   **Auto-Initializing Defaults:** The app-init API action in api/mongodb.js was rewritten. It now detects if the adminSettings in the database are missing prompts and, if so, automatically saves the complete default configuration to the database on the first run.
+    *   **Source of Truth:** The create-or-update-brand action was corrected to use the adminSettings from the database as the single source of truth when creating a new brand, rather than re-merging with hardcoded files.
+    *   **Code Organization:** The hardcoded default settings object was extracted from api/mongodb.js into a new, dedicated file at api/lib/defaultSettings.js for better maintainability.
+
+### 2. Issues to Note & Lessons Learned
+
+*   **My Misuse of the `replace` Tool:** The most significant source of errors and repeated work during this session was my misuse of the `replace` tool. It proved to be too brittle for large, multi-line code blocks, often failing to match strings with subtle whitespace/newline differences. This led directly to me introducing syntax errors and corrupted files, which caused several of the crashes we had to debug.
+
+*   **Incomplete Bug Fix:** The crash within the generateContentPackage function (caused by unsafe access to persona properties) was correctly identified, but the fix was not successfully applied. **This remains an outstanding bug that needs to be addressed in the next session.**
+
+### 3. Preventative Measures for Future Sessions
+
+To prevent a recurrence of these issues, I will adhere to the following procedures:
+1.  **Abandon `replace` for Complex Changes:** For any non-trivial code modification, I will now exclusively use a read-modify-write strategy: read the entire file, perform the replacement in memory, and then use `write_file` to overwrite the original. This is more robust and avoids the string-matching failures.
+2.  **Mandatory Verification Step:** After every single file modification (write_file or replace), I will immediately run the project's build command (npm run build) to verify the syntactic and type correctness of my changes *before* reporting back or moving to the next step. This was a key process improvement suggested by you that I will now follow strictly.
+
+# Session Summary (2025-09-07) [2]
+
+## Summary of Accomplishments
+
+This session focused on fixing critical authentication and data persistence issues in the SocialSync Pro application. Two major problems were identified and addressed:
+
+### 1. Admin Authentication Persistence
+**Problem:** Admin users had to re-login every time they refreshed the page because authentication state was only stored in React component state, which is lost on page reload.
+
+**Solution:** Implemented persistent admin authentication using localStorage with a 3-day expiration:
+- Created a new `adminAuthService.ts` service with functions for authentication, logout, and token validation
+- Modified `App.tsx` to check for valid authentication tokens on app initialization
+- Updated the login logic to store tokens with expiration timestamps
+- Added automatic token validation and cleanup of expired tokens
+
+### 2. Content Package Prompt Management
+**Problem:** The content package mainPrompt contained many variables that were not properly substituted, causing application crashes. The complex prompt structure was also fragile when admins tried to customize it.
+
+**Analysis:** Identified that the current implementation required explicit `.replace()` calls in the service layer for each placeholder, which was error-prone and didn't scale well.
+
+**Proposed Solution:** Refactor the prompt management system to:
+- Break the monolithic prompt into smaller, structured fields (pillarContentInstruction, repurposedContentInstruction, etc.)
+- Implement an automated variable substitution system that detects and replaces placeholders automatically
+- Create a more robust validation system to ensure all placeholders are properly substituted
+- Update the UI to provide separate editable fields for each prompt section instead of one large textarea
+
+### 3. Media Plan Data Persistence
+**Problem:** New generated associated posts were not being saved to the database properly.
+
+**Analysis:** Reviewed the `saveMediaPlanGroupToDatabase` implementation and found issues with how posts were being processed and saved.
+
+**Proposed Solution:** 
+- Ensure the media plan saving logic properly handles all post data including associated images
+- Verify that the database service correctly persists both pillar content and repurposed content
+- Add proper error handling and validation in the save process
+
+## Key Technical Changes
+
+### Authentication Service (`src/services/adminAuthService.ts`)
+Created a new service with:
+- `isAdminAuthenticated()`: Checks for valid auth tokens and handles expiration
+- `authenticateAdmin(password: string)`: Validates password and sets persistent auth token
+- `logoutAdmin()`: Clears auth tokens from localStorage
+- `getAuthTimeRemaining()`: Returns time until token expiration
+
+### App Component (`src/App.tsx`)
+- Modified initial state initialization to check for existing auth tokens
+- Updated login handler to store tokens with 3-day expiration
+- Integrated new auth service functions
+
+### Prompt Management System (Proposed)
+- Refactor `ContentPackagePrompts` interface to use structured fields instead of a single `mainPrompt`
+- Update `defaultPrompts.js` to break the master prompt into smaller, manageable parts
+- Modify `geminiService.ts` to dynamically assemble prompts from structured fields
+- Update `PromptManager.tsx` UI to render multiple text areas for each field
+
+## Issues to Note
+
+1. **Incomplete Prompt Management Implementation:** The prompt management refactoring was only partially implemented. The full solution requires updating multiple files including `types.ts`, `defaultPrompts.js`, `geminiService.ts`, and `PromptManager.tsx`.
+
+2. **Media Plan Persistence:** The media plan saving issue was identified but not fully resolved. Additional work is needed to ensure posts are properly saved to the database.
+
+3. **Missing Logout UI:** No logout button was found in the AdminPage component, which means users cannot manually log out.
+
+## Preventative Measures for Future Sessions
+
+1. **Always check for persistence requirements:** When implementing authentication or any state that should survive page reloads, always consider using localStorage or sessionStorage.
+
+2. **Validate external data thoroughly:** When working with prompts or templates that contain placeholders, implement robust validation to ensure all placeholders are properly substituted.
+
+3. **Break down complex features:** Large, monolithic features like the content package prompt should be broken into smaller, manageable components to improve maintainability and reduce errors.
+
+4. **Test edge cases:** Always test authentication flows with expired tokens, invalid passwords, and page refreshes to ensure robustness.
+
+5. **Provide user controls:** Always ensure users have appropriate controls (like logout buttons) for features that change their session state.

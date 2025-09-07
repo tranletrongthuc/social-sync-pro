@@ -64,6 +64,63 @@ export interface BrandInfo {
   personality: string;
 }
 
+export interface AutoGeneratePersonaPrompts {
+  systemInstruction: string;
+  mainPrompt: string;
+}
+
+export interface GenerateInCharacterPostPrompts {
+  rolePlayInstruction: string;
+  personalityInstruction: string;
+  writingStyleInstruction: string;
+  backstoryInstruction: string;
+  interestsInstruction: string;
+  contextPreamble: string;
+  taskInstruction: string;
+  objectiveInstruction: string;
+  pillarInstruction: string;
+  keywordsInstruction: string;
+  perspectiveInstruction: string;
+  negativeConstraints: string;
+}
+
+export interface MediaPlanGenerationPrompts {
+  systemInstruction: string;
+  personaEmbodimentInstruction: string;
+  campaignGoalInstruction: string;
+  contentGenerationRules: string;
+  hyperDetailedImagePromptGuide: string;
+  jsonOutputInstruction: string;
+}
+
+export interface SimplePrompts {
+    refinePost: string;
+    generateBrandProfile: string;
+    generateBrandKit: string;
+    generateMediaPrompt: string;
+    generateAffiliateComment: string;
+    generateViralIdeas: string;
+    generateFacebookTrends: string;
+    generateFacebookPostsForTrend: string;
+    generateIdeasFromProduct: string;
+}
+
+export interface ContentPackagePrompts {
+    taskInstruction: string;
+    pillarContentInstruction: string;
+    repurposedContentInstruction: string;
+    mediaPromptInstruction: string;
+    jsonOutputInstruction: string;
+}
+
+export interface Prompts {
+  autoGeneratePersona: AutoGeneratePersonaPrompts;
+  generateInCharacterPost: GenerateInCharacterPostPrompts;
+  mediaPlanGeneration: MediaPlanGenerationPrompts;
+  simple: SimplePrompts;
+  contentPackage: ContentPackagePrompts;
+}
+
 export interface Settings {
     language: string;
     totalPostsPerMonth: number;
@@ -74,6 +131,7 @@ export interface Settings {
     textModelFallbackOrder: string[];
     visionModels: string[];
     contentPillars: { name: string, targetPercentage: number }[];
+    prompts: Prompts;
 }
 
 export interface UnifiedProfileAssets {

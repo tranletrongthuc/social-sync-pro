@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useRef, useReducer, Suspense, lazy } from 'react';
 import saveAs from 'file-saver';
+import { isAdminAuthenticated as checkAdminAuthenticated, authenticateAdmin, logoutAdmin } from './services/adminAuthService';
 
 // Lazy load components
 const IdeaProfiler = lazy(() => import('./components/IdeaProfiler'));
@@ -466,9 +467,31 @@ const App: React.FC = () => {
     const [adminSettings, setAdminSettings] = useState<Settings | null>(null);
     const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig | null>(null);
     
-    // Admin authentication state
-    const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
-    const [adminPassword, setAdminPassword] = useState<string>('');
+    // Admin authentication state with persistence
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return checkAdminAuthenticated(); // This is calling the renamed function from adminAuthService
+  });
+  const [adminPassword, setAdminPassword] = useState<string>('');
+  
+  // Admin logout function
+  const handleAdminLogout = useCallback(() => {
+    logoutAdmin();
+    setIsAdminAuthenticated(false);
+  }, []);
+  
+  // Periodic check for admin authentication expiration
+  useEffect(() => {
+    if (!isAdminAuthenticated) return;
+    
+    const interval = setInterval(() => {
+      // Check if admin is still authenticated
+      if (!checkAdminAuthenticated()) {
+        setIsAdminAuthenticated(false);
+      }
+    }, 60000); // Check every minute
+    
+    return () => clearInterval(interval);
+  }, [isAdminAuthenticated]);
     
     // Integration States
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
@@ -612,6 +635,9 @@ const App: React.FC = () => {
                 setAdminSettings(configService.getAdminDefaults());
                 setSettings(configService.getAppSettings());
                 setAiModelConfig(configService.getAiModelConfig());
+
+                // Check if admin was previously authenticated
+                setIsAdminAuthenticated(checkAdminAuthenticated());
 
                 setAreCredentialsSet(credentialsSet);
                 setBrands(brands);
@@ -816,7 +842,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             const generationTask = (model: string) => {
-                return textGenerationService.generateBrandProfile(idea, settings.language, model);
+                return textGenerationService.generateBrandProfile(idea, settings.language, model, settings);
             };
             const profile = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             setBrandInfo(profile);
@@ -827,9 +853,9 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings?.textGenerationModel, settings?.language, executeTextGenerationWithFallback]);
+    }, [settings, executeTextGenerationWithFallback]);
 
-    const handleGenerateKit = useCallback(async (info: BrandInfo) => {
+        const handleGenerateKit = useCallback(async (info: BrandInfo) => {
         setBrandInfo(info);
         const kitSteps = settings?.language === 'Việt Nam' ? [
             "Phân tích hồ sơ thương hiệu của bạn...",
@@ -854,7 +880,7 @@ const App: React.FC = () => {
         try {
             console.log("handleGenerateKit: Starting generation task.");
             const generationTask = (model: string) => {
-                return textGenerationService.generateBrandKit(info, settings.language, model);
+                return textGenerationService.generateBrandKit(info, settings.language, model, settings);
             };
             const kit = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             console.log("handleGenerateKit: Generation task completed. Kit:", kit);
@@ -889,7 +915,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings?.language, settings?.textGenerationModel, ensureMongoProject, executeTextGenerationWithFallback]);
+    }, [settings, ensureMongoProject, executeTextGenerationWithFallback]);
 
     const handleGenerateMediaPlanGroup = useCallback((
         objective: string,
@@ -934,14 +960,14 @@ const App: React.FC = () => {
                 
                 const generationTask = async (model: string) => {
                     return textGenerationService.generateMediaPlanGroup(
-                        generatedAssets.brandFoundation,
+                        generatedAssets.brandFoundation!,
                         userPrompt,
                         settings.language,
                         totalPosts,
                         useSearch,
                         selectedPlatforms,
                         options,
-                        settings.affiliateContentKit,
+                        settings,
                         model,
                         persona,
                         selectedProduct,
@@ -980,11 +1006,6 @@ const App: React.FC = () => {
                 };
                 
 
-                dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: updatedGroup });
-                setMediaPlanGroupsList(prev => [...prev, { id: updatedGroup.id, name: updatedGroup.name, prompt: updatedGroup.prompt, productImages: updatedGroup.productImages }]);
-                setActivePlanId(updatedGroup.id);
-                setKhongMinhSuggestions({});
-                
                 updateAutoSaveStatus('saving');
                 const brandId = await ensureMongoProject();
                 if (!brandId) {
@@ -997,7 +1018,19 @@ const App: React.FC = () => {
                 const newPublicUrls = await uploadMediaToCloudinary(generatedImages);
                 const allImageUrls = { ...generatedImages, ...newPublicUrls };
 
-                await saveMediaPlanGroup(updatedGroup, allImageUrls, brandId);
+                // Save the plan and get the final, database-consistent version back
+                const { savedPlan } = await saveMediaPlanGroup(updatedGroup, allImageUrls, brandId);
+
+                if (!savedPlan) {
+                    throw new Error("Failed to save media plan group. Received no plan from server.");
+                }
+
+                // Now, update the state with the final, correct data
+                dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: savedPlan });
+                setMediaPlanGroupsList(prev => [...prev, { id: savedPlan.id, name: savedPlan.name, prompt: savedPlan.prompt, productImages: savedPlan.productImages }]);
+                setActivePlanId(savedPlan.id);
+                setKhongMinhSuggestions({});
+                
                 setGeneratedImages(allImageUrls); 
                 updateAutoSaveStatus('saved');
                 setLoaderContent(null); 
@@ -1046,8 +1079,8 @@ const App: React.FC = () => {
         const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null;
 
         const prompt = primaryObjective === 'product' && selectedProduct 
-            ? `Generate a full ${campaignDuration} marketing funnel campaign to promote the product "${selectedProduct.productName}". The campaign should include awareness, consideration, decision, and action stages, totaling approximately ${totalPosts} posts.` 
-            : `Generate a full ${campaignDuration} marketing funnel campaign for the general goal: "${generalGoal}". The campaign should include awareness, consideration, decision, and action stages, totaling approximately ${totalPosts} posts.`;
+            ? `Generate a full ${campaignDuration} marketing funnel campaign to promote the product \"${selectedProduct.productName}\". The campaign should include awareness, consideration, decision, and action stages, totaling approximately ${totalPosts} posts.` 
+            : `Generate a full ${campaignDuration} marketing funnel campaign for the general goal: \"${generalGoal}\". The campaign should include awareness, consideration, decision, and action stages, totaling approximately ${totalPosts} posts.`;
 
         setLoaderContent({
             title: "Generating Funnel Campaign...",
@@ -1070,10 +1103,11 @@ const App: React.FC = () => {
                     true, // useSearch
                     ['Facebook', 'Instagram', 'TikTok', 'YouTube'], // Default platforms for funnel
                     { tone: 'persuasive', style: 'storytelling', length: 'medium', includeEmojis: true }, // Default options
-                    settings.affiliateContentKit,
+                    settings,
                     model,
                     persona,
-                    selectedProduct
+                    selectedProduct,
+                    'funnel' // pillar
                 );
             };
             const newGeneratedPlan = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1259,9 +1293,9 @@ const App: React.FC = () => {
         if (model.startsWith('@cf/')) {
             return generateImageWithCloudflare(mediaPrompt, model, imagesToUse);
         } else if (model.startsWith('banana/')) {
-            return generateImageWithBanana(model, mediaPrompt, settings.mediaPromptSuffix);
+            return generateImageWithBanana(model, mediaPrompt, settings.mediaPromptSuffix, settings);
         } else {
-            return generateImageWithOpenRouter(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse);
+            return generateImageWithOpenRouter(mediaPrompt, settings.mediaPromptSuffix, model, aspectRatio, imagesToUse, settings);
         }
     }, [generatedAssets]);
 
@@ -1360,16 +1394,14 @@ const App: React.FC = () => {
         
         try {
             const generationTask = (model: string) => {
-                const commonArgs = [
+                return textGenerationService.generateMediaPromptForPost(
                     { title: post.title, content: post.content, contentType: post.contentType },
-                    generatedAssets.brandFoundation,
+                    generatedAssets.brandFoundation!,
                     settings.language,
                     model,
                     persona,
-                    settings.mediaPromptSuffix
-                ] as const;
-
-                return textGenerationService.generateMediaPromptForPost(...commonArgs);
+                    settings
+                );
             };
             const newPrompt = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             
@@ -1404,7 +1436,7 @@ const App: React.FC = () => {
 
     const handleRefinePost = useCallback(async (text: string): Promise<string> => {
         const generationTask = (model: string) => {
-            return textGenerationService.refinePostContent(text, model);
+            return textGenerationService.refinePostContent(text, model, settings);
         };
         try {
             const refinedText = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1414,7 +1446,7 @@ const App: React.FC = () => {
             setError(err instanceof Error ? err.message : "Failed to refine post content.");
             return text; // Return original text on failure
         }
-    }, [settings.textGenerationModel, executeTextGenerationWithFallback]);
+    }, [settings, executeTextGenerationWithFallback]);
 
     const [isRefining, setIsRefining] = useState(false);
 
@@ -1433,7 +1465,7 @@ const App: React.FC = () => {
             }
 
             const generationTask = (model: string) => {
-                return textGenerationService.generateInCharacterPost(objective, platform, plan.personaId!, model, keywords, pillar);
+                return textGenerationService.generateInCharacterPost(objective, platform, plan.personaId!, model, keywords, pillar, settings);
             };
             
             const newContent = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1486,15 +1518,14 @@ const App: React.FC = () => {
         setError(null);
         try {
             const generationTask = (model: string) => {
-                const commonArgs = [
+                return textGenerationService.generateAffiliateComment(
                     post,
                     products,
-                    generatedAssets.brandFoundation,
+                    generatedAssets.brandFoundation!,
                     settings.language,
                     model,
-                ] as const;
-
-                return textGenerationService.generateAffiliateComment(...commonArgs);
+                    settings
+                );
             };
 
             const newComment = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
@@ -1552,7 +1583,7 @@ const App: React.FC = () => {
         setLoaderContent({ title: "Generating Viral Ideas...", steps: ["Analyzing trend...", "Brainstorming concepts...", "Finalizing ideas..."] });
         try {
             const generationTask = (model: string) => {
-                return textGenerationService.generateViralIdeas(trend, settings.language, useSearch, model);
+                return textGenerationService.generateViralIdeas(trend, settings.language, useSearch, model, settings);
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             const newIdeas: Idea[] = newIdeaData.map(idea => ({
@@ -1573,7 +1604,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [settings, mongoBrandId, executeTextGenerationWithFallback]);
     
     const handleGenerateContentPackage = useCallback(async (
         idea: Idea,
@@ -1632,7 +1663,7 @@ const App: React.FC = () => {
                 idea,
                 generatedAssets.brandFoundation,
                 settings.language,
-                settings.affiliateContentKit,
+                settings,
                 settings.textGenerationModel,
                 personaId ? (generatedAssets.personas || []).find(p => p.id === personaId) ?? null : null,
                 pillarPlatform,
@@ -1678,7 +1709,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, dispatchAssets, setError, setLoaderContent, setActivePlanId, setActiveTab, setMediaPlanGroupsList, mongoBrandId, generatedImages, updateAutoSaveStatus, saveMediaPlanGroup]);
+    }, [generatedAssets, settings, mongoBrandId, updateAutoSaveStatus, saveMediaPlanGroup, setLoaderContent, setError, setSuccessMessage, dispatchAssets, setMediaPlanGroupsList, setActivePlanId, setActiveTab, generatedImages]);
 
     const handleGenerateFacebookTrends = useCallback(async (industry: string) => {
         if (!mongoBrandId) {
@@ -1689,7 +1720,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             const generationTask = (model: string) => {
-                return textGenerationService.generateFacebookTrends(industry, settings.language, model);
+                return textGenerationService.generateFacebookTrends(industry, settings.language, model, settings);
             };
             const newTrendsData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
 
@@ -1724,14 +1755,14 @@ const App: React.FC = () => {
         } finally {
             setIsGeneratingFacebookTrends(false);
         }
-    }, [settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback]);
+    }, [settings, mongoBrandId, executeTextGenerationWithFallback, updateAutoSaveStatus]);
 
     // New function for generating ideas from a product
     const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
         setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
         try {
             const generationTask = (model: string) => {
-                return textGenerationService.generateIdeasFromProduct(product, settings.language, model);
+                return textGenerationService.generateIdeasFromProduct(product, settings.language, model, settings);
             };
             const newIdeaData = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
 
@@ -1822,7 +1853,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, mongoBrandId, updateAutoSaveStatus, executeTextGenerationWithFallback, generatedAssets, setActiveTab]);
+    }, [settings, mongoBrandId, executeTextGenerationWithFallback, generatedAssets, setActiveTab, updateAutoSaveStatus]);
 
     const handleSaveProjectToFile = useCallback(() => {
         if (!generatedAssets) {
@@ -2560,7 +2591,7 @@ const App: React.FC = () => {
         setError(null);
         try {
             const generationTask = (model: string) => {
-                return autoGeneratePersonaProfile(mission, usp, model);
+                return autoGeneratePersonaProfile(mission, usp, model, settings);
             };
             const personaDataArray = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
             setAutoGeneratedPersonas(personaDataArray);
@@ -2571,7 +2602,7 @@ const App: React.FC = () => {
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets?.brandFoundation]);
+    }, [generatedAssets?.brandFoundation, settings, executeTextGenerationWithFallback]);
 
     const handleSaveSelectedPersonas = useCallback((selectedPersonas: Partial<Persona>[]) => {
         if (!selectedPersonas || selectedPersonas.length === 0) {
@@ -2681,7 +2712,7 @@ const App: React.FC = () => {
         setIsGeneratingFacebookPostIdeas(true);
         setError(null);
         try {
-            const newIdeaData = await textGenerationService.generatePostsForFacebookTrend(trend, settings.language, settings.textGenerationModel);
+            const newIdeaData = await textGenerationService.generatePostsForFacebookTrend(trend, settings.language, settings.textGenerationModel, settings);
             const newIdeas: FacebookPostIdea[] = newIdeaData.map(i => ({ ...i, id: crypto.randomUUID(), trendId: trend.id }));
             dispatchAssets({ type: 'ADD_FACEBOOK_POST_IDEAS', payload: newIdeas });
         } catch (err) {
@@ -2733,7 +2764,7 @@ const App: React.FC = () => {
     // If on admin route, show admin page if authenticated, otherwise show login
     if (isAdminRoute) {
         if (isAdminAuthenticated) {
-            return <AdminPage />;
+            return <AdminPage onLogout={handleAdminLogout} />;
         } else {
             return (
                 <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -2750,8 +2781,7 @@ const App: React.FC = () => {
                             <Button 
                                 onClick={() => {
                                     // Use environment variable for admin password, fallback to 'admin123'
-                                    const adminPass = import.meta.env.VITE_ADMIN_PASSWORD || 'admin123';
-                                    if (adminPassword === adminPass) {
+                                    if (authenticateAdmin(adminPassword)) {
                                         setIsAdminAuthenticated(true);
                                     } else {
                                         setError('Invalid password');
@@ -2847,7 +2877,6 @@ const App: React.FC = () => {
                                 generatedImages={generatedImages}
                                 isGeneratingImage={(key) => generatingImageKeys.has(key)}
                                 isUploadingImage={(key) => uploadingImageKeys.has(key)}
-                                settings={settings}
                                 onExportBrandKit={handleExportBrandKit}
                                 isExportingBrandKit={isExporting}
                                 onExportPlan={handleExportMediaPlan}

@@ -4,6 +4,7 @@ import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
 import { loadSettingsDataFromDatabase as loadSettingsData } from '../services/databaseService';
 import SettingField from './SettingField';
+import PromptManager from './PromptManager';
 
 // Helper function to get models by capability from AI services
 const getModelsByCapability = (aiServices: AIService[], capability: 'text' | 'image') => {
@@ -24,7 +25,7 @@ interface SettingsModalProps {
   onSave: (newSettings: Settings) => Promise<void>;
 }
 
-type ActiveTab = 'general' | 'generation' | 'affiliate';
+type ActiveTab = 'general' | 'generation' | 'affiliate' | 'prompts';
 
 const TabButton: React.FC<{
     tabId: ActiveTab;
@@ -52,6 +53,7 @@ const T = {
     tab_general: 'Chung',
     tab_generation: 'Tạo nội dung',
     tab_affiliate: 'Affiliate',
+    tab_prompts: 'Prompts',
     save: 'Lưu thay đổi',
     saving: 'Đang lưu...',
     cancel: 'Hủy',
@@ -75,6 +77,7 @@ const T = {
     tab_general: 'General',
     tab_generation: 'Generation',
     tab_affiliate: 'Affiliate',
+    tab_prompts: 'Prompts',
     save: 'Save Changes',
     saving: 'Saving...',
     cancel: 'Cancel',
@@ -209,6 +212,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                 <TabButton tabId="general" text={texts.tab_general} activeTab={activeTab} onClick={setActiveTab} />
                 <TabButton tabId="generation" text={texts.tab_generation} activeTab={activeTab} onClick={setActiveTab} />
                 <TabButton tabId="affiliate" text={texts.tab_affiliate} activeTab={activeTab} onClick={setActiveTab} />
+                <TabButton tabId="prompts" text={texts.tab_prompts} activeTab={activeTab} onClick={setActiveTab} />
             </div>
         </div>
 
@@ -379,6 +383,14 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                         type="textarea"
                     />
                 </div>
+            )}
+            {activeTab === 'prompts' && (
+              <PromptManager
+                settings={settings}
+                adminSettings={adminSettings}
+                onSave={onSave}
+                isSaving={isSaving}
+              />
             )}
         </div>
 

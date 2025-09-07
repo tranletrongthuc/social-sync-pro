@@ -20,7 +20,8 @@ const fileToUint8Array = (file: File): Promise<Uint8Array> => {
 export const generateImageWithCloudflare = async (
     prompt: string,
     model: string,
-    productImages: File[]
+    productImages: File[],
+    settings: any
 ): Promise<string> => {
     if (!prompt || prompt.trim() === '') {
         throw new Error("Prompt cannot be empty for Cloudflare image generation.");
@@ -38,6 +39,7 @@ export const generateImageWithCloudflare = async (
     return await generateImageWithCloudflareBff(
         prompt,
         model,
-        imageBytes
+        imageBytes,
+        settings
     );
 };

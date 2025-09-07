@@ -11,7 +11,7 @@ export const generateImageWithBanana = async (
     
     return await generateImageWithBananaBff(model, fullPrompt);
 };
-import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea } from '../../types';
+import type { BrandInfo, GeneratedAssets, MediaPlan, BrandFoundation, MediaPlanGroup, MediaPlanPost, AffiliateLink, Persona, Trend, Idea, FacebookTrend, FacebookPostIdea, Settings } from '../../types';
 
 
 export const sanitizeAndParseJson = (jsonText: string) => {
@@ -345,62 +345,34 @@ const brandKitResponseSchema = {
   required: ['brandFoundation', 'coreMediaAssets', 'unifiedProfileAssets', 'mediaPlan']
 };
 
-export const refinePostContentWithGemini = async (postText: string, model: string): Promise<string> => {
-    // Use BFF for content generation to keep API keys secure
-    const prompt = `You are a world-class social media copywriter. Refine the following post content to maximize engagement and impact, while preserving its core message. The output should ONLY be the refined text, without any introductory phrases, explanations, or quotes.
-
-Original content:
-"""${postText}"""`;
-
-    return await generateContentWithBff(model, prompt);
+export const refinePostContentWithGemini = async (postText: string, model: string, settings: Settings): Promise<string> => {
+    const prompt = settings.prompts.simple.refinePost.replace('{postText}', postText);
+    return await generateContentWithBff(model, prompt, undefined, settings);
 };
 
-export const generateBrandProfile = async (idea: string, language: string, model: string): Promise<BrandInfo> => {
-    // Use BFF for content generation to keep API keys secure
-    const prompt = `
-You are an expert brand strategist. Based on the user's business idea, generate a concise and compelling brand profile IN ${language}.
-Business Idea:
-"${idea}"
-
-Generate a JSON object with the following fields in ${language}:
-- name: A creative and fitting brand name.
-- mission: A powerful, one-sentence mission statement.
-- values: A comma-separated string of 4-5 core brand values.
-- audience: A brief description of the target audience.
-- personality: 3-4 keywords describing the brand's personality.
-`;
-    // console.log("Prompt for generateBrandProfile:", prompt);
-    
-    const jsonText = await generateContentWithBff(model, prompt);
+export const generateBrandProfile = async (idea: string, language: string, model: string, settings: Settings): Promise<BrandInfo> => {
+    const prompt = settings.prompts.simple.generateBrandProfile
+        .replace('{language}', language)
+        .replace('{idea}', idea);
+    const jsonText = await generateContentWithBff(model, prompt, undefined, settings);
     if (!jsonText) throw new Error("Received empty response from AI.");
     return sanitizeAndParseJson(jsonText) as BrandInfo;
 };
 
-export const generateBrandKit = async (brandInfo: BrandInfo, language: string, model: string): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
-    const prompt = `
-You are SocialSync Pro, an AI-powered brand launch assistant. Your task is to generate a complete and professional set of branding and social media assets IN ${language}, based on the user's input.
+export const generateBrandKit = async (brandInfo: BrandInfo, language: string, model: string, settings: Settings): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
+    const prompt = settings.prompts.simple.generateBrandKit
+        .replace(/{language}/g, language)
+        .replace('{brandInfo.name}', brandInfo.name)
+        .replace('{brandInfo.mission}', brandInfo.mission)
+        .replace('{brandInfo.values}', brandInfo.values)
+        .replace('{brandInfo.audience}', brandInfo.audience)
+        .replace('{brandInfo.personality}', brandInfo.personality);
 
-Brand Input (in ${language}):
-- Brand Name: ${brandInfo.name}
-- Brand Mission: ${brandInfo.mission}
-- Brand Values: ${brandInfo.values}
-- Target Audience: ${brandInfo.audience}
-- Brand Personality: ${brandInfo.personality}
-
-Generate the following assets IN ${language}:
-1.  **Brand Foundation**
-: Summarize the core identity. All subsequent generations must be perfectly aligned with this foundation.
-2.  **Core Media Assets**
-: Create logo concepts (prompts for an image generation model), a 4-color palette, and font recommendations. Logo prompts must be in English.
-3.  **Unified Profile Assets**
-: Create a single set of assets for use across all platforms (account name, username, profile picture prompt, cover photo prompt). Image prompts must be in English.
-4.  **Initial 1-Month Media Plan**
-: Generate a 4-week media plan designed for a brand launch. It should have a clear theme for each week. Create 4 posts per week, distributed across YouTube, Facebook, Instagram, TikTok, and Pinterest. For each post, provide a detailed, English media prompt appropriate for the content type (e.g., image prompt, video script, carousel prompts). For video content, provide a separate 'script' field. The 'content' field should always be the post caption.
-`;
     const jsonText = await generateContentWithBff(
         model,
         prompt,
-        { responseMimeType: "application/json", responseSchema: brandKitResponseSchema }
+        { responseMimeType: "application/json", responseSchema: brandKitResponseSchema },
+        settings
     );
     const parsedJson = sanitizeAndParseJson(jsonText);
 
@@ -471,71 +443,43 @@ export const generateMediaPlanGroup = async (
     useSearch: boolean,
     selectedPlatforms: string[],
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-    affiliateContentKitSystemInstruction: string,
+    settings: Settings,
     model: string,
     persona: Persona | null,
     selectedProduct: AffiliateLink | null,
     pillar: string
 ): Promise<MediaPlanGroup> => {
-    const personaInstruction = persona ? `
-**Persona Embodiment (CRITICAL):**
-- You MUST write entirely from the first-person ("I", "me", "my") perspective of the following persona. Do NOT act as an assistant; you ARE this person. Before writing, take a moment to get into character. Think about their mood, their recent experiences from their backstory, and how they would genuinely feel about the post's topic.
-- **Name:** ${persona.nickName}
-- **Identity:** ${persona.demographics.age}-year-old ${persona.demographics.occupation} from ${persona.demographics.location}.
-- **Backstory & Values:** Your worldview is shaped by this: "${persona.backstory}". Your content must reflect these experiences and values. For example, if your backstory involves a struggle, you might write with more empathy.
-- **Knowledge & Interests:** You are an expert in and passionate about: ${persona.knowledgeBase.join(', ')}. Weave these topics into your posts naturally. For example, if you're interested in "vintage film", you might compare a product's color palette to an old movie.
-- **Voice & Style:**
-  - **Personality:** You are ${persona.voice.personalityTraits.join(', ')}.
-  - **Linguistic Quirks:** You MUST follow these specific rules: ${(persona.voice.linguisticRules || []).join('; ')}.
-  - **Tone:** Your tone for this campaign should be ${options.tone}.
-` : '';
+    const p = settings.prompts.mediaPlanGeneration;
 
-    const prompt = `You are a world-class social media content creator and strategist, writing in the persona of a specific individual.
-Your task is to generate a 1-Month Media Plan IN ${language} based on the provided Brand Foundation, Persona, and User Goal.
-The output must be a single, valid JSON object that strictly adheres to the provided schema. Do not add any commentary or text outside of the JSON structure.
+    const personaInstruction = persona ? p.personaEmbodimentInstruction
+        .replace('{persona.nickName}', persona.nickName)
+        .replace('{persona.demographics.age}', persona.demographics.age.toString())
+        .replace('{persona.demographics.occupation}', persona.demographics.occupation)
+        .replace('{persona.demographics.location}', persona.demographics.location)
+        .replace('{persona.backstory}', persona.backstory)
+        .replace('{persona.knowledgeBase}', persona.knowledgeBase.join(', '))
+        .replace('{persona.voice.personalityTraits}', persona.voice.personalityTraits.join(', '))
+        .replace('{persona.voice.linguisticRules}', (persona.voice.linguisticRules || []).join('; '))
+        .replace('{persona.voice}', JSON.stringify(persona.voice, null, 2)) // Add this to handle the whole voice object
+        .replace('{options.tone}', options.tone)
+    : '';
 
-**Brand Foundation (Your Guide):**
-- Brand Name: ${brandFoundation.brandName}
-- Mission: ${brandFoundation.mission}
-- Target Audience: ${brandFoundation.targetAudience}
-- Personality: ${brandFoundation.personality}
-
-${personaInstruction}
-
-**Campaign Goal & Pillar:**
-- **User's Goal:** "${userPrompt}"
-- **Content Pillar:** This entire plan MUST focus on the content pillar: "${pillar}".
-
-**Content Generation Rules (CRITICAL):**
-- **Believability & Storytelling:** Every post's 'content' must feel like a real person wrote it.
-    - **BAD:** "Check out our new product! It has great features."
-    - **GOOD:** "I've been secretly using this for a few weeks now and I have to tell you about it. The other day, [personal anecdote related to the product]..."
-    - Use personal anecdotes, conversational language, and vary sentence structure. Ask engaging questions to the audience.
-- **Platform-Specific:**
-    - **Instagram:** Use more line breaks for readability. The first sentence must be a strong visual hook.
-    - **Facebook:** Can be more narrative and community-focused.
-    - **TikTok:** The 'content' should be a hooky caption that complements the 'script'.
-- **Media Prompt Quality (Hyper-Detailed):** Every 'mediaPrompt' must be a rich, artistic, and detailed instruction that includes ALL of the following 8 elements to ensure realism.
-  - **1. Atmosphere and Mood:** Describe the overall feeling. Examples: "A serene and tranquil forest scene with muted colors", "a high-energy, chaotic urban environment with vibrant, clashing tones", "a nostalgic and dreamy mood".
-  - **2. Lighting:** Be extremely specific about light. Examples: "soft, diffused natural light streaming through a large window", "dramatic, hard-edged studio spotlight from above", "warm, golden hour sunlight backlighting the subject", "cool, blue-toned dusk lighting".
-  - **3. Composition & Depth of Field:** Specify the shot type and focus. Examples: "close-up portrait with a shallow depth of field (f/1.8) and a soft, blurry bokeh background", "wide-angle environmental shot with a deep depth of field (f/11) keeping everything from foreground to background in sharp focus".
-  - **4. Camera & Film Settings:** Describe the virtual camera setup. Examples: "shot on a DSLR with a 50mm prime lens", "fast shutter speed for crisp, frozen motion", "low ISO for a clean, noise-free image", "shot on 35mm Kodak Portra 400 film for a warm, grainy, vintage look".
-  - **5. Subject & Action:** What is the persona doing? Be specific. Examples: "The persona is laughing candidly mid-conversation", "The persona is looking thoughtfully out a rain-streaked window", "The persona is unboxing a product with a look of genuine surprise".
-  - **6. Setting & Environment:** Describe the background in detail. Examples: "in a cluttered, cozy artist's studio filled with plants", "on a bustling city street at dusk with neon lights reflecting on wet pavement".
-  - **7. Realism & Detail:** Add details that enhance realism. Examples: "4K resolution with hyper-detailed textures", "realistic skin texture with natural imperfections". For portraits, add "perfectly symmetrical and natural facial proportions".
-  - **8. Negative Prompts:** Specify what to AVOID. Examples: "Negative prompt: no distortion, no unrealistic textures, not a stock photo, no exaggerated features, no blurry edges".
-
-**JSON Output Instructions:**
-- **Plan Structure:** Generate a 4-week plan with a clear 'theme' for each week.
-- **Post Count:** The total plan should have approximately ${totalPosts} posts, distributed logically across the selected platforms: ${selectedPlatforms.join(', ')}.
-- **Post Fields:**
-  - **content:** The human-like post caption, written in the persona's voice, following all rules above.
-  - **script:** For video content, provide a detailed script or storyboard.
-  - **mediaPrompt:** The hyper-detailed, artistic, English prompt for the visual, following all rules above. For carousels, this must be an array of prompts.
-`;
+    const prompt = [
+        p.systemInstruction.replace('{language}', language),
+        `**Brand Foundation (Your Guide):**\n- Brand Name: ${brandFoundation.brandName}\n- Mission: ${brandFoundation.mission}\n- Target Audience: ${brandFoundation.targetAudience}\n- Personality: ${brandFoundation.personality}`,
+        personaInstruction,
+        p.campaignGoalInstruction
+            .replace('{userPrompt}', userPrompt)
+            .replace('{pillar}', pillar),
+        p.contentGenerationRules,
+        p.hyperDetailedImagePromptGuide,
+        p.jsonOutputInstruction
+            .replace('{totalPosts}', totalPosts.toString())
+            .replace('{selectedPlatforms}', selectedPlatforms.join(', '))
+    ].join('\n\n');
 
     const config: any = {
-        systemInstruction: affiliateContentKitSystemInstruction,
+        systemInstruction: settings.affiliateContentKit,
     };
     if (useSearch) {
         config.tools = [{googleSearch: {}}];
@@ -544,7 +488,7 @@ ${personaInstruction}
         config.responseSchema = mediaPlanSchema;
     }
 
-    const jsonText = await generateContentWithBff(model, prompt, config);
+    const jsonText = await generateContentWithBff(model, prompt, config, settings);
     
     let extractedJson = jsonText.trim();
     if (useSearch) {
@@ -620,7 +564,8 @@ export const generateImage = async (
     promptSuffix: string,
     model: string,
     aspectRatio: "1:1" | "16:9" = "1:1",
-    productImages: File[] = []
+    productImages: File[] = [],
+    settings: Settings
 ): Promise<string> => {
     // Use BFF for image generation to keep API keys secure
     const fullPrompt = `${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}`;
@@ -629,7 +574,7 @@ export const generateImage = async (
         numberOfImages: 1,
         outputMimeType: 'image/jpeg',
         aspectRatio: aspectRatio,
-    });
+    }, settings);
 };
 
 export const generateMediaPromptForPost = async (
@@ -638,7 +583,7 @@ export const generateMediaPromptForPost = async (
     language: string,
     model: string,
     persona: Persona | null,
-    mediaPromptSuffix: string
+    settings: Settings
 ): Promise<string | string[]> => {
     const personaInstruction = persona ? `
 The media MUST feature the following persona:
@@ -650,17 +595,13 @@ The media MUST feature the following persona:
 IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Detailed Description" provided above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]"
 ` : '';
 
-    let prompt = `
-You are a creative visual director for the brand "${brandFoundation.brandName}".
-The brand's personality is: ${brandFoundation.personality}.
-${personaInstruction}
-Based on the following social media post content (in ${language}), generate a detailed and compelling media prompt.
-The prompt MUST BE IN ENGLISH.
-Do not add any explanations, labels, or extra text. Output ONLY the prompt.
-
-Post Title: "${postContent.title}"
-Post Content: "${postContent.content}"
-`;
+    let prompt = settings.prompts.simple.generateMediaPrompt
+        .replace('{brandFoundation.brandName}', brandFoundation.brandName)
+        .replace('{brandFoundation.personality}', brandFoundation.personality)
+        .replace('{personaInstruction}', personaInstruction)
+        .replace('{language}', language)
+        .replace('{postContent.title}', postContent.title)
+        .replace('{postContent.content}', postContent.content);
 
     switch (postContent.contentType) {
         case 'Image Post':
@@ -679,15 +620,14 @@ Post Content: "${postContent.content}"
             break
     }
 
-    const response = await generateContentWithBff(model, prompt);
+    const response = await generateContentWithBff(model, prompt, undefined, settings);
     const textResponse = response;
 
     if (postContent.contentType === 'Carousel Post') {
         try {
             const parsedResponse = JSON.parse(textResponse);
-            // For carousel posts, append suffix to each prompt in the array
             if (Array.isArray(parsedResponse)) {
-                return parsedResponse.map((prompt: string) => prompt + mediaPromptSuffix);
+                return parsedResponse.map((prompt: string) => prompt + settings.mediaPromptSuffix);
             }
         } catch (e) {
             console.error("Failed to parse carousel prompts, returning as single string:", textResponse);
@@ -695,21 +635,17 @@ Post Content: "${postContent.content}"
         }
     }
 
-    // For single prompts, append the suffix
-    return textResponse + mediaPromptSuffix;
+    return textResponse + settings.mediaPromptSuffix;
 };
 
 
-// NgoSiLien - Enhanced Affiliate Comment Generation
-// This function generates engaging comments for social media posts that promote affiliate products.
-// It dynamically includes available product information like ratings, sales volume, and customer reviews
-// to make the comments more appealing and encourage clicks on the affiliate links.
 export const generateAffiliateComment = async (
     post: MediaPlanPost,
     products: AffiliateLink[],
     brandFoundation: BrandFoundation,
     language: string,
-    model: string
+    model: string,
+    settings: Settings
 ): Promise<string> => {
      if (products.length === 0) {
         throw new Error("Cannot generate a comment without at least one affiliate product.");
@@ -717,82 +653,37 @@ export const generateAffiliateComment = async (
     
     const formatProductDetails = (p: AffiliateLink) => {
         const details = [`- Product Name: ${p.productName}`];
-        
-        // Add price
-        details.push(`  - Price: ${p.price}`);
-        
-        // Add product rating if available
-        if (p.product_rating !== undefined && p.product_rating !== null) {
-            details.push(`  - Rating: ${p.product_rating}/5`);
-        }
-        
-        // Add sales volume if available
-        if (p.salesVolume > 0) {
-            details.push(`  - Sales Volume: ${p.salesVolume}`);
-        }
-        
-        // Add customer reviews if available
-        if (p.customer_reviews && p.customer_reviews.trim() !== '') {
-            // If customer_reviews contains multiple reviews, we'll extract the best one
-            // For now, we'll just use the provided reviews as is
-            details.push(`  - Customer Reviews: ${p.customer_reviews}`);
-        }
-        
-        // Always add the promotion link (or product link as fallback)
+        if (p.price) details.push(`  - Price: ${p.price}`);
+        if (p.product_rating !== undefined && p.product_rating !== null) details.push(`  - Rating: ${p.product_rating}/5`);
+        if (p.salesVolume > 0) details.push(`  - Sales Volume: ${p.salesVolume}`);
+        if (p.customer_reviews && p.customer_reviews.trim() !== '') details.push(`  - Customer Reviews: ${p.customer_reviews}`);
         details.push(`  - Product Link: ${p.promotionLink || p.productLink}`);
-        
         return details.join('\n');
     };
 
     const productDetails = products.map(formatProductDetails).join('\n');
 
-    const prompt = `
-You are the creator who wrote the social media post. Your task is to write a follow-up comment on your own post, from your perspective as the post author. This simulates you posting content and then engaging with your own post to promote affiliate products.
-
-**Primary Goal:** Write a natural, human-like comment that subtly promotes one or more affiliate products related to your post. The comment must encourage clicks on the affiliate link while sounding like a genuine self-comment on your own post.
-
-**Rules:**
-1.  **Natural Tone:** The comment must sound like you're genuinely engaging with your own content. It should match the tone of the original post and sound like a real person talking to their audience. Avoid overly salesy language.
-2.  **Two-Part Structure:** The comment MUST consist of two parts, separated by a blank line:
-    *   **Part 1 (Caption):** A short, engaging caption. This caption must cleverly connect your original post's topic with the product(s) being promoted. It should add value, share a personal tip about how you use the product, or ask a question to spark conversation and make people curious about the link. If product details like ratings, sales volume, or customer reviews are provided, you should naturally incorporate these details to make the product more appealing.
-    *   **Part 2 (Links):** The affiliate link(s) for the product(s). If there is more than one product, list each link on a new line. Do not add any text before or after the links in this part.
-3.  **Language:** The entire comment MUST be in ${language}.
-
-**Original Post Content:**
-- Title: ${post.title}
-- Content: ${post.content}
-
-**Affiliate Product(s) to Promote:**
-${productDetails}
-
-**Example Output:**
-Tôi vừa thử em này sau khi làm theo hướng dẫn trong bài và thấy hiệu quả bất ngờ! Bạn nào muốn thử thì xem link bên dưới nha.
-
-https://your-affiliate-link.com
-
----
-Now, generate the comment based on the provided post and product d...`;
+    const prompt = settings.prompts.simple.generateAffiliateComment
+        .replace('{language}', language)
+        .replace('{post.title}', post.title)
+        .replace('{post.content}', post.content)
+        .replace('{productDetails}', productDetails);
     
-    return await generateContentWithBff(model, prompt);
+    return await generateContentWithBff(model, prompt, undefined, settings);
 };
 
 export const generateViralIdeas = async (
     trend: { topic: string; keywords: string[] },
     language: string,
     useSearch: boolean,
-    model: string
+    model: string,
+    settings: Settings
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    let prompt = `You are a viral marketing expert and a world-class creative strategist.
-Your task is to generate 5 highly engaging and potentially viral content ideas based on a given topic and related keywords.
-The ideas must be in ${language}.
-Each idea must have:
-1.  A catchy, curiosity-driven 'title'.
-2.  A short but comprehensive 'description' of the idea.
-3.  A specific 'targetAudience' that this idea would appeal to.
+    let prompt = settings.prompts.simple.generateViralIdeas
+        .replace('{language}', language)
+        .replace('{trend.topic}', trend.topic)
+        .replace('{trend.keywords}', trend.keywords.join(', '));
 
-Topic: "${trend.topic}"
-Keywords: ${trend.keywords.join(', ')}
-`;
     const ideasSchema = {
         type: Type.ARRAY,
         items: {
@@ -815,7 +706,7 @@ Keywords: ${trend.keywords.join(', ')}
         config.responseSchema = ideasSchema;
     }
 
-    const jsonText = await generateContentWithBff(model, prompt, config);
+    const jsonText = await generateContentWithBff(model, prompt, config, settings);
     
     let extractedJson = jsonText.trim();
     if (useSearch) {
@@ -842,7 +733,6 @@ Keywords: ${trend.keywords.join(', ')}
         }
     }
     
-    // Fix malformed JSON responses that are missing array brackets
     let fixedJsonText = extractedJson.trim();
     if (fixedJsonText.startsWith('{')) {
         fixedJsonText = `[${fixedJsonText}]`;
@@ -855,34 +745,26 @@ export const generateContentPackage = async (
     idea: Idea,
     brandFoundation: BrandFoundation,
     language: string,
-    affiliateContentKit: string,
+    settings: Settings,
     model: string,
     persona: Persona | null,
     pillarPlatform: 'YouTube',
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
-
     
-    // Validate selectedProduct
-    console.log('Selected product for content package:', selectedProduct);
-
     if (selectedProduct && !selectedProduct.id) {
         selectedProduct = null;
-        console.log('Invalid selectedProduct provided. Resetting to null.');
     }
     
-    // const pillarPlatform = 'YouTube';
-    
-    // Sanitize user inputs to prevent prompt injection
-    const sanitizedIdeaTitle = idea.title.replace(/[\"\`\;]+/g, '') || 'N/A';
+    const sanitizedIdeaTitle = idea.title.replace(/["\t;]+/g, '') || 'N/A';
     const personaInstruction = persona ? `
 **KOL/KOC Persona (Crucial):**
 All content MUST be generated from the perspective of the following KOL/KOC.
-- **Nickname:** ${persona.nickName.replace(/[\"\`\;]+/g, '') || 'N/A'}
-- **Main Style:** ${persona.mainStyle.replace(/[\"\`\;]+/g, '') || 'N/A'}
-- **Field of Activity:** ${persona.activityField.replace(/[\"\`\;]+/g, '') || 'N/A'}
-- **Detailed Description (for image generation):** ${persona.outfitDescription.replace(/[\"\`\;]+/g, '') || 'N/A'}
+- **Nickname:** ${persona.nickName.replace(/["\t;]+/g, '') || 'N/A'}
+- **Main Style:** ${persona.mainStyle.replace(/["\t;]+/g, '') || 'N/A'}
+- **Field of Activity:** ${persona.activityField.replace(/["\t;]+/g, '') || 'N/A'}
+- **Detailed Description (for image generation):** ${persona.outfitDescription.replace(/["\t;]+/g, '') || 'N/A'}
 - **Tone:** The content's tone must perfectly match this persona's style.
 - **Image Prompts (VERY IMPORTANT):** Every single 'mediaPrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona?.outfitDescription || 'N/A'}, [description of the scene]". For example: "${persona?.outfitDescription || 'N/A'}, unboxing a product in a minimalist apartment...".
 ` : '';
@@ -902,77 +784,35 @@ All content MUST be generated from the perspective of the following KOL/KOC.
 - **Include Emojis**: ${options.includeEmojis ? 'Yes' : 'No'}
 `;
 
-    // Get all platforms
     const allPlatforms: ('YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest')[] = ['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest'];
     const repurposedPlatforms = allPlatforms.filter(p => p !== pillarPlatform);
 
-    // Single comprehensive prompt with media prompt generation
-    const combinedPrompt = `
-    ${personaInstruction}
-    ${productInstruction}
-    ${customizationInstruction}
-    Based on the idea "${sanitizedIdeaTitle}", create a comprehensive content package including:
-
-    1. PILLAR CONTENT FOR ${pillarPlatform}:
-    Create a detailed, authoritative piece for ${pillarPlatform} that provides significant value to the target audience: ${idea.targetAudience || 'N/A'}.
-    - If ${pillarPlatform} is YouTube, provide a detailed video script and a separate, SEO-optimized 'description' for the YouTube description box.
-    - If ${pillarPlatform} is Facebook, provide a long-form, engaging post like a mini-article.
-    - If ${pillarPlatform} is Instagram, provide a detailed multi-slide carousel post concept, including content for each slide and a main caption.
-    - If ${pillarPlatform} is Pinterest, provide a concept for a detailed infographic or a guide pin, including all text content needed.
-    - If ${pillarPlatform} is TikTok, provide a script for a multi-part (2-3 videos) series.
-
-    2. REPURPOSED CONTENT FOR OTHER PLATFORMS: ${repurposedPlatforms.join(', ')}
-    Repurpose the core message into one smaller, standalone post for EACH of the following platforms: ${repurposedPlatforms.join(', ')}.
-    Each new piece must be completely rewritten and tailored for its specific platform's format and audience.
-    - For short-form video platforms (TikTok, Instagram), create a concise video script or reel idea.
-    - For image-based platforms (Instagram, Pinterest), create a compelling caption for an image or carousel.
-    - For text-based platforms (Facebook), create an engaging post that summarizes or expands on a key point from the pillar content.
-    - If the pillar content is a long text post and you need to generate a YouTube idea, create a script outline for a short video based on the text.
-
-    3. MEDIA PROMPTS
-    For EACH generated post (both pillar and repurposed), generate a media prompt that:
-    - MUST start with the persona's "Detailed Description": "${persona?.outfitDescription || 'N/A'},"
-    - Followed by a comma and then a description of the scene
-    - Be highly specific and visually descriptive
-    - Match the content's theme and the platform's style
-    - Align with the persona's style and tone
-
-    The output MUST be a JSON object with:
-    {
-      "pillarContent": {
-        "title": "string",
-        "content": "string",
-        "description"?: "string",  // Only for YouTube
-        "hashtags": "string[]",
-        "cta": "string",
-        "mediaPrompt": "string"  // New field for media prompt
-      },
-      "repurposedContents": [
-        {
-          "platform": "string",  // Must be one of ${repurposedPlatforms.join(', ')}
-          "contentType": "string",
-          "title": "string",
-          "content": "string",
-          "hashtags": "string[]",
-          "cta": "string",
-          "mediaPrompt": "string"  // New field for media prompt
-        }
-      ]
-    }
-    Language: ${language}.
-    `;
+    const p = settings.prompts.contentPackage;
+    const combinedPrompt = [
+        personaInstruction,
+        productInstruction,
+        customizationInstruction,
+        p.taskInstruction.replace('{sanitizedIdeaTitle}', sanitizedIdeaTitle),
+        p.pillarContentInstruction
+            .replace(/{pillarPlatform}/g, pillarPlatform)
+            .replace('{idea.targetAudience}', idea.targetAudience || 'N/A'),
+        p.repurposedContentInstruction
+            .replace(/{repurposedPlatforms}/g, repurposedPlatforms.join(', '))
+            .replace(/{pillarPlatform}/g, pillarPlatform),
+        p.mediaPromptInstruction.replace(/{persona.outfitDescription}/g, persona?.outfitDescription || 'N/A'),
+        p.jsonOutputInstruction.replace('{language}', language)
+    ].join('\n\n');
 
     try {
-        // Single API call for all content and media prompt generation
         const response = await generateContentWithBff(
             model,
             combinedPrompt,
-            { systemInstruction: affiliateContentKit, responseMimeType: 'application/json' }
+            { systemInstruction: settings.affiliateContentKit, responseMimeType: 'application/json' },
+            settings
         );
 
         const rawResponse = sanitizeAndParseJson(response);
         
-        // Extract and validate pillar content with media prompt
         if (!rawResponse.pillarContent) {
             throw new Error('Missing pillar content in API response');
         }
@@ -990,7 +830,6 @@ All content MUST be generated from the perspective of the following KOL/KOC.
             isPillar: true,
         };
 
-        // Extract and validate repurposed contents with media prompts
         if (!Array.isArray(rawResponse.repurposedContents)) {
             throw new Error('Missing repurposed contents in API response');
         }
@@ -1010,13 +849,11 @@ All content MUST be generated from the perspective of the following KOL/KOC.
                 isPillar: false,
             }));
 
-        // Combine all posts
         const allPosts: Omit<MediaPlanPost, 'id'|'status'>[] = [
             pillarPost,
             ...repurposedPosts
         ];
 
-        // Final posts with metadata
         const finalPosts = allPosts.map(p => ({
             ...p,
             id: crypto.randomUUID(),
@@ -1024,14 +861,12 @@ All content MUST be generated from the perspective of the following KOL/KOC.
             promotedProductIds: (selectedProduct && selectedProduct.id) ? [selectedProduct.id] : [],
         } as MediaPlanPost));
 
-        // Create plan structure
         const plan: MediaPlan = [{
             week: 1,
             theme: `Content Package: ${sanitizedIdeaTitle}`,
             posts: finalPosts
         }];
 
-        // Return the media plan group
         return {
             id: crypto.randomUUID(),
             name: sanitizedIdeaTitle,
@@ -1046,28 +881,23 @@ All content MUST be generated from the perspective of the following KOL/KOC.
     }
 };
 
-// --- NEW FACEBOOK STRATEGY FUNCTIONS ---
-
 export const generateFacebookTrends = async (
     industry: string,
     language: string,
-    model: string
+    model: string,
+    settings: Settings
 ): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
-    const prompt = `You are a Facebook marketing expert. Analyze Google Search results for the query "trending topics and content formats in ${industry} on Facebook for ${language}".
-Identify 3-5 distinct, current trends. For each trend, provide:
-1.  A concise 'topic'.
-2.  An array of relevant 'keywords'.
-3.  A brief 'analysis' explaining why it's trending for the target audience on Facebook and what content formats (e.g., Reels, Carousels, Long-form posts) are performing best.
-4.  The top 3 most relevant 'links' from the search results that support your analysis. Each link must be an object with "uri" and "title" keys.
-
-Your response must be a single, valid JSON array of objects. Each object should have the keys: "topic", "keywords", "analysis", and "links". Do not add any text or explanation before or after the JSON array.`;
+    const prompt = settings.prompts.simple.generateFacebookTrends
+        .replace('{industry}', industry)
+        .replace('{language}', language);
 
     const jsonText = await generateContentWithBff(
         model,
         prompt,
         {
             tools: [{googleSearch: {}}],
-        }
+        },
+        settings
     );
     
     let extractedJson = jsonText.trim();
@@ -1079,13 +909,9 @@ Your response must be a single, valid JSON array of objects. Each object should 
         if (startIndex !== -1) {
             let balance = 0;
             let endIndex = -1;
-            // A simple bracket counter. Not perfect for strings with brackets, but better than a greedy lastIndexOf.
             for (let i = startIndex; i < extractedJson.length; i++) {
-                if (extractedJson[i] === '[') {
-                    balance++;
-                } else if (extractedJson[i] === ']') {
-                    balance--;
-                }
+                if (extractedJson[i] === '[') balance++;
+                else if (extractedJson[i] === ']') balance--;
                 if (balance === 0) {
                     endIndex = i;
                     break;
@@ -1104,19 +930,15 @@ Your response must be a single, valid JSON array of objects. Each object should 
 export const generatePostsForFacebookTrend = async (
     trend: FacebookTrend,
     language: string,
-    model: string
+    model: string,
+    settings: Settings
 ): Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]> => {
-    const prompt = `You are a creative Facebook content strategist. Based on the following trend, generate 5 engaging Facebook post ideas in ${language}.
-For each idea, provide:
-1.  A catchy 'title'.
-2.  The main 'content' for the post, optimized for Facebook's platform.
-3.  A detailed English 'mediaPrompt' for an accompanying visual.
-4.  A strong 'cta' (call to action).
+    const prompt = settings.prompts.simple.generateFacebookPostsForTrend
+        .replace('{language}', language)
+        .replace('{trend.topic}', trend.topic)
+        .replace('{trend.keywords}', trend.keywords.join(', '))
+        .replace('{trend.analysis}', trend.analysis);
 
-Trend Topic: "${trend.topic}"
-Trend Keywords: ${trend.keywords.join(', ')}
-Trend Analysis: ${trend.analysis}
-`;
     const postsSchema = {
         type: Type.ARRAY,
         items: {
@@ -1137,20 +959,19 @@ Trend Analysis: ${trend.analysis}
         {
             responseMimeType: "application/json",
             responseSchema: postsSchema,
-        }
+        },
+        settings
     );
     
     return sanitizeAndParseJson(jsonText);
 };
 
-// --- NEW FUNCTION FOR GENERATING CONTENT IDEAS FROM A PRODUCT ---
-
 export const generateIdeasFromProduct = async (
     product: AffiliateLink,
     language: string,
-    model: string
+    model: string,
+    settings: Settings
 ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    // Build a detailed product description
     const productDetails = [
         `Product Name: ${product.productName}`,
         `Product ID: ${product.productId}`,
@@ -1165,19 +986,10 @@ export const generateIdeasFromProduct = async (
         product.product_rating ? `Product Rating: ${product.product_rating}/5` : ''
     ].filter(Boolean).join('\n');
     
-    const prompt = `You are a creative marketing strategist. Based on the following affiliate product details, generate 5 unique and engaging content ideas in ${language} that can be used to promote this product effectively.
-
-For each idea, provide:
-1.  A catchy 'title' that would grab attention.
-2.  A detailed 'description' explaining the concept and how it would showcase the product.
-3.  A specific 'targetAudience' that this idea would appeal to.
-4.  The 'productId' of the product, which MUST be exactly this value: "${product.id}".
-
-Product Details:
-${productDetails}
-
-Make sure each idea is distinct and highlights different aspects of the product. Consider various content formats like tutorials, reviews, comparisons, lifestyle content, unboxings, etc.
-`;
+    const prompt = settings.prompts.simple.generateIdeasFromProduct
+        .replace('{language}', language)
+        .replace('{product.id}', product.id)
+        .replace('{productDetails}', productDetails);
 
     const ideasSchema = {
         type: Type.ARRAY,
@@ -1199,7 +1011,8 @@ Make sure each idea is distinct and highlights different aspects of the product.
         {
             responseMimeType: "application/json",
             responseSchema: ideasSchema,
-        }
+        },
+        settings
     );
     
     if (!jsonText) {
@@ -1234,6 +1047,7 @@ Make sure each idea is distinct and highlights different aspects of the product.
     }));
 };
 
+
 // Platform-specific purposes from user requirements
 const facebookPurpose = "Leverage community and sharing features to create discussion and provide a direct path to your main video. Create compelling short clips, thought-provoking quote graphics, or key highlights that spark conversation in comments and encourage shares. Caption should act as a hook, introducing the problem/main idea and directing users to 'click the link to watch the full video'.";
 
@@ -1243,8 +1057,8 @@ const tiktokPurpose = "Hijack attention within the first three seconds with high
 
 const pinterestPurpose = "Create long-lasting, searchable resources that funnel users seeking solutions or inspiration. Convert core message into vertical Idea Pins or infographics with keyword-rich titles (e.g., 'How to Achieve X in 5 Easy Steps'). Serve as a visual bookmark solving part of the user's problem, with a direct outbound link to the YouTube video.";
 
-export const autoGeneratePersonaProfile = async (mission: string, usp: string, model: string): Promise<Partial<Persona>[]> => {
-    const personaProfiles = await autoGeneratePersonaWithBff(mission, usp, model);
+export const autoGeneratePersonaProfile = async (mission: string, usp: string, model: string, settings: Settings): Promise<Partial<Persona>[]> => {
+    const personaProfiles = await autoGeneratePersonaWithBff(mission, usp, model, settings);
 
     if (!personaProfiles || !Array.isArray(personaProfiles)) {
         throw new Error("Received invalid or empty array response from AI when generating persona profiles.");
@@ -1260,9 +1074,10 @@ export const generateInCharacterPost = async (
     personaId: string, 
     model: string,
     keywords: string[],
-    pillar: string
+    pillar: string,
+    settings: Settings
 ): Promise<string> => {
     // Use BFF for content generation to keep API keys secure
-    const response = await generateInCharacterPostWithBff(model, personaId, objective, platform, keywords, pillar);
+    const response = await generateInCharacterPostWithBff(model, personaId, objective, platform, keywords, pillar, settings);
     return response;
 };

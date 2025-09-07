@@ -1,12 +1,4 @@
 import { MongoClient } from 'mongodb';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-
-// Load environment variables from .env.local
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-dotenv.config({ path: join(__dirname, '..', '..', '.env.local') });
 
 // Global variables to cache the client and database connection
 let cachedClient = null;
@@ -39,11 +31,11 @@ export async function getClientAndDb() {
     return { client: cachedClient, db: cachedDb };
   }
 
-  // Get MongoDB URI from environment variables
+  // Get MongoDB URI from environment variables, which are set by the Vercel platform
   const MONGODB_URI = process.env.MONGODB_URI;
   
   if (!MONGODB_URI) {
-    throw new Error('MONGODB_URI is not defined in environment variables');
+    throw new Error('MONGODB_URI is not defined in environment variables. Please set it in your Vercel project settings.');
   }
 
   // Create a new MongoClient instance

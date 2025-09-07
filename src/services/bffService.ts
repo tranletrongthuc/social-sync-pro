@@ -40,12 +40,13 @@ export const bffFetch = async (endpoint: string, options: RequestInit = {}) => {
 export const generateContentWithBff = async (
   model: string,
   contents: string,
-  config?: any
+  config?: any,
+  settings?: any
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/gemini?action=generate', {
       method: 'POST',
-      body: JSON.stringify({ model, contents, config }),
+      body: JSON.stringify({ model, contents, config, settings }),
     });
     
     return response.text;
@@ -58,12 +59,13 @@ export const generateContentWithBff = async (
 export const generateImageWithBff = async (
   model: string,
   prompt: string,
-  config?: any
+  config?: any,
+  settings?: any
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/gemini?action=generate-image', {
       method: 'POST',
-      body: JSON.stringify({ model, prompt, config }),
+      body: JSON.stringify({ model, prompt, config, settings }),
     });
     
     return response.image;
@@ -75,12 +77,13 @@ export const generateImageWithBff = async (
 
 export const generateImageWithBananaBff = async (
   model: string,
-  prompt: string
+  prompt: string,
+  settings?: any
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/gemini?action=generate-banana-image', {
       method: 'POST',
-      body: JSON.stringify({ model, prompt }),
+      body: JSON.stringify({ model, prompt, settings }),
     });
     
     return response.image;
@@ -93,12 +96,13 @@ export const generateImageWithBananaBff = async (
 export const autoGeneratePersonaWithBff = async (
   mission: string,
   usp: string,
-  model: string
+  model: string,
+  settings?: any
 ): Promise<any> => {
   try {
     const response = await bffFetch('/api/gemini?action=auto-generate-persona', {
       method: 'POST',
-      body: JSON.stringify({ mission, usp, model }),
+      body: JSON.stringify({ mission, usp, model, settings }),
     });
     
     return response;
@@ -114,12 +118,13 @@ export const generateInCharacterPostWithBff = async (
   objective: string,
   platform: string,
   keywords: string[],
-  pillar: string
+  pillar: string,
+  settings?: any
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/gemini?action=generate-in-character-post', {
       method: 'POST',
-      body: JSON.stringify({ model, personaId, objective, platform, keywords, pillar }),
+      body: JSON.stringify({ model, personaId, objective, platform, keywords, pillar, settings }),
     });
     
     return response.text;
@@ -134,12 +139,13 @@ export const generateInCharacterPostWithBff = async (
 export const generateContentWithOpenRouterBff = async (
   model: string,
   messages: any[],
-  responseFormat?: any
+  responseFormat?: any,
+  settings?: any
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/openrouter?action=generate', {
       method: 'POST',
-      body: JSON.stringify({ model, messages, responseFormat }),
+      body: JSON.stringify({ model, messages, responseFormat, settings }),
     });
     
     return response.text;
@@ -237,12 +243,13 @@ export const databaseRequestWithBff = async (
 export const generateImageWithCloudflareBff = async (
   prompt: string,
   model: string,
-  image?: number[]
+  image?: number[],
+  settings?: any
 ): Promise<string> => {
   try {
     const response = await bffFetch('/api/cloudflare?action=generate-image', {
       method: 'POST',
-      body: JSON.stringify({ prompt, model, image }),
+      body: JSON.stringify({ prompt, model, image, settings }),
     });
     
     return response.image;
