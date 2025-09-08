@@ -1,79 +1,40 @@
-import { MongoClient } from 'mongodb';
+  import { MongoClient } from 'mongodb';
+  import dotenv from 'dotenv';
 
-// Global variables to cache the client and database connection
-let cachedClient = null;
-let cachedDb = null;
+  // Load environment variables from .env.local
+  // This will not override variables set by the Vercel platform in production.
+  dotenv.config({ path: '.env.local' });
 
-/**
- * MongoDB Connection Utility for Serverless Environments
- * 
- * This utility handles MongoDB connections in a serverless environment.
- * It implements connection caching to prevent creating new connections on every function invocation,
- * which would quickly exhaust the database connection pool.
- * 
- * The utility exports a function getClientAndDb() that returns a connected client and database instance.
- * It handles:
- * 1. Checking for cached connections
- * 2. Creating new connections when needed
- * 3. Properly connecting to MongoDB
- * 4. Caching connections for reuse
- * 
- * Usage:
- * import { getClientAndDb } from '../lib/mongodb.js';
- * const { client, db } = await getClientAndDb();
- * const collection = db.collection('collectionName');
- * // Perform database operations
- */
+  // Use the local/dev variable if it exists, otherwise fall back to the one from the Vercel environment.
+  const MONGODB_URI = process.env.DEV_MONGODB_URI || process.env.MONGODB_URI;
 
-export async function getClientAndDb() {
-  // Check if we have a cached connection
-  if (cachedClient && cachedDb) {
-    return { client: cachedClient, db: cachedDb };
-  }
-
-  // Get MongoDB URI from environment variables, which are set by the Vercel platform
-  const MONGODB_URI = process.env.MONGODB_URI;
-  
   if (!MONGODB_URI) {
-    throw new Error('MONGODB_URI is not defined in environment variables. Please set it in your Vercel project settings.');
+    // This error will now only trigger if no URI is found in .env.local or in the Vercel platform settings.
+    throw new Error('Please define the MONGODB_URI or DEV_MONGODB_URI environment variable.');
   }
 
-  // Create a new MongoClient instance
-  const client = new MongoClient(MONGODB_URI, {
-    // Connection options for better performance in serverless environments
-    // Connection pool settings
-    maxPoolSize: 10,
-    serverSelectionTimeoutMS: 5000,
-    socketTimeoutMS: 45000,
-  });
+  // Global variable to hold the cached database instance
+  let cachedDb = null;
 
-  try {
-    // Connect to MongoDB
-    await client.connect();
-    
-    // Get the database name from the URI or use a default
-    const dbName = new URL(MONGODB_URI).pathname.substring(1) || 'socialsync';
-    const db = client.db(dbName);
-    
-    // Cache the client and database for future use
-    cachedClient = client;
-    cachedDb = db;
-    
-    return { client, db };
-  } catch (error) {
-    console.error('Failed to connect to MongoDB:', error);
-    throw new Error(`Failed to connect to MongoDB: ${error.message}`);
-  }
-}
+  /**
+   * Connect to the database and cache the connection
+   */
+  export async function getClientAndDb() {
+    if (cachedDb) {
+      return cachedDb;
+    }
 
-/**
- * Helper function to close the MongoDB connection
- * This should be called when the application is shutting down
- */
-export async function closeConnection() {
-  if (cachedClient) {
-    await cachedClient.close();
-    cachedClient = null;
-    cachedDb = null;
+    // If no cached connection, create a new one
+    const client = await MongoClient.connect(MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    });
+
+    // Select the database from the connection string
+    const db = client.db();
+
+    // Cache the database instance
+    cachedDb = { client, db };
+
+    return cachedDb;
   }
-}
