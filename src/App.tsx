@@ -8,7 +8,7 @@ const BrandProfiler = lazy(() => import('./components/BrandProfiler'));
 const MainDisplay = lazy(() => import('./components/MainDisplay'));
 const AdminPage = lazy(() => import('./components/AdminPage'));
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
-const PersonaConnectModal = lazy(() => import('./components/PersonaConnectModal'));
+
 const AutoPersonaResultModal = lazy(() => import('./components/AutoPersonaResultModal'));
 
 import { ActiveTab } from './components/Header';
@@ -54,8 +54,8 @@ import {
     loadInitialData,
 } from './services/lazyLoadService';
 import { uploadMediaToCloudinary } from './services/cloudinaryService';
-import { schedulePost as socialApiSchedulePost, directPost, SocialAccountNotConnectedError } from './services/socialApiService';
-import { getPersonaSocialAccounts } from './services/socialAccountService';
+
+
 import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, SchedulingPost, MediaPlanWeek, LogoConcept, Persona, PostStatus, Trend, Idea, PostInfo, FacebookTrend, FacebookPostIdea } from '../types';
 import { Button } from './components/ui';
 import { configService, AiModelConfig } from './services/configService';
@@ -495,10 +495,7 @@ const App: React.FC = () => {
     
     // Integration States
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
-    const [isPersonaConnectModalOpen, setIsPersonaConnectModalOpen] = useState<boolean>(false);
-    const [personaToConnect, setPersonaToConnect] = useState<Persona | null>(null);
-    const [platformToConnect, setPlatformToConnect] = useState<string | null>(null);
-    const personaConnectSuccessCallback = useRef<(() => void) | null>(null);
+    
     const [isSavingSettings, setIsSavingSettings] = useState<boolean>(false);
     const [mongoBrandId, setMongoBrandId] = useState<string | null>(null);
     const [integrationsVersion, setIntegrationsVersion] = useState(0);
@@ -1908,12 +1905,7 @@ const App: React.FC = () => {
             setGeneratedVideos(projectData.generatedVideos || {});
             setMongoBrandId(projectData.mongoBrandId || null);
             
-            if (projectData.assets.personas) {
-                projectData.assets.personas = projectData.assets.personas.map((p: Persona) => ({
-                    ...p,
-                    socialAccounts: getPersonaSocialAccounts(p.id),
-                }));
-            }
+            
 
             const firstPlan = projectData.assets.mediaPlans?.[0];
             if (firstPlan) {
@@ -2392,23 +2384,6 @@ const App: React.FC = () => {
             setViewingPost(null);
         } catch (err) {
             console.error("Failed to publish post:", err);
-            if (err instanceof SocialAccountNotConnectedError) {
-                const persona = generatedAssets?.personas?.find(p => p.id === err.personaId);
-                if (persona) {
-                    setPersonaToConnect(persona);
-                    setPlatformToConnect(err.platform);
-                    setIsPersonaConnectModalOpen(true);
-                    personaConnectSuccessCallback.current = () => {
-                        handlePublishPost(postInfo);
-                        setPersonaToConnect(null);
-                        setPlatformToConnect(null);
-                    };
-                } else {
-                    setError(`Failed to publish: ${err.message}`);
-                }
-            } else {
-                setError(err instanceof Error ? err.message : "Failed to publish post.");
-            }
         } finally {
             setIsScheduling(false);
         }
@@ -2688,23 +2663,6 @@ const App: React.FC = () => {
         return newImageKey;
     }, []);
 
-    
-
-    const handleClosePersonaConnectModal = useCallback(() => {
-        setIsPersonaConnectModalOpen(false);
-        if (onModalCloseRef.current) {
-            onModalCloseRef.current();
-            onModalCloseRef.current = null;
-        }
-    }, []);
-
-    const handleSocialAccountConnected = useCallback((updatedPersona: Persona) => {
-        dispatchAssets({ type: 'SAVE_PERSONA', payload: updatedPersona });
-        if (personaConnectSuccessCallback.current) {
-            personaConnectSuccessCallback.current();
-            personaConnectSuccessCallback.current = null;
-        }
-    }, [dispatchAssets]);
     
     // --- NEW FACEBOOK STRATEGY HANDLERS ---
 
@@ -2997,18 +2955,6 @@ const App: React.FC = () => {
                                 settings={settings}
                                 adminSettings={adminSettings}
                                 onSave={handleSaveSettings}
-                            />
-                        </Suspense>
-                        
-
-                        <Suspense fallback={null}>
-                            <PersonaConnectModal
-                                isOpen={isPersonaConnectModalOpen}
-                                onClose={handleClosePersonaConnectModal}
-                                language={settings.language}
-                                personaToConnect={personaToConnect}
-                                platformToConnect={platformToConnect}
-                                onSocialAccountConnected={handleSocialAccountConnected}
                             />
                         </Suspense>
 

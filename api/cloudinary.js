@@ -1,4 +1,4 @@
-import { allowCors } from './lib/cors.js';
+import { allowCors } from '../server_lib/cors.js';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 

@@ -1,6 +1,6 @@
-import { allowCors } from './lib/cors.js';
+import { allowCors } from '../server_lib/cors.js';
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getClientAndDb } from './lib/mongodb.js';
+import { getClientAndDb } from '../server_lib/mongodb.js';
 import { ObjectId } from 'mongodb';
 
 if (!process.env.GEMINI_API_KEY) {

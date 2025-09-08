@@ -1,8 +1,8 @@
-import { getClientAndDb } from './lib/mongodb.js';
-import { allowCors } from './lib/cors.js';
+import { getClientAndDb } from '../server_lib/mongodb.js';
+import { allowCors } from '../server_lib/cors.js';
 import { ObjectId } from 'mongodb';
-import { defaultPrompts } from './lib/defaultPrompts.js';
-import { initialSettings } from './lib/defaultSettings.js';
+import { defaultPrompts } from '../server_lib/defaultPrompts.js';
+import { initialSettings } from '../server_lib/defaultSettings.js';
 
 // Helper function for deep merging settings objects
 const isObject = (obj) => obj && typeof obj === 'object' && !Array.isArray(obj);
