@@ -528,6 +528,7 @@ export const generateMediaPlanGroup = async (
                 id: crypto.randomUUID(),
                 status: 'draft',
                 pillar: pillar,
+                mediaPrompt: post.mediaPrompt ? (Array.isArray(post.mediaPrompt) ? post.mediaPrompt.map((mp: string) => mp + settings.mediaPromptSuffix) : post.mediaPrompt + settings.mediaPromptSuffix) : '',
                 promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
             } as MediaPlanPost;
         }),
@@ -588,11 +589,9 @@ export const generateMediaPromptForPost = async (
     const personaInstruction = persona ? `
 The media MUST feature the following persona:
 - Nickname: ${persona.nickName}
-- Main Style: ${persona.mainStyle}
-- Field of Activity: ${persona.activityField}
-- Detailed Description: ${persona.outfitDescription}
+- Visuals: ${persona.visualCharacteristics}
 
-IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Detailed Description" provided above, followed by a comma, then the scene description. The structure must be: "${persona.outfitDescription}, [description of the scene]"
+IMPORTANT: For image prompts, the prompt you generate MUST start with the exact "Visuals" description provided above, followed by a comma, then the scene description. The structure must be: "${persona.visualCharacteristics}, [description of the scene]"
 ` : '';
 
     let prompt = settings.prompts.simple.generateMediaPrompt
@@ -752,43 +751,45 @@ export const generateContentPackage = async (
     options: { tone: string; style: string; length: string; includeEmojis: boolean; },
     selectedProduct: AffiliateLink | null
 ): Promise<MediaPlanGroup> => {
-    
+
     if (selectedProduct && !selectedProduct.id) {
         selectedProduct = null;
     }
-    
-    const sanitizedIdeaTitle = idea.title.replace(/["\t;]+/g, '') || 'N/A';
+
+    const sanitizedIdeaTitle = idea.title.replace(/[\"\t;]+/g, '') || 'N/A';
     const personaInstruction = persona ? `
-**KOL/KOC Persona (Crucial):**
+KOL/KOC Persona (Crucial):
 All content MUST be generated from the perspective of the following KOL/KOC.
-- **Nickname:** ${persona.nickName.replace(/["\t;]+/g, '') || 'N/A'}
-- **Main Style:** ${persona.mainStyle.replace(/["\t;]+/g, '') || 'N/A'}
-- **Field of Activity:** ${persona.activityField.replace(/["\t;]+/g, '') || 'N/A'}
-- **Detailed Description (for image generation):** ${persona.outfitDescription.replace(/["\t;]+/g, '') || 'N/A'}
-- **Tone:** The content's tone must perfectly match this persona's style.
-- **Image Prompts (VERY IMPORTANT):** Every single 'mediaPrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona?.outfitDescription || 'N/A'}, [description of the scene]". For example: "${persona?.outfitDescription || 'N/A'}, unboxing a product in a minimalist apartment...".
+- Nickname: ${persona.nickName.replace(/[\"\t;]+/g, '') || 'N/A'}
+- Main Style: ${persona.mainStyle.replace(/[\"\t;]+/g, '') || 'N/A'}
+- Field of Activity: ${persona.activityField.replace(/[\"\t;]+/g, '') || 'N/A'}
+- Detailed Description (for image generation): ${persona.visualCharacteristics.replace(/[\"\t;]+/g, '') || 'N/A'}
+- Tone: The content's tone must perfectly match this persona's style.
+- **Image Prompts (VERY IMPORTANT):** Every single 'mediaPrompt' value you generate MUST start with the exact "Detailed Description" provided above, followed by a comma and then a description of the scene. The structure must be: "${persona.visualCharacteristics.replace(/[\"\t;]+/g, '') || 'N/A'}, [description of the scene]". For example: "${persona.visualCharacteristics.replace(/[\"\t;]+/g, '') || 'N/A'}, unboxing a product in a minimalist apartment...".
 ` : '';
 
     const productInstruction = selectedProduct ? `
-**Affiliate Product to Feature (Crucial):**
-- **Product Name:** ${selectedProduct.productName || 'N/A'}
-- **Product ID:** ${selectedProduct.id || 'N/A'}
-- **Instruction:** This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id || 'N/A'}".
+Affiliate Product to Feature (Crucial):
+- Product Name: ${selectedProduct.productName || 'N/A'}
+- Product ID: ${selectedProduct.id || 'N/A'}
+- Instruction: This entire content package is designed to subtly promote this specific product. All generated posts (both pillar and repurposed) MUST be related to this product and its
+benefits. For every single post you generate, you MUST include a 'promotedProductIds' field in the JSON object, and its value MUST be an array containing the string "${selectedProduct.id || 'N/A'}".
 ` : '';
 
     const customizationInstruction = `
-**Content Customization Instructions:**
-- **Tone of Voice**: Generate all content with a '${options.tone}' tone.
-- **Writing Style**: The primary style should be '${options.style}'.
-- **Post Length**: Adhere to a '${options.length}' post length.
-- **Include Emojis**: ${options.includeEmojis ? 'Yes' : 'No'}
+Content Customization Instructions:
+
+- Tone of Voice: Generate all content with a '${options.tone}' tone.
+- Writing Style: The primary style should be '${options.style}'.
+- Post Length: Adhere to a '${options.length}' post length.
+- Include Emojis: ${options.includeEmojis ? 'Yes' : 'No'}
 `;
 
     const allPlatforms: ('YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest')[] = ['YouTube', 'Facebook', 'Instagram', 'TikTok', 'Pinterest'];
     const repurposedPlatforms = allPlatforms.filter(p => p !== pillarPlatform);
 
     const p = settings.prompts.contentPackage;
-    const combinedPrompt = [
+    const promptParts = [
         personaInstruction,
         productInstruction,
         customizationInstruction,
@@ -797,11 +798,19 @@ All content MUST be generated from the perspective of the following KOL/KOC.
             .replace(/{pillarPlatform}/g, pillarPlatform)
             .replace('{idea.targetAudience}', idea.targetAudience || 'N/A'),
         p.repurposedContentInstruction
-            .replace(/{repurposedPlatforms}/g, repurposedPlatforms.join(', '))
+            .replace(/{repurposedPlatforms}/g, repurposedPlatforms.join(','))
             .replace(/{pillarPlatform}/g, pillarPlatform),
-        p.mediaPromptInstruction.replace(/{persona.outfitDescription}/g, persona?.outfitDescription || 'N/A'),
-        p.jsonOutputInstruction.replace('{language}', language)
-    ].join('\n\n');
+        p.mediaPromptInstruction
+    ];
+
+    if (persona) {
+        promptParts.push("- MUST start with the persona's \"Detailed Description\"" + persona.visualCharacteristics);
+        promptParts.push("Align with the persona's style and tone");
+    }
+
+    promptParts.push(p.jsonOutputInstruction.replace('{language}', language));
+
+    const combinedPrompt = promptParts.join('\\n\\n');
 
     try {
         const response = await generateContentWithBff(
@@ -812,7 +821,7 @@ All content MUST be generated from the perspective of the following KOL/KOC.
         );
 
         const rawResponse = sanitizeAndParseJson(response);
-        
+
         if (!rawResponse.pillarContent) {
             throw new Error('Missing pillar content in API response');
         }
@@ -821,11 +830,13 @@ All content MUST be generated from the perspective of the following KOL/KOC.
             title: rawResponse.pillarContent.title || 'Untitled',
             content: rawResponse.pillarContent.content || '',
             ...(rawResponse.pillarContent.description && { description: rawResponse.pillarContent.description }),
-            hashtags: Array.isArray(rawResponse.pillarContent.hashtags) ? 
-                rawResponse.pillarContent.hashtags : 
+            hashtags: Array.isArray(rawResponse.pillarContent.hashtags) ?
+                rawResponse.pillarContent.hashtags :
                 (typeof rawResponse.pillarContent.hashtags === 'string' ? [rawResponse.pillarContent.hashtags] : []),
             cta: rawResponse.pillarContent.cta || '',
-            mediaPrompt: rawResponse.pillarContent.mediaPrompt || '',
+            mediaPrompt: rawResponse.pillarContent.mediaPrompt 
+                ? (Array.isArray(rawResponse.pillarContent.mediaPrompt) ? rawResponse.pillarContent.mediaPrompt.map((mp: string) => mp + settings.mediaPromptSuffix) 
+                : rawResponse.pillarContent.mediaPrompt + settings.mediaPromptSuffix) : '',
             platform: pillarPlatform,
             isPillar: true,
         };
@@ -840,11 +851,11 @@ All content MUST be generated from the perspective of the following KOL/KOC.
                 title: content.title || 'Untitled',
                 content: content.content || '',
                 contentType: content.contentType || 'text',
-                hashtags: Array.isArray(content.hashtags) ? 
-                    content.hashtags : 
+                hashtags: Array.isArray(content.hashtags) ?
+                    content.hashtags :
                     (typeof content.hashtags === 'string' ? [content.hashtags] : []),
                 cta: content.cta || '',
-                mediaPrompt: content.mediaPrompt || '',
+                mediaPrompt: content.mediaPrompt + settings.mediaPromptSuffix || '',
                 platform: content.platform,
                 isPillar: false,
             }));

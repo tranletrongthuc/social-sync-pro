@@ -765,3 +765,44 @@ Created a new service with:
 4. **Test edge cases:** Always test authentication flows with expired tokens, invalid passwords, and page refreshes to ensure robustness.
 
 5. **Provide user controls:** Always ensure users have appropriate controls (like logout buttons) for features that change their session state.
+
+
+# Session Summary (2025-09-08)
+
+## 1. Summary of Accomplishments
+
+This session focused on addressing deployment issues on Vercel and refining AI prompt generation logic.
+
+Vercel Function Limit Refactoring:*
+    Problem: Despite previous API route consolidation, Vercel deployments were still failing with a "No more than 12 Serverless Functions" error. Diagnosis evealed that Vercel was incorrectly counting helper modules (`api/lib/) and temporary/test files (api/mongodb.js.temp, api/lib/auth.spec.ts) within the /api` directory as separate serverless functions.
+Solution:*
+    *   Moved all helper files from api/lib to a new root-level directory: server_lib.
+    *   Deleted the now-empty api/lib directory, the temporary file api/mongodb.js.temp, and the test file server_lib/auth.spec.ts.
+    *   Updated all import paths in the core API endpoint files (`api/*.js) to reflect the new server_lib` location.
+
+Facebook Integration Removal:*
+Problem:* The project contained unused Facebook integration code.
+Solution:*
+*   Deleted the backend API file api/facebook.js and the frontend service file src/services/facebookService.ts.
+*   Removed Facebook-related routing logic from api/index.js.
+*   Removed all remaining references to socialApiService and socialAccountService from src/App.tsx and deleted the now-obsolete src/services/socialApiService.ts and src/components/PersonaConnectModal.tsx. This was a challenging part due to the replace tool's limitations on large files, requiring multiple careful steps.
+`[object Object]` in Generated Prompts Bug Fix:*
+    Problem:* Generated image prompts were appearing as "[object Object], photorealistic...". This occurred when an AI-generated object was implicitly converted to a string during prompt assembly.
+    Solution:* Implemented a defensive fix in src/App.tsx within the handleGenerateMediaPlanGroup function to safely convert mediaPrompt to a string before appending the suffix.
+`N/A` in Generated Prompts Bug Fix:*
+    Problem:* Generated image prompts were starting with "N/A," (e.g., "N/A, một quản trị viên IT..."). This happened when a media plan was generated without a persona selected. The prompt template was designed to use a persona's visual description, and when persona was null, it defaulted to "N/A".
+    Solution:* Modified the generateContentPackage function in src/services/geminiService.ts. The inclusion of the mediaPromptInstruction (which contains the persona's visual description) is now conditional on whether a persona object is actually provided. This prevents "N/A" from being injected into the prompt when no persona is present.
+
+## 2. Issues to Note
+
+`replace` Tool Limitations:* The replace tool proved extremely brittle and unreliable for making multiple, sequential modifications or large-block replacements within large files (e.g., src/App.tsx, src/services/geminiService.ts). This significantly hindered progress and required extensive manual guidance.
+`read_file` Truncation:* The read_file tool consistently truncated the content of server_lib/defaultPrompts.js, preventing a direct, root-cause fix to the AI prompt template for the [object Object] bug. This forced a less ideal client-side defensive fix.
+Unidentified `חיצוני` String:* A very unusual and out-of-context Hebrew string (חיצוני) was discovered in the codebase during a search. Its origin and purpose are unknown, and it was not located or removed during this session. This remains an outstanding issue that could indicate a copy-paste error, encoding problem, or other anomaly.
+
+
+## 3. Preventative Measures for Future Sessions
+
+Manual Intervention for Large File Edits:* For any future modifications involving large or complex files (e.g., src/App.tsx), prioritize guiding the user to perform manual edits rather than relying on the replace tool for multiple or large-block changes.
+Verify `read_file` Output:* Always explicitly check if read_file output is truncated, especially for files that are expected to be large or contain critical data. If truncation occurs, inform the user and request manual intervention or alternative methods to access the full content.
+Proactive Codebase Search for Anomalies:* Implement a routine to regularly search the codebase for unusual strings or patterns that might indicate copy-paste errors, encoding issues, or potential security vulnerabilities.
+Prioritize Root Cause Fixes (with caveats):* When a bug is identified, always strive to fix the root cause (e.g., clarifying AI prompt instructions). However, if tool limitations prevent a direct root-cause fix, implement robust defensive coding in the client and document the underlying issue clearly.

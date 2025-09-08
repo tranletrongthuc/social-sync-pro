@@ -829,126 +829,85 @@ async function handler(request, response) {
               
               const mediaPlanGroupsCollection = db.collection('mediaPlanGroups');
               const postsCollection = db.collection('mediaPlanPosts');
-              let allPosts = []; // Declare allPosts in the outer scope
-              
-              // ✅ Generate a valid ObjectId and use its string form as the ID
-              const groupObjectId = new ObjectId(); // 12-byte ObjectId
-              const groupId = groupObjectId.toString(); // → "664f8d2b9e8c0c23f456789a" (24-char hex) 
-              
-              // Prepare group document
-              // ✅ Use the SAME ObjectId value for _id and id
+
+              // 1. Generate a new ObjectId on the server for the group.
+              const groupObjectId = new ObjectId();
+              const groupId = groupObjectId.toString();
+
               const groupDocument = {
-                _id: groupObjectId,     // ← MongoDB _id (ObjectId type)
-                id: groupId,            // ← Your "custom" ID (string, but same value)
+                _id: groupObjectId, // ObjectId for the DB
+                id: groupId,       // String version for consistency
                 name: group.name,
                 prompt: group.prompt,
                 source: group.source,
                 productImages: group.productImages || [],
                 brandId,
                 personaId: group.personaId,
-                updatedAt: new Date()
+                updatedAt: new Date(),
+                createdAt: new Date(),
               };
     
+              // Insert the new group document.
               await mediaPlanGroupsCollection.insertOne(groupDocument);
               
-              // Save posts if they exist
-              if (group.plan && Array.isArray(group.plan) && group.plan.length > 0) {
-                
-                // Flatten plan into posts
+              const allPostsWithNewIds = [];
+              if (group.plan && Array.isArray(group.plan)) {
+                // 2. Ignore client-side IDs and generate new ObjectIds for each post.
                 group.plan.forEach(week => {
-                  // Make sure week has the expected structure
-                  if (week && week.week !== undefined && week.theme && Array.isArray(week.posts)) {
+                  if (week && week.posts && Array.isArray(week.posts)) {
                     week.posts.forEach((post, postIndex) => {
-                      // Validate post.id before creating ObjectId
-                      const postId = new ObjectId(); // Generate new ObjectId for post
-                      const postIdStr = postId.toString();
+                      const postObjectId = new ObjectId();
+                      const postId = postObjectId.toString();
                       
-                      allPosts.push({
+                      allPostsWithNewIds.push({
                         ...post,
-                        _id: postId,                    // ← ObjectId for post _id
-                        id: postIdStr,                  // ← Optional: string version
-                        mediaPlanId: groupId,           // ← String ID referencing group's _id
+                        _id: postObjectId, // Use the new server-generated ObjectId
+                        id: postId,         // Use the string version of the new ID
+                        mediaPlanId: groupId,
                         week: week.week,
                         theme: week.theme,
                         brandId: brandId,
                         imageUrl: post.imageKey ? imageUrls[post.imageKey] : null,
                         videoUrl: post.videoKey ? imageUrls[post.videoKey] : null,
-                        postOrder: postIndex, // Add post order for proper sorting
-                        updatedAt: new Date()
+                        postOrder: postIndex,
+                        updatedAt: new Date(),
+                        createdAt: new Date(),
                       });
                     });
-                  } else {
-                    console.warn('Skipping invalid week structure:', week);
                   }
                 });
-                
-                // Process posts in batches
-                const batchSize = 10;
-                for (let i = 0; i < allPosts.length; i += batchSize) {
-                  const batch = allPosts.slice(i, i + batchSize);
-                  
-                  // Prepare bulk operations
-                  const bulkOperations = batch.map(post => ({
-                    updateOne: {
-                      filter: { _id: post._id },
-                      update: { 
-                        $set: {
-                          title: post.title,
-                          week: post.week,
-                          theme: post.theme,
-                          platform: post.platform,
-                          contentType: post.contentType,
-                          content: post.content,
-                          description: post.description,
-                          hashtags: post.hashtags || [],
-                          cta: post.cta,
-                          mediaPrompt: post.mediaPrompt,
-                          script: post.script,
-                          imageKey: post.imageKey,
-                          imageUrl: post.imageUrl,
-                          videoKey: post.videoKey,
-                          videoUrl: post.videoUrl,
-                          mediaOrder: post.mediaOrder || [],
-                          sources: post.sources || [],
-                          scheduledAt: post.scheduledAt,
-                          publishedAt: post.publishedAt,
-                          publishedUrl: post.publishedUrl,
-                          autoComment: post.autoComment,
-                          status: post.status || 'draft',
-                          pillar: post.pillar || '',
-                          isPillar: post.isPillar,
-                          brandId: brandId,
-                          mediaPlanId: post.mediaPlanId, // Use the ObjectId for database consistency
-                          promotedProductIds: post.promotedProductIds || [],
-                          postOrder: post.postOrder,
-                          updatedAt: new Date()
-                        }
-                      },
-                      upsert: true
-                    }
-                  }));
-                  
-                  await postsCollection.bulkWrite(bulkOperations);
-                }
               }
               
-              // Reconstruct the full plan to send back to the client
+              // 3. Save the posts with their new, correct IDs.
+              if (allPostsWithNewIds.length > 0) {
+                  const bulkOperations = allPostsWithNewIds.map(post => ({
+                      insertOne: {
+                          document: post
+                      }
+                  }));
+                  await postsCollection.bulkWrite(bulkOperations);
+              }
+              
+              // 4. Return the saved plan with the correct, server-generated IDs to the client.
               const finalPlan = {
                 ...groupDocument,
                 plan: group.plan.map(week => ({
                   ...week,
-                  posts: allPosts
+                  posts: allPostsWithNewIds
                     .filter(p => p.week === week.week)
-                    .map(p => ({ ...p, _id: p._id.toString() })) // Ensure _id is a string for client
+                    // Ensure client gets string IDs
+                    .map(p => ({ ...p, _id: p.id })) 
                 }))
               };
 
+              // Remove the ObjectId version of _id before sending to client
+              delete finalPlan._id;
+
               response.status(200).json({ savedPlan: finalPlan });
-              console.log('--- Media plan group saved ---');
+              console.log('--- Media plan group saved with server-generated ObjectIds ---');
             } catch (error) {
               console.error('--- CRASH in /api/mongodb/save-media-plan-group ---');
               console.error('Error details:', error);
-              //response.status(500).json({ error: 'Failed to save media plan group' });
               throw error;
             }
             break;

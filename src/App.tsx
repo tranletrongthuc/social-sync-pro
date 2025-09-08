@@ -677,9 +677,6 @@ const App: React.FC = () => {
         generationTask: (model: string) => Promise<T>,
         preferredModel: string
     ): Promise<T> => {
-        console.log("Preferred model:", preferredModel);
-        
-        // Use textModelFallbackOrder from aiModelConfig if available, otherwise use an empty array
         const textModelFallbackOrder = aiModelConfig?.textModelFallbackOrder || [];
         const modelsToTry = [
             preferredModel, 
@@ -688,20 +685,15 @@ const App: React.FC = () => {
         console.log("Models to try:", modelsToTry);
 
         let lastError: Error | null = null;
-        let rateLimitErrorCount = 0;
-        const RATE_LIMIT_THRESHOLD = 2; 
 
         for (const model of modelsToTry) {
             try {
                 console.log(`Attempting text generation with model: ${model}`);
-                
-                if (model.startsWith('gemini-') && !model.includes('free')) {
-                    // This check is now implicit in the backend call
-                }
-                
                 const result = await generationTask(model);
                 
+                // If a fallback model succeeded, update the settings to use it as the new preferred model
                 if (model !== preferredModel) {
+                    console.log(`Fallback to ${model} succeeded. Updating preferred model.`);
                     setSettings(prev => ({ ...prev, textGenerationModel: model }));
                 }
                 
@@ -710,31 +702,24 @@ const App: React.FC = () => {
                 console.error(`Text generation failed with model ${model}:`, error);
                 lastError = error;
                 
-                // Special handling for rate limit errors
-                if (error.message && (error.message.includes('429') || error.message.includes('rate limit'))) {
-                    rateLimitErrorCount++;
-                    if (rateLimitErrorCount >= RATE_LIMIT_THRESHOLD) {
-                        console.log(`Rate limit threshold (${RATE_LIMIT_THRESHOLD}) reached. Waiting before next attempt...`);
-                        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
-                    }
-                }
-                
-                // If it's a model-specific error (e.g., unsupported model), continue to the next model
-                if (error.message && (error.message.includes('not supported') || error.message.includes('invalid model'))) {
-                    console.log(`Skipping model ${model} due to model-specific error.`);
-                    continue;
-                }
-                
-                // For other errors, we might want to stop trying other models
-                // unless it's a rate limit error
-                if (!(error.message && (error.message.includes('429') || error.message.includes('rate limit')))) {
-                    console.log("Non-rate limit error encountered. Stopping fallback attempts.");
-                    break;
+                const errorMessage = String(error.message || error).toLowerCase();
+                const isRetryable = errorMessage.includes('429') || 
+                                    errorMessage.includes('rate limit') || 
+                                    errorMessage.includes('503') || 
+                                    errorMessage.includes('overloaded') || 
+                                    errorMessage.includes('service unavailable');
+
+                if (isRetryable) {
+                    console.warn(`Model ${model} failed with a retryable error. Trying next model...`);
+                    continue; // Continue to the next model in the loop
+                } else {
+                    console.error(`Model ${model} failed with a non-retryable error. Stopping fallback.`, error);
+                    throw error; // For non-retryable errors, fail immediately
                 }
             }
         }
         
-        // If we get here, all models failed
+        // If the loop completes, it means all models failed with retryable errors.
         console.error("All text generation models failed.", lastError);
         throw lastError || new Error("All text generation models failed.");
     }, [aiModelConfig, setSettings]);
@@ -973,23 +958,28 @@ const App: React.FC = () => {
                 };
                 const newGroup = await executeTextGenerationWithFallback(generationTask, settings.textGenerationModel);
                 
-                // Append mediaPromptSuffix to each post's mediaPrompt
-                const mediaPromptSuffix = settings.mediaPromptSuffix;
                 const updatedPlan = newGroup.plan.map(week => ({
                     ...week,
                     posts: week.posts.map(post => {
                         if (post.mediaPrompt) {
+                            const processPrompt = (p: any) => {
+                                const suffix = settings.mediaPromptSuffix || '';
+                                if (typeof p === 'object' && p !== null) {
+                                    const mainValue = p.description || p.prompt || JSON.stringify(p);
+                                    return `${mainValue}, ${suffix}`.replace(/, $/, ''); // Avoid trailing comma if suffix is empty
+                                }
+                                return `${p}${suffix ? `, ${suffix}` : ''}`;
+                            };
+
                             if (Array.isArray(post.mediaPrompt)) {
-                                // For carousel posts, append suffix to each prompt in the array
                                 return {
                                     ...post,
-                                    mediaPrompt: post.mediaPrompt.map(prompt => prompt + mediaPromptSuffix)
+                                    mediaPrompt: post.mediaPrompt.map(processPrompt)
                                 };
                             } else {
-                                // For single prompts, append the suffix
                                 return {
                                     ...post,
-                                    mediaPrompt: post.mediaPrompt + mediaPromptSuffix
+                                    mediaPrompt: processPrompt(post.mediaPrompt)
                                 };
                             }
                         }
@@ -1636,15 +1626,7 @@ const App: React.FC = () => {
         
         console.log('Content package generation - selectedProduct:', selectedProduct);
 
-        // If a product was selected, verify it exists in MongoDB
-        if (selectedProduct && mongoBrandId) {
-            const productExists = await checkIfProductExistsInDatabase(selectedProduct.id);
-            if (!productExists) {
-                console.warn(`Selected product ${selectedProduct.id} not found in MongoDB. Saving it now.`);
-                // Save the product to MongoDB
-                await saveAffiliateLinks([selectedProduct], mongoBrandId);
-            }
-        }
+        
 
         setLoaderContent({ 
             title: settings.language === 'Việt Nam' ? "Đang tạo Gói Nội Dung..." : "Generating Content Package...",
