@@ -1,99 +1,259 @@
-export interface PersonaPhoto {
+export type BrandInfo = {
+    name: string;
+    mission: string;
+    values: string;
+    audience: string;
+    personality: string;
+};
+
+export type BrandFoundation = {
+    brandName: string;
+    mission: string;
+    usp: string;
+    targetAudience: string;
+    values: string[];
+    personality: string;
+    keyMessaging?: string[];
+};
+
+export type LogoConcept = {
     id: string;
+    prompt: string;
     imageKey: string;
-}
+    imageUrl?: string;
+};
 
-export interface SocialAccount {
+export type CoreMediaAssets = {
+    logoConcepts: LogoConcept[];
+    colorPalette: { name: string; hex: string; }[];
+    fontRecommendations: { name: string; type: 'heading' | 'body'; }[];
+};
+
+export type CoverPhotoAsset = {
+    designConcept: string;
+    prompt: string;
+};
+
+export type UnifiedProfileAssets = {
+    accountName: string;
+    username: string;
+    profilePicturePrompt: string;
+    profilePictureId: string;
+    profilePictureImageKey: string | null;
+    profilePictureImageUrl?: string;
+    coverPhotoPrompt: string;
+    coverPhotoId: string;
+    coverPhotoImageKey: string | null;
+    coverPhotoImageUrl?: string;
+    coverPhoto?: CoverPhotoAsset;
+};
+
+export type PostStatus = 'draft' | 'needs_review' | 'approved' | 'scheduled' | 'published';
+
+export type MediaPlanPost = {
+    id: string;
+    title: string;
+    content: string | string[];
     platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest';
-    credentials: Record<string, string>; // Stores platform-specific credentials (e.g., accessToken, pageId)
-    displayName?: string; // e.g., "My Facebook Page"
-    profileUrl?: string; // e.g., "https://www.facebook.com/mypage"
-}
+    contentType: 'Image' | 'Video' | 'Carousel' | 'Story' | 'Shorts' | 'Reel';
+    status: PostStatus;
+    scheduledAt?: string;
+    hashtags: string[];
+    cta: string;
+    mediaPrompt?: string | string[];
+    imageKey?: string;
+    imageUrl?: string;
+    videoKey?: string;
+    videoUrl?: string;
+    mediaOrder?: ('image' | 'video')[];
+    promotedProductIds?: string[];
+    autoComment?: string;
+    sources?: { title: string; uri: string; }[];
+    isPillar?: boolean;
+    repurposedFrom?: string; // Post ID of the pillar content
+    description?: string | string[]; // For YouTube
+    script?: string; // For video content
+    pillar?: string; // Content Pillar name
+    publishedAt?: string;
+    publishedUrl?: string;
+};
 
-export interface Persona {
-  id: string;
-  nickName: string;
-  // Foundational Info
-  demographics: {
-    age: number;
-    location: string;
-    occupation: string;
-  };
-  backstory: string; // Supports rich text/markdown
-  
-  // Voice & Personality
-  voice: {
-    personalityTraits: string[]; // e.g., ["Witty", "Sarcastic", "Empathetic"]
-    communicationStyle: {
-      formality: number; // Slider value 0-100
-      energy: number;     // Slider value 0-100
+export type MediaPlanWeek = {
+    theme: string;
+    posts: MediaPlanPost[];
+};
+
+export type MediaPlan = MediaPlanWeek[];
+
+export type MediaPlanGroup = {
+    id: string;
+    name:string;
+    prompt: string;
+    plan: MediaPlan;
+    productImages?: { name: string; type: string; data: string }[];
+    source?: 'wizard' | 'content-package' | 'brand-launch' | 'funnel-campaign';
+    personaId?: string;
+};
+
+export type GeneratedAssets = {
+    brandFoundation: BrandFoundation;
+    coreMediaAssets: CoreMediaAssets;
+    unifiedProfileAssets: UnifiedProfileAssets;
+    mediaPlans: MediaPlanGroup[];
+    personas: Persona[];
+    trends: Trend[];
+    ideas: Idea[];
+    affiliateLinks: AffiliateLink[];
+    facebookPostIdeas?: FacebookPostIdea[];
+    facebookTrends?: FacebookTrend[];
+    selectedPlatforms?: string[];
+};
+
+export type SchedulingPost = {
+    id: string;
+    title: string;
+    platform: 'Facebook' | 'Instagram' | 'TikTok' | 'YouTube' | 'Pinterest';
+    scheduledAt: string | null;
+    status: 'draft' | 'needs_review' | 'approved' | 'scheduled' | 'published';
+    post?: MediaPlanPost;
+};
+
+export type AffiliateLink = {
+    id: string;
+    productName: string;
+    productLink: string;
+    providerName: string;
+    commissionRate: number;
+    notes?: string;
+    brandId: string;
+    productId?: string;
+    price?: number;
+    salesVolume?: number;
+    promotionLink?: string;
+    product_description?: string;
+    features?: string[];
+    use_cases?: string[];
+    customer_reviews?: string;
+    product_rating?: number;
+    product_avatar?: string;
+    product_image_links?: string[];
+};
+
+export type Persona = {
+    id: string;
+    nickName: string;
+    fullName: string;
+    background: string;
+    outfitDescription: string;
+    brandId: string;
+    imageKey?: string;
+    imageUrl?: string;
+    avatarImageKey?: string;
+    avatarImageUrl?: string;
+    photos?: PersonaPhoto[];
+    mainStyle?: string;
+    activityField?: string;
+    voice?: any;
+    // New detailed fields
+    demographics?: {
+        age: number;
+        gender: 'Male' | 'Female' | 'Non-binary';
+        location: string;
+        occupation: string;
+        incomeLevel: string;
     };
-    linguisticRules: string[]; // e.g., ["Uses slang: 'cháy quá'", "Uses emojis: 🌱, ☕️"]
-  };
+    backstory?: string;
+    personalityTraits?: string[];
+    goalsAndMotivations?: string[];
+    painPoints?: string[];
+    communicationStyle?: {
+        tone: string;
+        voice: string;
+        preferredChannels: string[];
+    };
+    interestsAndHobbies?: string[];
+    knowledgeBase?: string[];
+    brandRelationship?: {
+        awareness: string;
+        perception: string;
+        engagement: string;
+        originStory?: string;
+        coreAffinity?: string;
+        productUsage?: string;
+    };
+    contentTone?: string;
+    visualCharacteristics?: string;
+    coreCharacteristics?: string;
+    keyMessages?: string;
+    gender?: 'Male' | 'Female' | 'Non-binary';
+};
 
-  // Interests & Brand Connection
-  knowledgeBase: string[]; // Hobbies & interests, e.g., ["Film Photography", "Indie Music"]
-  brandRelationship: {
-    originStory: string;
-    coreAffinity: string;
-    productUsage: string;
-  };
+export type Trend = {
+    id: string;
+    brandId: string;
+    industry: string;
+    topic: string;
+    keywords: string[];
+    links: { title: string; url: string; }[];
+    notes: string;
+    analysis: string;
+    createdAt: string;
+};
 
-  // Legacy & Deprecated fields - maintaned for now for compatibility
-  outfitDescription: string;
-  mainStyle: string;
-  activityField: string;
-  avatarImageKey?: string;
-  avatarImageUrl?: string;
-  photos: PersonaPhoto[];
-  socialAccounts?: SocialAccount[];
+export type Idea = {
+    id: string;
+    trendId: string;
+    productId?: string;
+    title: string;
+    mediaPrompt?: string;
+    description: string;
+    cta?: string;
+    targetAudience?: string;
+};
 
-  // Fields for auto-generated personas
-  contentTone?: string;
-  visualCharacteristics?: string;
-  coreCharacteristics?: string[];
-  keyMessages?: string[];
-  gender?: string;
-}
+export type PostInfo = {
+    planId: string;
+    weekIndex: number;
+    postIndex: number;
+    post: MediaPlanPost;
+};
 
-export interface BrandInfo {
-  name: string;
-  mission: string;
-  values: string;
-  audience: string;
-  personality: string;
-}
+export type ContentPillar = {
+    name: string;
+    description: string;
+    targetPercentage?: number;
+};
 
-export interface AutoGeneratePersonaPrompts {
-  systemInstruction: string;
-  mainPrompt: string;
-}
+export type AutoGeneratePersonaPrompts = {
+    systemInstruction: string;
+    mainPrompt: string;
+};
 
-export interface GenerateInCharacterPostPrompts {
-  rolePlayInstruction: string;
-  personalityInstruction: string;
-  writingStyleInstruction: string;
-  backstoryInstruction: string;
-  interestsInstruction: string;
-  contextPreamble: string;
-  taskInstruction: string;
-  objectiveInstruction: string;
-  pillarInstruction: string;
-  keywordsInstruction: string;
-  perspectiveInstruction: string;
-  negativeConstraints: string;
-}
+export type GenerateInCharacterPostPrompts = {
+    rolePlayInstruction: string;
+    personalityInstruction: string;
+    writingStyleInstruction: string;
+    backstoryInstruction: string;
+    interestsInstruction: string;
+    contextPreamble: string;
+    taskInstruction: string;
+    objectiveInstruction: string;
+    pillarInstruction: string;
+    keywordsInstruction: string;
+    perspectiveInstruction: string;
+    negativeConstraints: string;
+};
 
-export interface MediaPlanGenerationPrompts {
-  systemInstruction: string;
-  personaEmbodimentInstruction: string;
-  campaignGoalInstruction: string;
-  contentGenerationRules: string;
-  hyperDetailedImagePromptGuide: string;
-  jsonOutputInstruction: string;
-}
+export type MediaPlanGenerationPrompts = {
+    systemInstruction: string;
+    personaEmbodimentInstruction: string;
+    campaignGoalInstruction: string;
+    contentGenerationRules: string;
+    hyperDetailedImagePromptGuide: string;
+    jsonOutputInstruction: string;
+};
 
-export interface SimplePrompts {
+export type SimplePrompts = {
     refinePost: string;
     generateBrandProfile: string;
     generateBrandKit: string;
@@ -103,250 +263,124 @@ export interface SimplePrompts {
     generateFacebookTrends: string;
     generateFacebookPostsForTrend: string;
     generateIdeasFromProduct: string;
-}
+};
 
-export interface ContentPackagePrompts {
+export type ContentPackagePrompts = {
     taskInstruction: string;
     pillarContentInstruction: string;
     repurposedContentInstruction: string;
     mediaPromptInstruction: string;
     jsonOutputInstruction: string;
-}
+};
 
-export interface Prompts {
-  autoGeneratePersona: AutoGeneratePersonaPrompts;
-  generateInCharacterPost: GenerateInCharacterPostPrompts;
-  mediaPlanGeneration: MediaPlanGenerationPrompts;
-  simple: SimplePrompts;
-  contentPackage: ContentPackagePrompts;
-}
+export type Prompts = {
+    autoGeneratePersona: AutoGeneratePersonaPrompts;
+    generateInCharacterPost: GenerateInCharacterPostPrompts;
+    mediaPlanGeneration: MediaPlanGenerationPrompts;
+    simple: SimplePrompts;
+    contentPackage: ContentPackagePrompts;
+};
 
-export interface Settings {
+export type Settings = {
     language: string;
     totalPostsPerMonth: number;
     mediaPromptSuffix: string;
     affiliateContentKit: string;
     textGenerationModel: string;
     imageGenerationModel: string;
-    textModelFallbackOrder: string[];
-    visionModels: string[];
-    contentPillars: { name: string, targetPercentage: number }[];
-    prompts: Prompts;
-}
-
-export interface UnifiedProfileAssets {
-  accountName: string;
-  username:string;
-  profilePicturePrompt: string;
-  profilePictureId: string;
-  profilePictureImageKey: string;
-  coverPhoto: {
-    prompt: string;
-    designConcept: string;
-  };
-  coverPhotoId: string;
-  coverPhotoImageKey: string;
-}
-
-export type PostStatus = 'draft' | 'needs_review' | 'approved' | 'scheduled';
-
-export interface MediaPlanPost {
-    id: string;
-    platform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest';
-    contentType: string;
-    title: string;
-    content: string;
-    description?: string; // For YouTube video descriptions
-    hashtags: string[];
-    cta: string;
-    mediaPrompt?: string | string[];
-    script?: string;
-    imageKey?: string;
-    videoKey?: string;
-    mediaOrder?: ('image' | 'video')[];
-    sources?: { uri: string; title: string; }[];
-    promotedProductIds?: string[];
-    scheduledAt?: string;
-    publishedAt?: string; 
-    publishedUrl?: string;
-    autoComment?: string;
-    status?: PostStatus;
-    // New fields for package context
-    pillar?: string;
-    isPillar?: boolean;
-}
-
-export interface MediaPlanWeek {
-    week: number;
-    theme: string;
-    posts: MediaPlanPost[];
-}
-
-export type MediaPlan = MediaPlanWeek[];
-
-export interface MediaPlanGroup {
-    id: string;
-    name: string;
-    prompt: string;
-    plan: MediaPlan;
-    source?: 'wizard' | 'content-package' | 'brand-launch';
-    sources?: { uri: string; title: string; }[];
-    productImages?: { name: string, type: string, data: string }[];
-    personaId?: string;
-}
-
-export interface BrandFoundation {
-  brandName: string;
-  mission: string;
-  values: string[];
-  targetAudience: string;
-  personality: string;
-  keyMessaging: string[];
-  usp: string;
-}
-
-export interface ColorInfo {
-  name: string;
-  hex: string;
-}
-
-export interface ColorPalette {
-  primary: ColorInfo;
-  secondary: ColorInfo;
-  accent: ColorInfo;
-  text: ColorInfo;
-}
-
-export interface FontRecommendations {
-  headlines: { name: string; weight: string };
-  body: { name: string; weight: string };
-}
-
-export interface LogoConcept {
-  id: string;
-  style: string;
-  prompt: string;
-  imageKey: string;
-  imageUrl?: string;
-}
-
-export interface CoreMediaAssets {
-  logoConcepts: LogoConcept[];
-  colorPalette: ColorPalette;
-  fontRecommendations: FontRecommendations;
-}
-
-export interface AffiliateLink {
-    id: string;
-    productId: string;
-    productName: string;
-    price: number;
-    salesVolume: number;
-    providerName: string;
-    commissionRate: number; // Stored as percentage, e.g., 20 for 20%
-    commissionValue: number;
-    productLink: string;
-    promotionLink?: string;
-    product_avatar?: string; // URL to product avatar image
-    product_description?: string;
-    features?: string[];
-    use_cases?: string[];
-    product_image_links?: string[]; // URLs to additional product images
-    customer_reviews?: string; // Summary or snippet of reviews
-    product_rating?: number; // Numeric rating, e.g., 4.5
-}
-
-export interface Trend {
-  id: string;
-  brandId: string;
-  industry: string;
-  topic: string;
-  keywords: string[];
-  links: { url: string; title: string }[];
-  notes?: string;
-  analysis: string;
-  createdAt: string;
-}
-
-export interface Idea {
-  id: string;
-  trendId: string;
-  title: string;
-  description: string;
-  targetAudience?: string;
-  mediaPrompt?: string;
-  cta?: string;
-  productId?: string; // New field to link idea to a product
-}
-
-export interface GeneratedAssets {
-  brandFoundation: BrandFoundation;
-  coreMediaAssets: CoreMediaAssets;
-  unifiedProfileAssets: UnifiedProfileAssets;
-  mediaPlans: MediaPlanGroup[];
-  affiliateLinks: AffiliateLink[];
-  personas?: Persona[];
-  trends?: Trend[];
-  ideas?: Idea[];
-  facebookTrends?: FacebookTrend[];
-  facebookPostIdeas?: FacebookPostIdea[];
-}
-
-
-
-export type SchedulingPost = {
-  planId: string;
-  weekIndex: number;
-  postIndex: number;
-  post: MediaPlanPost;
+    textModelFallbackOrder?: string[];
+    visionModels?: string[];
+    contentPillars?: ContentPillar[];
+    prompts?: Prompts;
+    cloudinaryCloudName?: string;
+    cloudinaryUploadPreset?: string;
+    visualStyleTemplates?: any;
 };
 
-export type PostInfo = { planId: string; weekIndex: number; postIndex: number; post: MediaPlanPost };
+export type FacebookTrend = {
+    topic: string;
+    keywords: string[];
+    analysis: string;
+};
 
-export interface FacebookPage {
+export type FacebookPostIdea = {
+    trendTopic: string;
+    title: string;
+    content: string;
+    cta: string;
+};
+
+export type AIModel = {
     id: string;
     name: string;
-    access_token: string;
-    category: string;
-    category_list: { id: string; name: string }[];
-    tasks: string[];
-}
+    provider: string;
+    capabilities: ('text' | 'image' | 'vision')[];
+    service: string;
+};
 
-export interface FacebookLoginResponse {
-    userAccessToken: string;
-    pages: FacebookPage[];
-}
+export type AiModelConfig = {
+    allModels: AIModel[];
+    textModels: string[];
+    imageModels: string[];
+    visionModels: string[];
+    getModel: (modelName: string) => AIModel | undefined;
+    getServiceForModel: (modelName: string) => 'gemini' | 'openrouter' | 'cloudflare' | 'unknown';
+};
 
-export interface FacebookTrend {
-  id: string;
-  brandId: string;
-  industry: string;
-  topic: string;
-  keywords: string[];
-  links: { uri: string; title: string }[];
-  analysis: string;
-  createdAt: string;
-}
+// Added missing types
+export type ColorInfo = {
+    name: string;
+    hex: string;
+};
 
-export interface FacebookPostIdea {
-  id: string;
-  trendId: string;
-  title: string;
-  content: string;
-  mediaPrompt: string;
-  cta: string;
-}
+export type ColorPalette = ColorInfo[];
 
-export interface AIModel {
-  id: string;
-  name: string;
-  provider: string;
-  capabilities: string[];
-}
+export type FontRecommendations = { name: string; type: 'heading' | 'body'; }[];
 
-export interface AIService {
-  id: string;
-  name: string;
-  description: string;
-  models: AIModel[];
-}
+export type PersonaPhoto = {
+    id: string;
+    url: string;
+    description: string;
+    imageKey?: string;
+};
+
+export type AIService = {
+    id: string;
+    name: string;
+    models: AIModel[];
+};
+
+export type TagInputProps = {
+    tags: string[];
+    setTags: (tags: string[]) => void;
+    placeholder: string;
+    label: string;
+};
+
+export type GenerationOptions = {
+    tone: string;
+    style: string;
+    length: string;
+    includeEmojis: boolean;
+};
+
+export type ContentPackageWizardModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    idea: Idea;
+    onGenerate: (idea: Idea, platform: string, personaId: string | null) => void;
+    language: string;
+    personas: Persona[];
+    generatedImages: Record<string, string>;
+    affiliateLinks: AffiliateLink[];
+    isGenerating: boolean;
+};
+
+export type ButtonProps = {
+    variant?: 'primary' | 'secondary' | 'tertiary';
+    size?: 'small' | 'medium' | 'large';
+    onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+    children: React.ReactNode;
+    className?: string;
+    disabled?: boolean;
+};

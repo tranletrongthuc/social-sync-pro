@@ -1,3 +1,4 @@
+/// <reference types="react" />
 import React, { useState, useEffect, useRef } from 'react';
 import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo, Settings } from '../../types';
 import { Button, Input, TextArea, HoverCopyWrapper, Select } from './ui';
@@ -14,9 +15,12 @@ const platformIcons: Record<string, React.FC<any>> = {
     Pinterest: PinterestIcon
 };
 
-const renderPostContent = (content: string | any): string => {
+const renderPostContent = (content: string | string[] | any): string => {
     if (typeof content === 'string') {
         return content;
+    }
+    if (Array.isArray(content)) {
+        return content.join('\n\n');
     }
     if (typeof content === 'object' && content !== null) {
         // This handles cases where the AI returns a structured object instead of a string.
@@ -112,10 +116,10 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
         if (!generatedImage) return null;
         return (
              <div className="relative group rounded-lg overflow-hidden" tabIndex={0}>
-                <img src={generatedImage} alt={post.mediaPrompt} className="w-full object-cover" style={{ aspectRatio }}/>
+                <img src={generatedImage} alt={Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join(', ') : post.mediaPrompt || ''} className="w-full object-cover" style={{ aspectRatio }}/>
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                      <div className="flex flex-col gap-2 items-center p-2">
-                        <Button onClick={() => onGenerateImage(post.mediaPrompt!, post.imageKey!, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
+                        <Button onClick={() => onGenerateImage(Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join(', ') : post.mediaPrompt || '', post.imageKey!, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
                             <SparklesIcon className="h-4 w-4" /> {texts.regenerate}
                         </Button>
                         <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
@@ -164,7 +168,7 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
             }
             return (
                 <HoverCopyWrapper textToCopy={post.mediaPrompt as string}>
-                    <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">"{post.mediaPrompt}"</p>
+                    <pre className="text-gray-500 text-xs font-mono bg-gray-50 p-2 rounded-md whitespace-pre-wrap break-words">{post.mediaPrompt}</pre>
                 </HoverCopyWrapper>
             )
         }
@@ -180,7 +184,7 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
                     </>
                 )}
                 <div className="space-y-2 mt-auto">
-                    <Button onClick={() => onGenerateImage(post.mediaPrompt!, post.imageKey || post.id, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
+                    <Button onClick={() => onGenerateImage(Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join(', ') : post.mediaPrompt || '', post.imageKey || post.id, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
                         <SparklesIcon /> {texts.generate}
                     </Button>
                     <div 
@@ -225,7 +229,7 @@ const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGe
     const videoContent = renderVideoComponent();
     
     const mediaMap = { image: imageContent, video: videoContent };
-    let orderedComponents: (JSX.Element | null)[] = [];
+    let orderedComponents: (React.ReactElement | null)[] = [];
     const order = post.mediaOrder || [];
     const addedTypes = new Set<'image' | 'video'>();
 
@@ -270,6 +274,7 @@ interface PostDetailModalProps {
   onGeneratePrompt: (postInfo: PostInfo) => void;
   // NEW: In-character post generation
   onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
+  onRefinePost: (text: string) => Promise<string>;
   isRefining: boolean;
   onRunKhongMinhForPost: () => void;
   onAcceptSuggestion: (productId: string) => void;
@@ -281,6 +286,7 @@ interface PostDetailModalProps {
   isAnalyzing: boolean;
   khongMinhSuggestions: Record<string, AffiliateLink[]>;
   affiliateLinks: AffiliateLink[];
+  isGenerating: boolean; // Add this line
   onGenerateComment: (postInfo: PostInfo) => void;
   isGeneratingComment: boolean;
   onOpenScheduleModal: (post: SchedulingPost) => void;
@@ -501,7 +507,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             <Select 
                                 value={editedPost.status || 'draft'} 
                                 onChange={(e) => handleStatusChange(e.target.value as any)}
-                                className={`text-sm font-bold rounded-full px-3 py-1 border-2 ${
+                                className={`text-sm font-bold rounded-full px-3 py-1 border-2 ${ 
                                     {
                                         draft: 'bg-gray-100 border-gray-200 text-gray-800',
                                         needs_review: 'bg-yellow-100 border-yellow-200 text-yellow-800',
@@ -542,13 +548,13 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 { isYouTubePillar ? (
                                     <>
                                         <label className="font-bold text-sm">{texts.youtube_description}</label>
-                                        <TextArea name="description" value={typeof editedPost.description === 'string' ? editedPost.description || '' : JSON.stringify(editedPost.description, null, 2)} onChange={handleEditChange} rows={5} className="text-base" />
+                                        <TextArea name="description" value={renderPostContent(editedPost.description || '')} onChange={handleEditChange} rows={5} className="text-base" />
                                         <label className="font-bold text-sm">{texts.youtube_script}</label>
-                                        <TextArea name="content" value={typeof editedPost.content === 'string' ? editedPost.content : JSON.stringify(editedPost.content, null, 2)} onChange={handleEditChange} rows={10} className="text-base" />
+                                        <TextArea name="content" value={renderPostContent(editedPost.content)} onChange={handleEditChange} rows={10} className="text-base" />
                                     </>
                                 ) : (
                                     <>
-                                        <TextArea name="content" value={typeof editedPost.content === 'string' ? editedPost.content : JSON.stringify(editedPost.content, null, 2)} onChange={handleEditChange} rows={10} className="text-base" />
+                                        <TextArea name="content" value={renderPostContent(editedPost.content)} onChange={handleEditChange} rows={10} className="text-base" />
                                         {editedPost.contentType.includes('Video') || editedPost.contentType.includes('Shorts') || editedPost.contentType.includes('Story') ? (
                                             <>
                                                 <label className="font-bold text-sm">{texts.script}</label>
@@ -661,7 +667,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 <div className="flex items-center justify-end gap-2">
                                     {!isPublished && (
                                         <>
-                                            <Button variant="secondary" onClick={() => onOpenScheduleModal(postInfo as SchedulingPost)} className="flex items-center gap-2"><CalendarIcon className="h-4 w-4"/> {texts.schedule}</Button>
+                                            <Button variant="secondary" onClick={() => onOpenScheduleModal({ id: postInfo.post.id, title: postInfo.post.title, platform: postInfo.post.platform, scheduledAt: postInfo.post.scheduledAt || null, status: postInfo.post.status, post: postInfo.post })} className="flex items-center gap-2"><CalendarIcon className="h-4 w-4"/> {texts.schedule}</Button>
                                             <Button variant="secondary" onClick={handlePublish} disabled={isPublishing} className="flex items-center gap-2">
                                                 {isPublishing ? (
                                                     <>
@@ -671,7 +677,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                                 ) : (
                                                     <>
                                                         <LinkIcon className="h-4 w-4"/> {texts.publishNow}
-                                                    </>)}
+                                                    </>
+                                                )}
                                             </Button>
                                         </>
                                     )}
@@ -691,7 +698,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 onSetVideo={(dataUrl, key) => onSetVideo(dataUrl, key, postInfo)}
                                 generatedImages={props.generatedImages}
                                 generatedVideos={props.generatedVideos}
-                                isGenerating={props.isGeneratingImage(editedPost.imageKey || editedPost.id)}
+                                isGenerating={props.isGenerating}
                                 texts={texts}
                             />
                         ) : (
@@ -735,7 +742,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 </div>
                                 <div className="mt-3">
                                     <label className="text-xs font-medium text-gray-600">Keywords</label>
-                                    <TagInput tags={postKeywords} setTags={setPostKeywords} placeholder="Add keywords..." />
+                                    <TagInput label="Keywords" tags={postKeywords} setTags={setPostKeywords} placeholder="Add keywords..." />
                                 </div>
                             </div>
                             <Button 

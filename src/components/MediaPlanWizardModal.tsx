@@ -234,7 +234,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
                                 </div>
                                 <div>
                                      <label htmlFor="keywords" className="text-sm font-medium text-gray-700">Keywords</label>
-                                     <TagInput tags={keywords} setTags={setKeywords} placeholder="Add keywords..." />
+                                     <TagInput label="Keywords" tags={keywords} setTags={setKeywords} placeholder="Add keywords..." />
                                 </div>
                                 <div>
                                     <label htmlFor="pillar" className="text-sm font-medium text-gray-700">Content Pillar</label>

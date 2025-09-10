@@ -49,6 +49,7 @@ export const generateContentWithBff = async (
       body: JSON.stringify({ model, contents, config, settings }),
     });
     
+    // The backend returns a JSON object with a text property
     return response.text;
   } catch (error) {
     console.error(`Error calling BFF endpoint /api/gemini/generate:`, error);

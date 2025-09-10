@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { MediaPlanGroup, MediaPlanPost, Settings, AffiliateLink, SchedulingPost, Persona, PostInfo, Idea } from '../../types';
+import type { MediaPlanGroup, MediaPlanPost, Settings, AffiliateLink, SchedulingPost, Persona, PostInfo, Idea, GeneratedAssets } from '../../types';
 import { Button, Input, Select } from './ui';
 import { 
   ArchiveIcon, 
@@ -56,7 +57,7 @@ interface MediaPlanDisplayProps {
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
-  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], postInfo: PostInfo) => Promise<void>;
+  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
   // KhongMinh Props
   analyzingPostIds: Set<string>;
@@ -77,7 +78,7 @@ interface MediaPlanDisplayProps {
   onClearSelection: () => void;
   onOpenScheduleModal: (post: SchedulingPost | null) => void;
   onOpenBulkScheduleModal: () => void;
-  onPostDrop: (postInfo: SchedulingPost, newDate: Date) => void;
+  onPostDrop: (postInfo: PostInfo, newDate: Date) => void;
   // Bulk Actions
   isPerformingBulkAction: boolean;
   onBulkGenerateImages: (posts: PostInfo[]) => void;
@@ -97,28 +98,48 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
   const { 
     plans, 
     personas, 
+    affiliateLinks,
+    onOpenWizard, 
+    onGenerateImage, 
+    onSetImage, 
+    generatedImages, 
+    generatedVideos, 
+    onSetVideo, 
+    isGeneratingImage, 
     settings, 
     onExport, 
     isExporting, 
-    onOpenWizard, 
+    onRegenerateWeekImages, 
     planGroupsList, 
     onSelectPlan, 
     activePlanId, 
-    isAnyAnalysisRunning, 
     onUpdatePost, 
     onRefinePost,
     onGenerateInCharacterPost,
-    onOpenScheduleModal, 
-    onOpenBulkScheduleModal, 
-    onPostDrop, 
-    isPerformingBulkAction, 
-    onBulkGenerateImages, 
-    onBulkSuggestPromotions, 
-    onBulkGenerateComments, 
-    onAssignPersonaToPlan, 
-    onPublishPost, 
+    onAssignPersonaToPlan,
+    analyzingPostIds,
+    isAnyAnalysisRunning,
+    khongMinhSuggestions,
+    onAcceptSuggestion,
+    onRunKhongMinhForPost,
+    generatingPromptKeys,
+    onGeneratePrompt,
+    onGenerateAffiliateComment,
+    generatingCommentPostIds,
+    selectedPostIds,
+    onTogglePostSelection,
+    onSelectAllPosts,
+    onClearSelection,
+    onOpenScheduleModal,
+    onOpenBulkScheduleModal,
+    onPostDrop,
+    isPerformingBulkAction,
+    onBulkGenerateImages,
+    onBulkSuggestPromotions,
+    onBulkGenerateComments,
+    onPublishPost,
     brandFoundation,
-    onOpenFunnelWizard, // New prop
+    onOpenFunnelWizard,
     viewingPost,
     setViewingPost
   } = props;
@@ -277,7 +298,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     
     if (updatedPost && updatedPost.id === viewingPost.post.id) {
       if (JSON.stringify(updatedPost) !== JSON.stringify(viewingPost.post)) {
-        setViewingPost(prev => prev ? { ...prev, post: updatedPost } : null);
+        setViewingPost(viewingPost ? { ...viewingPost, post: updatedPost } : null);
       }
     } else {
       // Post was not found (e.g., plan changed), but we don't close the modal
@@ -345,7 +366,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                     planId: selectedPlan.id,
                     weekIndex: 0,
                     postIndex: 0,
-                    post,
+                    post: post as MediaPlanPost, // Ensure post is typed correctly
                 };
             }
             
@@ -353,7 +374,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                 planId: selectedPlan.id,
                 weekIndex: location.weekIndex,
                 postIndex: location.postIndex,
-                post,
+                post: post as MediaPlanPost, // Ensure post is typed correctly
             };
         });
     }, [paginatedPosts, selectedPlan]);
@@ -362,11 +383,19 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
         let filteredPosts = [...paginatedPostInfos];
 
         if (searchQuery) {
-            filteredPosts = filteredPosts.filter(p =>
-                p.post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                p.post.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (p.post.hashtags || []).join(' ').toLowerCase().includes(searchQuery.toLowerCase())
-            );
+            filteredPosts = filteredPosts.filter(p => {
+                // Handle content being string or string[]
+                let contentString = '';
+                if (typeof p.post.content === 'string') {
+                    contentString = p.post.content;
+                } else if (Array.isArray(p.post.content)) {
+                    contentString = p.post.content.join(' ');
+                }
+                
+                return p.post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    contentString.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (p.post.hashtags || []).join(' ').toLowerCase().includes(searchQuery.toLowerCase());
+            });
         }
 
         if (selectedPlatforms.length > 0) {
@@ -419,7 +448,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     setSelectedStatuses(prev => prev.includes(statusId) ? prev.filter(s => s !== statusId) : [...prev, statusId]);
   };
   
-  const isAllDisplayedSelected = displayedPosts.length > 0 && props.selectedPostIds.size === displayedPosts.length && displayedPosts.every(p => props.selectedPostIds.has(p.post.id));
+  const isAllDisplayedSelected = displayedPosts.length > 0 && props.selectedPostIds && props.selectedPostIds.size === displayedPosts.length && displayedPosts.every(p => props.selectedPostIds.has(p.post.id));
 
   const handleSelectAllToggle = () => {
     if (isAllDisplayedSelected) {
@@ -430,7 +459,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
   };
   
   const handleBulkAction = (action: (posts: PostInfo[]) => void) => {
-    const selectedPostsInOrder = displayedPosts.filter(p => props.selectedPostIds.has(p.post.id));
+    const selectedPostsInOrder = displayedPosts.filter(p => props.selectedPostIds && props.selectedPostIds.has(p.post.id));
     action(selectedPostsInOrder);
   };
 
@@ -633,7 +662,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                               <Button onClick={() => handleBulkAction(onBulkGenerateImages)} disabled={isPerformingBulkAction} variant="secondary" className="bg-white text-sm py-1.5 px-3 flex items-center gap-1.5"><PhotographIcon className="h-4 w-4" /> {currentTexts.selection_gen_images}</Button>
                               <Button onClick={() => handleBulkAction(onBulkSuggestPromotions)} disabled={isPerformingBulkAction} variant="secondary" className="bg-white text-sm py-1.5 px-3 flex items-center gap-1.5"><KhongMinhIcon className="h-4 w-4" /> {currentTexts.selection_sug_promo}</Button>
                               <Button onClick={() => handleBulkAction(onBulkGenerateComments)} disabled={isPerformingBulkAction} variant="secondary" className="bg-white text-sm py-1.5 px-3 flex items-center gap-1.5"><ChatBubbleLeftIcon className="h-4 w-4" /> {currentTexts.selection_gen_comment}</Button>
-                              <Button onClick={onOpenBulkScheduleModal} disabled={isPerformingBulkAction} className="text-sm py-1.5 px-3 flex items-center gap-1.5"><CalendarIcon className="h-4 w-4" /> {currentTexts.selection_schedule}</Button>
+                              <Button onClick={() => handleBulkAction(() => onOpenBulkScheduleModal())} disabled={isPerformingBulkAction} className="text-sm py-1.5 px-3 flex items-center gap-1.5"><CalendarIcon className="h-4 w-4" /> {currentTexts.selection_schedule}</Button>
                               <Button variant="secondary" className="bg-white text-red-600 border-red-200 hover:bg-red-50 text-sm py-1.5 px-3 flex items-center gap-1.5" disabled={isPerformingBulkAction}><TrashIcon className="h-4 w-4" /> {currentTexts.selection_delete}</Button>
                             </div>
                           </div>
@@ -690,7 +719,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                                 language={language}
                                 imageUrl={postInfo.post.imageKey ? props.generatedImages[postInfo.post.imageKey] : undefined}
                                 videoUrl={postInfo.post.videoKey ? props.generatedVideos[postInfo.post.videoKey] : undefined}
-                                isSelected={props.selectedPostIds.has(postInfo.post.id)}
+                                isSelected={props.selectedPostIds && props.selectedPostIds.has(postInfo.post.id)}
                                 onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}
                                 onViewDetails={handleViewDetails}
                                 scheduledAt={postInfo.post.scheduledAt}
@@ -855,30 +884,42 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
              generatedImages={props.generatedImages}
              generatedVideos={props.generatedVideos}
              onSetVideo={props.onSetVideo}
-             isAnyAnalysisRunning={props.isAnyAnalysisRunning}
-             isGeneratingImage={props.isGeneratingImage}
-             isGeneratingPrompt={props.generatingPromptKeys.has(`${viewingPost.planId}_${viewingPost.weekIndex}_${viewingPost.postIndex}`)}
-             isAnalyzing={props.analyzingPostIds.has(viewingPost.post.id)}
-             khongMinhSuggestions={props.khongMinhSuggestions}
-             onGenerateImage={props.onGenerateImage}
+             isAnyAnalysisRunning={isAnyAnalysisRunning}
+             isGeneratingImage={isGeneratingImage}
+             isGeneratingPrompt={generatingPromptKeys.has(`${viewingPost.planId}_${viewingPost.weekIndex}_${viewingPost.postIndex}`)}
+             isGenerating={false} // Add this line
+             isAnalyzing={analyzingPostIds.has(viewingPost.post.id)}
+             khongMinhSuggestions={khongMinhSuggestions}
+             onGenerateImage={onGenerateImage}
              onGeneratePrompt={async (postInfo) => {
-               const updatedPost = await props.onGeneratePrompt(postInfo);
+               const updatedPost = await onGeneratePrompt(postInfo);
                if (updatedPost) {
                  setViewingPost({ ...postInfo, post: updatedPost });
                }
              }}
-             onRefinePost={props.onRefinePost}
-             onGenerateInCharacterPost={props.onGenerateInCharacterPost}
-             onSetImage={props.onSetImage}
-             isGeneratingComment={props.generatingCommentPostIds.has(viewingPost.post.id)}
+             onRefinePost={onRefinePost}
+             onGenerateInCharacterPost={onGenerateInCharacterPost}
+             isRefining={false} // Add this line
+             onSetImage={onSetImage}
+             isGeneratingComment={generatingCommentPostIds.has(viewingPost.post.id)}
              onGenerateComment={async (postInfo) => {
-               const updatedPost = await props.onGenerateAffiliateComment(postInfo);
+               const updatedPost = await onGenerateAffiliateComment(postInfo);
                if (updatedPost) {
                  setViewingPost({ ...postInfo, post: updatedPost });
                }
              }}
              onOpenScheduleModal={() => {
-               onOpenScheduleModal(viewingPost as SchedulingPost)
+               if (viewingPost) {
+                 const schedulingPost: SchedulingPost = {
+                   id: viewingPost.post.id,
+                   title: viewingPost.post.title,
+                   platform: viewingPost.post.platform,
+                   scheduledAt: viewingPost.post.scheduledAt || null,
+                   status: viewingPost.post.status,
+                   post: viewingPost.post
+                 };
+                 onOpenScheduleModal(schedulingPost);
+               }
              }}
              onPublishPost={async (postInfo) => {
                await props.onPublishPost(postInfo);

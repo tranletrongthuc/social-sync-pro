@@ -1,36 +1,29 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
-
 import ExcelJS, { Cell } from 'exceljs';
 import type { AffiliateLink } from '../../types';
 import { Button, Input, Select } from './ui';
-import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, CashIcon, ScaleIcon, CollectionIcon, SparklesIcon, LinkIcon } from './icons';
+import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, ScaleIcon, CollectionIcon, LinkIcon } from './icons';
 import ProductCard from './ProductCard';
 
 interface AffiliateVaultDisplayProps {
   affiliateLinks: AffiliateLink[];
   onSaveLink: (link: AffiliateLink) => void;
   onDeleteLink: (linkId: string) => void;
-  onImportLinks: (links: AffiliateLink[]) => void;
-  onReloadLinks: () => void; // New prop for reloading links
-  onGenerateIdeasFromProduct?: (product: AffiliateLink) => void; // New prop for generating ideas from a product
+  onImportLinks: (links: Omit<AffiliateLink, 'id' | 'brandId'>[]) => void;
+  onReloadLinks: () => void;
+  onGenerateIdeasFromProduct?: (product: AffiliateLink) => void;
   language: string;
-  // Lazy loading props
   isDataLoaded?: boolean;
   onLoadData?: () => void;
   isLoading?: boolean;
 }
 
-const emptyLink: Omit<AffiliateLink, 'id'> = {
-    productId: '',
+const emptyLink: Omit<AffiliateLink, 'id' | 'brandId'> = {
     productName: '',
-    price: 0,
-    salesVolume: 0,
+    productLink: '',
     providerName: '',
     commissionRate: 0,
-    commissionValue: 0,
-    productLink: '',
-    promotionLink: '',
+    notes: '',
 };
 
 const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language, isDataLoaded, onLoadData, isLoading }) => {
@@ -51,20 +44,15 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             subtitle: "Quản lý tất cả các liên kết sản phẩm affiliate của bạn ở một nơi.",
             addLink: "Thêm liên kết mới",
             importFromFile: "Nhập từ tệp",
-            // Empty State
+            reload: "Tải lại",
             noLinks: "Chưa có liên kết affiliate nào.",
             addFirstLink: "Thêm liên kết đầu tiên của bạn để bắt đầu.",
             noResults: "Không tìm thấy kết quả",
             noResultsDesc: "Hãy thử một tìm kiếm khác hoặc thêm một liên kết mới.",
-            // Confirm
-            confirmDeleteMessage: "Bạn có chắc chắn muốn xóa liên kết này không? Hành động này không thể hoàn tác và sẽ xóa bản ghi khỏi MongoDB nếu được kết nối.",
-            // KPIs
+            confirmDeleteMessage: "Bạn có chắc chắn muốn xóa liên kết này không?",
             totalLinks: "Tổng số liên kết",
-            totalComm: "Tổng hoa hồng",
-            avgRate: "Tỷ lệ trung bình",
-            topPerformer: "Hiệu suất cao nhất",
-            // Toolbar
-            searchPlaceholder: "Tìm kiếm theo tên, ID, hoặc nhà cung cấp...",
+            avgRate: "Tỷ lệ HH TB",
+            searchPlaceholder: "Tìm kiếm theo tên hoặc nhà cung cấp...",
             sortBy: "Sắp xếp theo",
             productsPerPage: "Sản phẩm/trang"
         },
@@ -73,78 +61,48 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             subtitle: "Manage all of your affiliate product links in one place.",
             addLink: "Add New Link",
             importFromFile: "Import from File",
-            // Empty State
+            reload: "Reload",
             noLinks: "No affiliate links yet.",
             addFirstLink: "Add your first link to get started.",
             noResults: "No results found",
             noResultsDesc: "Try a different search or add a new link.",
-            // Confirm
-            confirmDeleteMessage: "Are you sure you want to delete this link? This cannot be undone and will remove the record from MongoDB if connected.",
-            // KPIs
+            confirmDeleteMessage: "Are you sure you want to delete this link?",
             totalLinks: "Total Links",
-            totalComm: "Total Commission",
-            avgRate: "Average Rate",
-            topPerformer: "Top Performer",
-            // Toolbar
-            searchPlaceholder: "Search by name, ID, or provider...",
+            avgRate: "Avg. Rate",
+            searchPlaceholder: "Search by name or provider...",
             sortBy: "Sort by",
             productsPerPage: "Products/page"
         }
     };
     const texts = (T as any)[language] || T['English'];
 
-    const formatCurrency = useMemo(() => (value: number) => {
-        return new Intl.NumberFormat(language === 'Việt Nam' ? 'vi-VN' : 'en-US', {
-            style: 'currency',
-            currency: language === 'Việt Nam' ? 'VND' : 'USD',
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0,
-        }).format(value);
-    }, [language]);
-
-
     const kpiData = useMemo(() => {
         const totalLinks = affiliateLinks.length;
         if (totalLinks === 0) {
-            return {
-                totalLinks: '0',
-                totalComm: formatCurrency(0),
-                avgRate: '0%',
-                topPerformer: { name: 'N/A', value: '' }
-            }
+            return { totalLinks: '0', avgRate: '0%' };
         }
-        const totalComm = affiliateLinks.reduce((sum, link) => sum + link.commissionValue, 0);
-        const totalRate = affiliateLinks.reduce((sum, link) => sum + link.commissionRate, 0);
+        const totalRate = affiliateLinks.reduce((sum, link) => sum + (link.commissionRate || 0), 0);
         const avgRate = totalLinks > 0 ? totalRate / totalLinks : 0;
-        const topPerformer = [...affiliateLinks].sort((a,b) => b.commissionValue - a.commissionValue)[0];
-
         return {
             totalLinks: totalLinks.toString(),
-            totalComm: formatCurrency(totalComm),
             avgRate: `${avgRate.toFixed(1)}%`,
-            topPerformer: {
-                name: topPerformer?.productName || 'N/A',
-                value: formatCurrency(topPerformer?.commissionValue || 0)
-            }
-        }
-    }, [affiliateLinks, formatCurrency]);
+        };
+    }, [affiliateLinks]);
 
     const processedLinks = useMemo(() => {
-        const filtered = affiliateLinks.filter(link => 
-            link.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            link.productId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            link.providerName.toLowerCase().includes(searchQuery.toLowerCase())
+        const filtered = affiliateLinks.filter(link =>
+            (link.productName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (link.providerName || '').toLowerCase().includes(searchQuery.toLowerCase())
         );
 
         const [sortKey, sortDir] = sortBy.split('-');
-        
+
         return filtered.sort((a, b) => {
-            let valA, valB;
-            switch(sortKey) {
-                case 'price':
-                case 'commissionValue':
-                    valA = a[sortKey as keyof AffiliateLink] as number;
-                    valB = b[sortKey as keyof AffiliateLink] as number;
+            let valA: string | number, valB: string | number;
+            switch (sortKey) {
+                case 'commissionRate':
+                    valA = a.commissionRate || 0;
+                    valB = b.commissionRate || 0;
                     break;
                 case 'productName':
                 default:
@@ -156,7 +114,6 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             if (valA > valB) return sortDir === 'asc' ? 1 : -1;
             return 0;
         });
-
     }, [affiliateLinks, searchQuery, sortBy]);
 
     const displayLinks = useMemo(() => {
@@ -175,55 +132,18 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
         setIsAddingNewLink(false);
     };
 
-    const handleGenerateIdeas = (product: AffiliateLink) => {
-        // This function will be called when the "Generate Ideas" button is clicked
-        if (onGenerateIdeasFromProduct) {
-            onGenerateIdeasFromProduct(product);
-        }
-    };
-
     const getCellValue = (cell: Cell): string => {
         if (!cell || cell.value === null || cell.value === undefined) return '';
         const val = cell.value;
         if (typeof val === 'object' && val !== null) {
-            if ('richText' in val && Array.isArray((val as any).richText)) return (val as any).richText.map((rt:any) => rt.text).join('');
+            if ('richText' in val && Array.isArray((val as any).richText)) return (val as any).richText.map((rt: any) => rt.text).join('');
             if ('text' in val) return String((val as any).text);
             if ('result' in val) return String((val as any).result);
             return val.toString();
         }
         return String(val);
     };
-
-    const parseAffiliateNumeric = (value: string | number | null | undefined): number => {
-        if (typeof value === 'number') return value;
-        if (!value) return 0;
     
-        let s = String(value).toLowerCase().trim();
-    
-        // Remove currency symbols, percent, and '+' from "k+" etc.
-        s = s.replace(/₫|vnd|\+|%/g, '').trim();
-    
-        let multiplier = 1;
-        if (s.endsWith('tr')) {
-            multiplier = 1000000;
-            s = s.slice(0, -2).trim();
-        } else if (s.endsWith('k')) {
-            multiplier = 1000;
-            s = s.slice(0, -1).trim();
-        }
-        
-        // For Vietnamese style numbers: remove dots (thousands separators), then replace comma with dot (decimal separator).
-        s = s.replace(/\./g, '').replace(/,/g, '.');
-        
-        const num = parseFloat(s);
-    
-        if (isNaN(num)) {
-            return 0;
-        }
-    
-        return num * multiplier;
-    };
-
     const handleFileImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
@@ -232,16 +152,9 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
         let worksheet: ExcelJS.Worksheet;
     
         try {
-            if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-                const csvText = await file.text();
-                const parsedRows = csvText.trim().split(/\r?\n/).map(line => line.split(',').map(field => field.trim().replace(/^"|"$/g, '')));
-                worksheet = workbook.addWorksheet('Imported CSV');
-                worksheet.addRows(parsedRows);
-            } else {
-                const buffer = await file.arrayBuffer();
-                await workbook.xlsx.load(buffer);
-                worksheet = workbook.worksheets[0];
-            }
+            const buffer = await file.arrayBuffer();
+            await workbook.xlsx.load(buffer);
+            worksheet = workbook.worksheets[0];
 
             if (!worksheet) throw new Error("Could not find a worksheet.");
     
@@ -250,19 +163,20 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 headers[getCellValue(cell).trim().toLowerCase()] = colNumber;
             });
     
-            const headerMapping: Record<string, keyof AffiliateLink> = {
-                'mã sản phẩm': 'productId', 'product id': 'productId',
-                'tên sản phẩm': 'productName', 'product name': 'productName',
-                'giá': 'price', 'price': 'price',
-                'doanh số': 'salesVolume', 'sales volume': 'salesVolume', 'doanh thu': 'salesVolume',
-                'tên cửa hàng': 'providerName', 'provider name': 'providerName',
-                'tỉ lệ hoa hồng': 'commissionRate', 'commission rate': 'commissionRate',
-                'hoa hồng': 'commissionValue', 'commission value': 'commissionValue',
-                'link sản phẩm': 'productLink', 'product link': 'productLink',
-                'link ưu đãi': 'promotionLink', 'promotion link': 'promotionLink',
+            const headerMapping: Record<string, keyof Omit<AffiliateLink, 'id' | 'brandId'>> = {
+                'product name': 'productName',
+                'tên sản phẩm': 'productName',
+                'product link': 'productLink',
+                'link sản phẩm': 'productLink',
+                'provider name': 'providerName',
+                'tên cửa hàng': 'providerName',
+                'commission rate': 'commissionRate',
+                'tỉ lệ hoa hồng': 'commissionRate',
+                'notes': 'notes',
+                'ghi chú': 'notes',
             };
     
-            const importedLinks: AffiliateLink[] = [];
+            const importedLinks: Omit<AffiliateLink, 'id' | 'brandId'>[] = [];
             worksheet.eachRow((row, rowNumber) => {
                 if (rowNumber === 1) return;
     
@@ -271,22 +185,23 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                     const colNumber = headers[header];
                     if (colNumber) {
                         const cellValue = getCellValue(row.getCell(colNumber));
-                        if (cellValue) (link as any)[key] = cellValue;
+                        if (cellValue) {
+                            if (key === 'commissionRate') {
+                                (link as any)[key] = parseFloat(cellValue) || 0;
+                            } else {
+                                (link as any)[key] = cellValue;
+                            }
+                        }
                     }
                 });
     
                 if (link.productName && link.productLink) {
                     importedLinks.push({
-                        id: crypto.randomUUID(),
-                        productId: String(link.productId || ''),
                         productName: String(link.productName),
-                        price: parseAffiliateNumeric(link.price),
-                        salesVolume: parseAffiliateNumeric(link.salesVolume),
-                        providerName: String(link.providerName || ''),
-                        commissionRate: parseAffiliateNumeric(link.commissionRate),
-                        commissionValue: parseAffiliateNumeric(link.commissionValue),
                         productLink: String(link.productLink),
-                        promotionLink: String(link.promotionLink || ''),
+                        providerName: String(link.providerName || ''),
+                        commissionRate: Number(link.commissionRate || 0),
+                        notes: String(link.notes || ''),
                     });
                 }
             });
@@ -302,7 +217,6 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
 
     return (
         <div className="h-full flex flex-col p-4 lg:px-8 lg:py-6 bg-gray-50/50 relative">
-            {/* Loading indicator */}
             {isLoading && (
                 <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
                     <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
@@ -327,7 +241,6 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 </div>
             </header>
 
-            {/* KPIs */}
             <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm mb-4">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="p-1 text-center">
@@ -336,28 +249,17 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                         <p className="text-lg font-bold text-gray-900">{kpiData.totalLinks}</p>
                     </div>
                     <div className="p-1 text-center">
-                        <CashIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
-                        <p className="text-xs font-medium text-gray-500">{texts.totalComm}</p>
-                        <p className="text-lg font-bold text-gray-900">{kpiData.totalComm}</p>
-                    </div>
-                    <div className="p-1 text-center">
                         <ScaleIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
                         <p className="text-xs font-medium text-gray-500">{texts.avgRate}</p>
                         <p className="text-lg font-bold text-gray-900">{kpiData.avgRate}</p>
                     </div>
-                    <div className="p-1 text-center">
-                        <SparklesIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
-                        <p className="text-xs font-medium text-gray-500">{texts.topPerformer}</p>
-                        <p className="text-lg font-bold text-gray-900 truncate" title={kpiData.topPerformer.name}>{kpiData.topPerformer.value}</p>
-                    </div>
                 </div>
             </div>
 
-            {/* Toolbar */}
             <div className="mb-4 flex flex-col md:flex-row gap-3">
                 <div className="relative flex-grow">
-                    <Input 
-                        placeholder={texts.searchPlaceholder} 
+                    <Input
+                        placeholder={texts.searchPlaceholder}
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         className="pl-10"
@@ -379,10 +281,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                         <Select id="sort-by" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
                             <option value="productName-asc">{language === 'Việt Nam' ? 'Tên sản phẩm (A-Z)' : 'Product Name (A-Z)'}</option>
                             <option value="productName-desc">{language === 'Việt Nam' ? 'Tên sản phẩm (Z-A)' : 'Product Name (Z-A)'}</option>
-                            <option value="price-desc">{language === 'Việt Nam' ? 'Giá (Cao-Thấp)' : 'Price (High-Low)'}</option>
-                            <option value="price-asc">{language === 'Việt Nam' ? 'Giá (Thấp-Cao)' : 'Price (Low-High)'}</option>
-                            <option value="commissionValue-desc">{language === 'Việt Nam' ? 'Hoa hồng (Cao-Thấp)' : 'Commission (High-Low)'}</option>
-                            <option value="commissionValue-asc">{language === 'Việt Nam' ? 'Hoa hồng (Thấp-Cao)' : 'Commission (Low-High)'}</option>
+                            <option value="commissionRate-desc">{language === 'Việt Nam' ? 'Tỷ lệ HH (Cao-Thấp)' : 'Comm. Rate (High-Low)'}</option>
+                            <option value="commissionRate-asc">{language === 'Việt Nam' ? 'Tỷ lệ HH (Thấp-Cao)' : 'Comm. Rate (Low-High)'}</option>
                         </Select>
                     </div>
                 </div>
@@ -397,22 +297,21 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                      {isAddingNewLink && (
                                         <ProductCard
                                             isNew
-                                            link={{...emptyLink, id: 'new'}}
+                                            link={{...emptyLink, id: 'new', brandId: ''}}
                                             onSave={handleSaveNew}
                                             onCancel={() => setIsAddingNewLink(false)}
-                                            formatCurrency={formatCurrency}
                                             language={language}
+                                            onGenerateIdeas={onGenerateIdeasFromProduct}
                                         />
                                     )}
                                     {displayLinks.map(link => (
-                                        <ProductCard 
+                                        <ProductCard
                                             key={link.id}
                                             link={link}
                                             onSave={onSaveLink}
                                             onDelete={() => handleDelete(link.id)}
-                                            formatCurrency={formatCurrency}
                                             language={language}
-                                            onGenerateIdeas={handleGenerateIdeas}
+                                            onGenerateIdeas={onGenerateIdeasFromProduct}
                                         />
                                     ))}
                                 </div>
@@ -429,7 +328,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                 <Button
                                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                                     disabled={currentPage === 1}
-                                    variant="outline"
+                                    variant="tertiary"
                                 >
                                     {language === 'Việt Nam' ? 'Trước' : 'Previous'}
                                 </Button>
@@ -439,7 +338,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                 <Button
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                     disabled={currentPage === totalPages}
-                                    variant="outline"
+                                    variant="tertiary"
                                 >
                                     {language === 'Việt Nam' ? 'Sau' : 'Next'}
                                 </Button>

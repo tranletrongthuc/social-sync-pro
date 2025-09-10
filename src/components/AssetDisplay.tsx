@@ -314,8 +314,8 @@ const CoreAssetsSection: React.FC<{ assets: CoreMediaAssets } & ImageGenSectionP
         </div>
 
         <h4 className="text-xl font-bold font-sans text-gray-900 my-6">{currentTexts.fontRecs}</h4>
-        <p><strong className="font-sans text-gray-800">{currentTexts.headlines}:</strong> {assets.fontRecommendations?.headlines?.name} ({assets.fontRecommendations?.headlines?.weight})</p>
-        <p><strong className="font-sans text-gray-800">{currentTexts.body}:</strong> {assets.fontRecommendations?.body?.name} ({assets.fontRecommendations?.body?.weight})</p>
+        <p><strong className="font-sans text-gray-800">{currentTexts.headlines}:</strong> {Array.isArray(assets.fontRecommendations) ? assets.fontRecommendations.find(f => f.type === 'heading')?.name : 'N/A'}</p>
+        <p><strong className="font-sans text-gray-800">{currentTexts.body}:</strong> {Array.isArray(assets.fontRecommendations) ? assets.fontRecommendations.find(f => f.type === 'body')?.name : 'N/A'}</p>
     </Section>
 )};
 

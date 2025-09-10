@@ -1,3 +1,4 @@
+import type { BrandFoundation, CoreMediaAssets, UnifiedProfileAssets, AffiliateLink, MediaPlanGroup, Trend, Idea, Persona, MediaPlanPost } from '../../types';
 import { 
   loadInitialProjectData, 
   loadMediaPlanGroupsList, 
@@ -139,4 +140,3 @@ export const loadMediaPlanPosts = async (
   dataCache[cacheKey] = data;
   return data;
 };
-

@@ -1,7 +1,9 @@
 import { uploadMediaWithBff } from './bffService';
+import type { Settings } from '../../types';
 
 export const uploadMediaToCloudinary = async (
-    media: Record<string, string>
+    media: Record<string, string>,
+    settings: Settings
 ): Promise<Record<string, string>> => {
 
     const mediaToUpload = Object.entries(media).filter(
@@ -13,5 +15,5 @@ export const uploadMediaToCloudinary = async (
     }
     
     // Use BFF exclusively for secure Cloudinary uploads
-    return await uploadMediaWithBff(media);
+    return await uploadMediaWithBff(media, settings.cloudinaryCloudName || '', settings.cloudinaryUploadPreset || '');
 };

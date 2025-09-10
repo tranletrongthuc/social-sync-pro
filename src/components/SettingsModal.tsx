@@ -109,9 +109,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
 
   const handleAddPillar = () => {
     if (newPillar.name && newPillar.targetPercentage > 0) {
+        const pillarToAdd = { ...newPillar, description: '' };
         setSettings(prev => ({
             ...prev,
-            contentPillars: [...(prev.contentPillars || []), newPillar]
+            contentPillars: [...(prev.contentPillars || []), pillarToAdd]
         }));
         setNewPillar({ name: '', targetPercentage: 0 }); // Reset form
     }
@@ -255,7 +256,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                                         placeholder="%"
                                     />
                                     <span className="text-gray-500">%</span>
-                                    <Button onClick={() => handleRemovePillar(index)} variant="icon" aria-label="Remove Pillar">
+                                    <Button onClick={() => handleRemovePillar(index)} variant="tertiary" aria-label="Remove Pillar">
                                         <TrashIcon className="h-5 w-5" />
                                     </Button>
                                 </div>
@@ -278,7 +279,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                                     placeholder="%"
                                 />
                                 <span className="text-gray-500">%</span>
-                                <Button onClick={handleAddPillar} variant="icon" aria-label="Add Pillar">
+                                <Button onClick={handleAddPillar} variant="tertiary" aria-label="Add Pillar">
                                     <PlusIcon className="h-5 w-5" />
                                 </Button>
                             </div>

@@ -9,7 +9,9 @@ import type {
   Persona, 
   Trend, 
   Idea, 
-  PostInfo 
+  PostInfo,
+  FacebookPostIdea,
+  GenerationOptions
 } from '../../types';
 import { Header, ActiveTab } from './Header';
 
@@ -39,7 +41,7 @@ interface MainDisplayProps {
   isExportingBrandKit: boolean;
   onExportPlan: () => void;
   isExportingPlan: boolean;
-  onGeneratePlan: (prompt: string, useSearch: boolean, totalPosts: number, selectedPlatforms: string[], options: { tone: string; style: string; length: string; includeEmojis: boolean; }, selectedProductId: string | null, personaId: string | null) => void;
+  onGeneratePlan: (objective: string, keywords: string[], useSearch: boolean, selectedPlatforms: string[], options: GenerationOptions, selectedProductId: string | null, personaId: string | null, pillar: string) => void;
   isGeneratingPlan: boolean;
   onRegenerateWeekImages: (planId: string, weekIndex: number) => void;
   productImages: File[]; // This prop is deprecated but kept for avoiding breaking changes in unrelated components.
@@ -58,7 +60,7 @@ interface MainDisplayProps {
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
-  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], postInfo: PostInfo) => Promise<void>;
+  onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
   // Affiliate Vault Props
   onSaveAffiliateLink: (link: AffiliateLink) => void;
@@ -86,7 +88,7 @@ interface MainDisplayProps {
   onOpenScheduleModal: (post: SchedulingPost | null) => void;
   isScheduling: boolean;
   onSchedulePost: (postInfo: SchedulingPost, scheduledAt: string) => void;
-  onPostDrop: (postInfo: SchedulingPost, newDate: Date) => void;
+  onPostDrop: (postInfo: PostInfo, newDate: Date) => void;
   schedulingPost: SchedulingPost | null;
   onOpenBulkScheduleModal: () => void;
   isBulkScheduleModalOpen: boolean;
@@ -115,8 +117,6 @@ interface MainDisplayProps {
   isGeneratingTrendsFromSearch: boolean;
   onLoadIdeasForTrend?: (trendId: string) => void; // New prop
   productTrendToSelect: string | null; // New prop to specify which product trend to select
-  // Video
-  onSetVideo: (dataUrl: string, key: string, postInfo: PostInfo) => void;
   // New Facebook Strategy Props
   onGenerateFacebookPostIdeas: (postInfo: PostInfo) => void;
   onAddFacebookPostIdeaToPlan: (idea: FacebookPostIdea) => void;
@@ -128,13 +128,13 @@ interface MainDisplayProps {
   onCreateFunnelCampaignPlan: (plan: MediaPlanGroup) => void;
   // Lazy loading props
   isStrategyHubDataLoaded?: boolean;
-  onLoadStrategyHubData?: () => void;
+  onLoadStrategyHubData?: () => Promise<void>;
   isLoadingStrategyHubData?: boolean;
   isAffiliateVaultDataLoaded?: boolean;
-  onLoadAffiliateVaultData?: () => void;
+  onLoadAffiliateVaultData?: () => Promise<void>;
   isLoadingAffiliateVaultData?: boolean;
   isPersonasDataLoaded?: boolean;
-  onLoadPersonasData?: () => void;
+  onLoadPersonasData?: () => Promise<void>;
   isLoadingPersonasData?: boolean;
 }
 
@@ -538,16 +538,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               generatedImages={generatedImages}
               onSavePersona={onSavePersona}
               onDeletePersona={onDeletePersona}
-              onSetPersonaImage={onSetPersonaImage}
-              isUploadingImage={isUploadingImage}
               language={settings.language}
-              onUpdatePersona={onUpdatePersona}
               brandFoundation={brandFoundation}
               onAutoGeneratePersona={onAutoGeneratePersona}
-              // Lazy loading props
-              isDataLoaded={loadedTabs.has('personas')}
-              onLoadData={props.onLoadPersonasData}
-              isLoading={loadingTabs.has('personas')}
             />
           )}
         </Suspense>

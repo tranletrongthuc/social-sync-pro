@@ -1,202 +1,178 @@
+import { saveAs } from 'file-saver';
+import { Workbook } from 'exceljs';
+import type { GeneratedAssets, MediaPlanGroup, MediaPlanPost, BrandFoundation, LogoConcept, UnifiedProfileAssets, Settings, Persona } from '../../types';
+import { Packer, Document, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, VerticalAlign } from 'docx';
 
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, Table, TableRow, TableCell, WidthType, VerticalAlign, AlignmentType, BorderStyle, ShadingType } from 'docx';
-import ExcelJS from 'exceljs';
-import type { GeneratedAssets, ColorInfo, MediaPlan, MediaPlanGroup } from '../../types';
+const NON_BREAKING_HYPHEN = '\u2011';
 
-const getTranslation = (language: string) => {
-    const translations = {
-        'Việt Nam': {
-            // DOCX
-            title: 'Bộ nhận diện Thương hiệu',
-            brand_foundation: 'Nền tảng Thương hiệu',
-            brand_name: 'Tên thương hiệu',
-            mission: 'Sứ mệnh',
-            usp: 'Điểm bán hàng độc nhất (USP)',
-            values: 'Giá trị Cốt lõi',
-            key_messaging: 'Thông điệp Chính',
-            target_audience: 'Đối tượng Mục tiêu',
-            personality: 'Tính cách Thương hiệu',
-            core_media_assets: 'Tài sản Truyền thông Cốt lõi',
-            logo_concepts: 'Ý tưởng Logo',
-            logo_style: 'Phong cách',
-            logo_prompt: 'Prompt',
-            color_palette: 'Bảng màu',
-            color_name: 'Tên màu',
-            hex_code: 'Mã Hex',
-            font_recs: 'Gợi ý Phông chữ',
-            headlines: 'Tiêu đề',
-            body: 'Nội dung',
-            unified_profile_assets: 'Tài sản Hồ sơ Thống nhất',
-            account_name: 'Tên tài khoản',
-            username: 'Tên người dùng',
-            profile_pic_prompt: 'Prompt Ảnh đại diện',
-            cover_photo_concept: 'Ý tưởng Ảnh bìa',
-            cover_photo_prompt: 'Prompt Ảnh bìa',
-            // Media Plan XLSX
-            sheet_media_plan: 'Kế hoạch Truyền thông',
-            col_plan_name: 'Tên Kế hoạch',
-            col_week: 'Tuần',
-            col_theme: 'Chủ đề',
-            col_platform: 'Nền tảng',
-            col_content_type: 'Loại Nội dung',
-            col_title: 'Tiêu đề',
-            col_content: 'Nội dung',
-            col_hashtags: 'Hashtags',
-            col_cta: 'CTA',
-            col_image_prompt: 'Prompt Ảnh',
-            col_video_key: 'Video Key',
-        },
-        'English': {
-            // DOCX
-            title: 'Brand Kit',
-            brand_foundation: 'Brand Foundation',
-            brand_name: 'Brand Name',
-            mission: 'Mission',
-            usp: 'Unique Selling Proposition (USP)',
-            values: 'Core Values',
-            key_messaging: 'Key Messaging',
-            target_audience: 'Target Audience',
-            personality: 'Brand Personality',
-            core_media_assets: 'Core Media Assets',
-            logo_concepts: 'Logo Concepts',
-            logo_style: 'Style',
-            logo_prompt: 'Prompt',
-            color_palette: 'Color Palette',
-            color_name: 'Color Name',
-            hex_code: 'Hex Code',
-            font_recs: 'Font Recommendations',
-            headlines: 'Headlines',
-            body: 'Body',
-            unified_profile_assets: 'Unified Profile Assets',
-            account_name: 'Account Name',
-            username: 'Username',
-            profile_pic_prompt: 'Profile Picture Prompt',
-            cover_photo_concept: 'Cover Photo Concept',
-            cover_photo_prompt: 'Cover Photo Prompt',
-             // Media Plan XLSX
-            sheet_media_plan: 'Media Plan',
-            col_plan_name: 'Plan Name',
-            col_week: 'Week',
-            col_theme: 'Theme',
-            col_platform: 'Platform',
-            col_content_type: 'Content Type',
-            col_title: 'Title',
-            col_content: 'Content',
-            col_hashtags: 'Hashtags',
-            col_cta: 'CTA',
-            col_image_prompt: 'Image Prompt',
-            col_video_key: 'Video Key',
-        }
+const createDocxBlob = async (assets: GeneratedAssets, language: string): Promise<Blob> => {
+    const T = language === 'Việt Nam' ? {
+        title: "Bộ Nhận Diện Thương Hiệu",
+        brandName: "Tên Thương Hiệu",
+        mission: "Sứ Mệnh",
+        usp: "Điểm Bán Hàng Độc Nhất (USP)",
+        audience: "Đối Tượng Mục Tiêu",
+        personality: "Tính Cách Thương Hiệu",
+        values: "Giá Trị Cốt Lõi",
+        logoConcepts: "Ý Tưởng Logo",
+        colorPalette: "Bảng Màu",
+        fontRecs: "Gợi Ý Phông Chữ",
+        profileAssets: "Tài Sản Hồ Sơ",
+        accountName: "Tên Tài Khoản",
+        username: "Tên Người Dùng",
+        profilePic: "Ảnh Đại Diện",
+        coverPhoto: "Ảnh Bìa",
+    } : {
+        title: "Brand Identity Kit",
+        brandName: "Brand Name",
+        mission: "Mission Statement",
+        usp: "Unique Selling Proposition (USP)",
+        audience: "Target Audience",
+        personality: "Brand Personality",
+        values: "Core Values",
+        logoConcepts: "Logo Concepts",
+        colorPalette: "Color Palette",
+        fontRecs: "Font Recommendations",
+        profileAssets: "Profile Assets",
+        accountName: "Account Name",
+        username: "Username",
+        profilePic: "Profile Picture Prompt",
+        coverPhoto: "Cover Photo Prompt",
     };
-    return (translations as any)[language] || translations['English'];
-}
 
-const createStyledParagraph = (text: string, bold: boolean = false) => new Paragraph({
-    children: [new TextRun({ text, bold, font: "Calibri", size: 22 })],
-    spacing: { after: 120 },
-});
+    const sections = [
+        new Paragraph({ text: assets.brandFoundation.brandName, heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
+        new Paragraph({ text: T.title, alignment: AlignmentType.CENTER }),
 
-export const createDocxBlob = async (assets: GeneratedAssets, language: string): Promise<Blob> => {
-    const T = getTranslation(language);
-    const { brandFoundation, coreMediaAssets, unifiedProfileAssets } = assets;
+        new Paragraph({ text: T.brandName, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(assets.brandFoundation.brandName),
 
-    const children = [
-        new Paragraph({ text: `${brandFoundation?.brandName || 'Brand'} - ${T.title}`, heading: HeadingLevel.TITLE, alignment: AlignmentType.CENTER }),
-
-        new Paragraph({ text: T.brand_foundation, heading: HeadingLevel.HEADING_1 }),
-        createStyledParagraph(`${T.brand_name}: ${brandFoundation?.brandName || ''}`, true),
-        createStyledParagraph(`${T.mission}: ${brandFoundation?.mission || ''}`),
-        createStyledParagraph(`${T.usp}: ${brandFoundation?.usp || ''}`),
-        createStyledParagraph(`${T.target_audience}: ${brandFoundation?.targetAudience || ''}`),
-        createStyledParagraph(`${T.personality}: ${brandFoundation?.personality || ''}`),
-        createStyledParagraph(`${T.values}:`, true),
-        ...(brandFoundation?.values || []).map(v => createStyledParagraph(`- ${v}`)),
-        createStyledParagraph(`${T.key_messaging}:`, true),
-        ...(brandFoundation?.keyMessaging || []).map(m => createStyledParagraph(`- ${m}`)),
+        new Paragraph({ text: T.mission, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(assets.brandFoundation.mission),
         
-        new Paragraph({ text: T.core_media_assets, heading: HeadingLevel.HEADING_1 }),
-        new Paragraph({ text: T.logo_concepts, heading: HeadingLevel.HEADING_2 }),
-        ...(coreMediaAssets?.logoConcepts || []).flatMap(logo => [
-            createStyledParagraph(`${T.logo_style}: ${logo.style}`, true),
-            createStyledParagraph(`${T.logo_prompt}: ${logo.prompt}`),
-        ]),
-        new Paragraph({ text: T.color_palette, heading: HeadingLevel.HEADING_2 }),
-        new Table({
-            rows: [
-                new TableRow({
-                    children: [new TableCell({ children: [createStyledParagraph(T.color_name, true)] }), new TableCell({ children: [createStyledParagraph(T.hex_code, true)] })],
-                }),
-                ...Object.values(coreMediaAssets?.colorPalette || {}).map(color => new TableRow({
-                    children: [new TableCell({ children: [createStyledParagraph((color as ColorInfo)?.name || '')] }), new TableCell({ children: [createStyledParagraph((color as ColorInfo)?.hex || '')] })],
-                }))
-            ],
-            width: { size: 100, type: WidthType.PERCENTAGE }
-        }),
-        new Paragraph({ text: T.font_recs, heading: HeadingLevel.HEADING_2 }),
-        createStyledParagraph(`${T.headlines}: ${coreMediaAssets?.fontRecommendations?.headlines?.name || ''} ${coreMediaAssets?.fontRecommendations?.headlines?.weight || ''}`),
-        createStyledParagraph(`${T.body}: ${coreMediaAssets?.fontRecommendations?.body?.name || ''} ${coreMediaAssets?.fontRecommendations?.body?.weight || ''}`),
+        new Paragraph({ text: T.usp, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(assets.brandFoundation.usp),
 
-        new Paragraph({ text: T.unified_profile_assets, heading: HeadingLevel.HEADING_1 }),
-        createStyledParagraph(`${T.account_name}: ${unifiedProfileAssets?.accountName || ''}`, true),
-        createStyledParagraph(`${T.username}: ${unifiedProfileAssets?.username || ''}`),
-        createStyledParagraph(`${T.profile_pic_prompt}: ${unifiedProfileAssets?.profilePicturePrompt || ''}`),
-        createStyledParagraph(`${T.cover_photo_concept}: ${unifiedProfileAssets?.coverPhoto?.designConcept || ''}`, true),
-        createStyledParagraph(`${T.cover_photo_prompt}: ${unifiedProfileAssets?.coverPhoto?.prompt || ''}`),
+        new Paragraph({ text: T.audience, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(assets.brandFoundation.targetAudience),
+
+        new Paragraph({ text: T.personality, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(assets.brandFoundation.personality),
+
+        new Paragraph({ text: T.values, heading: HeadingLevel.HEADING_2 }),
+        ...assets.brandFoundation.values.map(v => new Paragraph({ text: v, bullet: { level: 0 } })),
+
+        new Paragraph({ text: T.logoConcepts, heading: HeadingLevel.HEADING_2 }),
+        ...assets.coreMediaAssets.logoConcepts.map(c => new Paragraph({ text: c.prompt, bullet: { level: 0 } })),
+        
+        new Paragraph({ text: T.colorPalette, heading: HeadingLevel.HEADING_2 }),
+        ...assets.coreMediaAssets.colorPalette.map(c => new Paragraph({ text: `${c.name}: ${c.hex}`, bullet: { level: 0 } })),
+
+        new Paragraph({ text: T.fontRecs, heading: HeadingLevel.HEADING_2 }),
+        ...assets.coreMediaAssets.fontRecommendations.map(f => new Paragraph({ text: `${f.type}: ${f.name}`, bullet: { level: 0 } })),
+
+        new Paragraph({ text: T.profileAssets, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph(`${T.accountName}: ${assets.unifiedProfileAssets.accountName}`),
+        new Paragraph(`${T.username}: ${assets.unifiedProfileAssets.username}`),
+        new Paragraph(`${T.profilePic}: ${assets.unifiedProfileAssets.profilePicturePrompt}`),
+        new Paragraph(`${T.coverPhoto}: ${assets.unifiedProfileAssets.coverPhotoPrompt}`),
     ];
 
     const doc = new Document({
-        sections: [{ children }],
+        creator: "SocialSync Pro",
+        title: T.title,
+        description: `Brand identity kit for ${assets.brandFoundation.brandName}`,
         styles: {
-            default: {
-                heading1: { run: { size: 32, bold: true, color: "2E2E2E" } },
-                heading2: { run: { size: 28, bold: true, color: "4F46E5" } },
-            }
-        }
+            paragraphStyles: [
+                {
+                    id: "Heading1",
+                    name: "Heading 1",
+                    basedOn: "Normal",
+                    next: "Normal",
+                    quickFormat: true,
+                    run: {
+                        size: 48,
+                        bold: true,
+                        color: "000000",
+                    },
+                    paragraph: {
+                        spacing: { after: 240 },
+                    },
+                },
+                {
+                    id: "Heading2",
+                    name: "Heading 2",
+                    basedOn: "Normal",
+                    next: "Normal",
+                    quickFormat: true,
+                    run: {
+                        size: 32,
+                        bold: true,
+                        color: "333333",
+                    },
+                    paragraph: {
+                        spacing: { before: 240, after: 120 },
+                    },
+                },
+            ]
+        },
+        sections: [{ children: sections }]
     });
 
-    const blob = await Packer.toBlob(doc);
-    return blob;
+    return Packer.toBlob(doc);
 };
 
-export const createMediaPlanXlsxBlob = async (mediaPlans: MediaPlanGroup[], language: string): Promise<Blob> => {
-    const T = getTranslation(language);
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'SocialSync Pro';
-    workbook.created = new Date();
+const createMediaPlanXlsxBlob = async (mediaPlans: MediaPlanGroup[], language: string): Promise<Blob> => {
+    const T = language === 'Việt Nam' ? {
+        platform: "Nền tảng",
+        contentType: "Loại nội dung",
+        title: "Tiêu đề",
+        content: "Nội dung",
+        hashtags: "Hashtags",
+        cta: "Kêu gọi hành động",
+        mediaPrompt: "Prompt đa phương tiện",
+        scheduledAt: "Lên lịch lúc",
+        status: "Trạng thái",
+    } : {
+        platform: "Platform",
+        contentType: "Content Type",
+        title: "Title",
+        content: "Content",
+        hashtags: "Hashtags",
+        cta: "Call to Action",
+        mediaPrompt: "Media Prompt",
+        scheduledAt: "Scheduled At",
+        status: "Status",
+    };
 
-    const worksheet = workbook.addWorksheet(T.sheet_media_plan);
+    const workbook = new Workbook();
+    mediaPlans.forEach((planGroup, index) => {
+        const sheet = workbook.addWorksheet(`${planGroup.name.substring(0, 25)}${NON_BREAKING_HYPHEN}${index + 1}`);
+        sheet.columns = [
+            { header: T.platform, key: 'platform', width: 15 },
+            { header: T.contentType, key: 'contentType', width: 15 },
+            { header: T.title, key: 'title', width: 40 },
+            { header: T.content, key: 'content', width: 60 },
+            { header: T.hashtags, key: 'hashtags', width: 30 },
+            { header: T.cta, key: 'cta', width: 30 },
+            { header: T.mediaPrompt, key: 'mediaPrompt', width: 60 },
+            { header: T.scheduledAt, key: 'scheduledAt', width: 20 },
+            { header: T.status, key: 'status', width: 15 },
+        ];
 
-    worksheet.columns = [
-        { header: T.col_plan_name, key: 'planName', width: 30 },
-        { header: T.col_week, key: 'week', width: 10 },
-        { header: T.col_theme, key: 'theme', width: 30 },
-        { header: T.col_platform, key: 'platform', width: 15 },
-        { header: T.col_content_type, key: 'contentType', width: 20 },
-        { header: T.col_title, key: 'title', width: 40 },
-        { header: T.col_content, key: 'content', width: 60 },
-        { header: T.col_hashtags, key: 'hashtags', width: 40 },
-        { header: T.col_cta, key: 'cta', width: 20 },
-        { header: T.col_image_prompt, key: 'imagePrompt', width: 60 },
-        { header: T.col_video_key, key: 'videoKey', width: 60 },
-    ];
-
-    worksheet.getRow(1).font = { bold: true };
-
-    (mediaPlans || []).forEach(group => {
-        (group.plan || []).forEach(week => {
-            (week.posts || []).forEach(post => {
-                worksheet.addRow({
-                    planName: group.name,
-                    week: week.week,
-                    theme: week.theme,
+        planGroup.plan.forEach(week => {
+            sheet.addRow({ theme: week.theme }).font = { bold: true };
+            week.posts.forEach(post => {
+                sheet.addRow({
                     platform: post.platform,
                     contentType: post.contentType,
                     title: post.title,
                     content: post.content,
-                    hashtags: (post.hashtags || []).join(', '),
+                    hashtags: post.hashtags.join(', '),
                     cta: post.cta,
-                    imagePrompt: post.imagePrompt || '',
-                    videoKey: post.videoKey || ''
+                    mediaPrompt: Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join('\n') : post.mediaPrompt,
+                    scheduledAt: post.scheduledAt ? new Date(post.scheduledAt).toLocaleString() : '',
+                    status: post.status,
                 });
             });
         });
@@ -205,3 +181,5 @@ export const createMediaPlanXlsxBlob = async (mediaPlans: MediaPlanGroup[], lang
     const buffer = await workbook.xlsx.writeBuffer();
     return new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 };
+
+export { createDocxBlob, createMediaPlanXlsxBlob };

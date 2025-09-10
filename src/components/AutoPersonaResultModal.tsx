@@ -11,13 +11,15 @@ interface AutoPersonaResultModalProps {
 }
 
 const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen, onClose, onSave, personaData, language }) => {
-  const [selectedPersonas, setSelectedPersonas] = useState<Partial<Persona>[]>([]);
+  const [selectedPersonas, setSelectedPersonas] = useState<(Partial<Persona> & { tempId: string })[]>([]);
+  const [personasWithIds, setPersonasWithIds] = useState<(Partial<Persona> & { tempId: string })[]>([]);
 
   useEffect(() => {
     if (personaData) {
       // Assign a temporary client-side ID for selection handling
       const personasWithId = personaData.map(p => ({ ...p, tempId: crypto.randomUUID() }));
-      setSelectedPersonas(personasWithId);
+      setPersonasWithIds(personasWithId);
+      setSelectedPersonas([]);
     }
   }, [personaData]);
 
@@ -25,8 +27,8 @@ const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen,
 
   const handleToggleSelection = (personaToToggle: Partial<Persona> & { tempId: string }) => {
     setSelectedPersonas(prev =>
-      prev.some(p => (p as any).tempId === personaToToggle.tempId)
-        ? prev.filter(p => (p as any).tempId !== personaToToggle.tempId)
+      prev.some(p => p.tempId === personaToToggle.tempId)
+        ? prev.filter(p => p.tempId !== personaToToggle.tempId)
         : [...prev, personaToToggle]
     );
   };
@@ -61,11 +63,11 @@ const AutoPersonaResultModal: React.FC<AutoPersonaResultModalProps> = ({ isOpen,
         <h2 className="text-2xl font-bold mb-1">{texts.title}</h2>
         <p className="text-gray-500 mb-4">{texts.subtitle}</p>
         <div className="overflow-y-auto flex-grow pr-2 space-y-4">
-          {(personaData.map(p => ({ ...p, tempId: crypto.randomUUID() }))).map((persona, index) => (
+          {personasWithIds.map((persona, index) => (
             <GeneratedPersonaCard
-              key={index}
+              key={persona.tempId}
               persona={persona}
-              isSelected={selectedPersonas.some(p => (p as any).tempId === persona.tempId)}
+              isSelected={selectedPersonas.some(p => p.tempId === persona.tempId)}
               onToggleSelection={handleToggleSelection}
               texts={texts}
             />

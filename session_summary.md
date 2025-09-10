@@ -767,7 +767,7 @@ Created a new service with:
 5. **Provide user controls:** Always ensure users have appropriate controls (like logout buttons) for features that change their session state.
 
 
-# Session Summary (2025-09-08)
+# Session Summary (2025-09-08) [1]
 
 ## 1. Summary of Accomplishments
 
@@ -806,3 +806,314 @@ Manual Intervention for Large File Edits:* For any future modifications involvin
 Verify `read_file` Output:* Always explicitly check if read_file output is truncated, especially for files that are expected to be large or contain critical data. If truncation occurs, inform the user and request manual intervention or alternative methods to access the full content.
 Proactive Codebase Search for Anomalies:* Implement a routine to regularly search the codebase for unusual strings or patterns that might indicate copy-paste errors, encoding issues, or potential security vulnerabilities.
 Prioritize Root Cause Fixes (with caveats):* When a bug is identified, always strive to fix the root cause (e.g., clarifying AI prompt instructions). However, if tool limitations prevent a direct root-cause fix, implement robust defensive coding in the client and document the underlying issue clearly.
+
+
+# Session Summary (2025-09-08) [2]
+This session focused on debugging and fixing several significant, interconnected bugs related to AI prompt generation, database persistence, API performance, and local development environment configuration.
+
+### 1. Summary of Accomplishments
+
+* Fixed "N/A" in Image Prompts: Resolved a bug where image prompts for content generated without a persona would incorrectly start with "N/A,". This was caused by a redundant and faulty prompt template in src/services/geminiService.ts, which was removed.
+* Corrected Database ID Mismatch: Addressed a critical bug where the frontend generated crypto.randomUUID() for new posts, but the backend ignored them and failed to save a consistent id field. The save-media-plan-group action in api/mongodb.js was rewritten to make the backend the source of truth, generating a new MongoDB ObjectId for each post and saving that value to both the _id (as an ObjectId) and id (as a string) fields, ensuring consistency.
+* Optimized Content Package Generation: Eliminated a 5+ second performance bottleneck when generating content packages. Redundant API calls to check-product-exists and save-affiliate-links were identified and removed from the handleGenerateContentPackage function in App.tsx.
+* Fixed AI Model Fallback Logic: Repaired a UI freeze that occurred when a primary AI model failed (e.g., with a 503 error) and a fallback was attempted. The executeTextGenerationWithFallback function in App.tsx was incorrectly breaking the retry loop; it was fixed to correctly identify all retryable errors and allow the fallback process to complete successfully without freezing the UI.
+* Resolved Vercel Environment Conflict: Solved a stubborn issue where vercel dev connected to the production database by ignoring local .env files. After multiple standard methods failed, a robust solution was implemented by installing the dotenv package and explicitly loading the .env.local file from within server_lib/mongodb.js, ensuring the local development database is always used correctly.
+* Remaining Client-Side UUIDs: The client-side code still generates crypto.randomUUID() for new posts in functions like generateContentPackage. While the backend now correctly ignores these, this is unnecessary work and can cause confusion. This client-side code should be refactored to remove the UUID generation, as the backend is now the source of truth for IDs.
+### 3. Preventative Measures for Future Sessions
+* Manual Code Application: My replace tool has proven unreliable for complex changes. For future modifications, I will avoid repeated failed attempts and instead provide the complete, corrected code block for manual application by the user, which is a safer and more efficient workflow.
+
+# Session Summary (2025-09-09) [1]
+
+## Overview
+This session focused on debugging and fixing issues in the SocialSync Pro application, particularly related to AI response processing and the Modular Generation Toolkit implementation.
+
+## Key Technical Accomplishments
+
+### 1. Fixed AiModelConfig Initialization Issues
+- **Problem**: `TypeError: Cannot read properties of undefined (reading 'find')` in textGenerationService.ts
+- **Root Cause**: `aiModelConfig` object was missing the required `allModels` property
+- **Solution**: 
+  - Added proper `AiModelConfig` interface to types.ts
+  - Updated configService.ts to properly initialize and dynamically update `aiModelConfig`
+  - Fixed export issues for `AiModelConfig` type
+
+### 2. Enhanced Dynamic Configuration Loading
+- Modified `initializeConfig` method to dynamically construct `allModels` array based on loaded settings
+- Added logic to map models to their respective services and capabilities
+- Ensured proper fallback to default values when database settings are not available
+
+### 3. Build System Fixes
+- Successfully resolved TypeScript compilation errors
+- Fixed build process to properly export required types
+- Verified successful project compilation
+
+## Preventative Measures for Future Sessions
+
+### 1. Testing Protocol
+- Always test with actual AI responses, not just mock data
+- Verify end-to-end flow from AI response to frontend parsing
+- Test with various character sets (especially Vietnamese text)
+
+### 2. Error Handling Improvements
+- Add comprehensive logging for response processing steps
+- Implement better debugging for regex extraction failures
+- Create unit tests for `sanitizeAndParseJson` with various response formats
+
+### 3. Code Review Checklist
+- Verify response structure consistency between backend and frontend
+- Check regex patterns against actual AI response formats
+- Ensure proper error propagation and user-facing messages
+
+## Files Modified
+- src/services/configService.ts
+- src/services/textGenerationService.ts
+- src/services/imageGenerationService.ts
+- src/App.tsx
+- types.ts
+- src/services/utils.ts
+- src/services/bffService.ts
+- api/mongodb.js
+
+# Session Summary (2025-09-09) [2]
+
+## 1. Summary of Accomplishments
+
+The primary focus of this session shifted from fixing a single bug to addressing a systemic issue of codebase instability revealed by a failing build. The original task was to fix an `[object Object]` bug in the `mediaPrompt` field.
+
+1.  **Diagnosis:** Upon attempting to verify the initial bug fix, `npx tsc --noEmit` revealed a very large number of TypeScript errors, indicating a broken build state likely caused by previous, incomplete refactoring efforts.
+
+2.  **New Strategy Formulation:** It was determined that a piecemeal bug-fixing approach was ineffective. A new, more structured strategy was proposed: refactor the monolithic `App.tsx` component by extracting logical domains into dedicated custom hooks.
+
+3.  **Detailed Technical Plan:** A comprehensive technical plan for this refactoring was created and saved to `feature_descriptions/App_Refactoring_Plan.md`. This plan details the 5W1H (What, Why, Who, Where, When, How) for extracting each feature domain (Persona Management, Media Plan Management, etc.) into its own hook.
+
+4.  **Initial Refactoring Implementation:** Following approval of the plan, the first stage of the refactoring was executed:
+    *   **`usePersonaManagement.ts` Hook Created:** A new custom hook was created at `src/hooks/usePersonaManagement.ts`.
+    *   **Logic Extraction:** All state (`useState`) and handlers (`useCallback`) related to persona management were successfully moved from `App.tsx` into this new hook.
+    *   **`App.tsx` Refactoring (Partial):** `App.tsx` was refactored to import and consume the new `usePersonaManagement` hook, removing the now-redundant code.
+
+## 2. Issues to Note
+
+*   **Build is Still Broken:** While progress has been made, the TypeScript build (`npx tsc --noEmit`) is still failing. The errors are now more concentrated in `App.tsx` and components that depend on its props, which is expected at this stage of the refactoring.
+*   **In-Progress Refactoring:** The refactoring of `App.tsx` is a major undertaking and is only partially complete. Only the **Persona Management** logic has been extracted. The remaining domains still reside within `App.tsx`.
+*   **Original Bug Unverified:** The fix for the initial `[object Object]` bug has been implemented, but its correctness cannot be fully verified until the application is in a runnable state.
+
+
+## 3. Preventative Measures for Future Sessions
+
+*   **Continue Iterative Refactoring:** The current strategy of extracting one logical domain at a time into a hook is proving effective at methodically reducing complexity. This should be continued.
+*   **Strict Verification:** The process of running `npx tsc --noEmit` after each significant step is critical. This must be strictly adhered to in the next session to ensure each refactoring stage is completed successfully before moving to the next.
+*   **Favor `write_file` over `replace`:** For large, complex files like `App.tsx`, the `write_file` command (the "read-modify-write" strategy) has proven to be far more reliable than the `replace` command. This should be the default approach for any non-trivial change.
+
+Session Summary (2025-09-09) [3]
+---
+
+### 1. Summary of Accomplishments
+
+This session focused on a major refactoring effort to modularize the monolithic `App.tsx` component and address a cascade of TypeScript errors.
+
+*   **`App.tsx` Refactoring:** Successfully transformed `App.tsx` into a leaner, orchestrating component. All major logical domains were extracted into dedicated custom hooks.
+*   **Custom Hooks Created & Integrated:**
+    *   `usePersonaManagement.ts`: Handles persona creation, saving, updating, deleting, and auto-generation.
+    *   `useMediaPlanManagement.ts`: Manages media plan and content generation workflows.
+    *   `useAssetManagement.ts`: Encapsulates image and video asset handling (generation, upload, state).
+    *   `useStrategyManagement.ts`: Manages Affiliate & Strategy Hub logic (trends, ideas, affiliate links).
+    *   `useSchedulingManagement.ts`: Handles post scheduling and bulk scheduling.
+    *   `useProjectIO.ts`: Manages project loading and saving (file & database).
+*   **Key Bug Fixes & Type Corrections:**
+    *   **`AIModel` Type Consistency:** Made the `service` property required in the `AIModel` type definition in `types.ts` to ensure consistency across the application.
+    *   **`CalendarView.tsx`:** Corrected type mismatches by ensuring `PostInfo` objects were used where expected.
+    *   **`PersonasDisplay.tsx`:** Fixed `createEmptyPersona` function to correctly initialize `demographics` and `brandRelationship` properties according to `Persona` type.
+    *   **`MediaPlanDisplay.tsx`:** Added missing `GeneratedAssets` import.
+    *   **`useProjectIO.ts`:** Corrected import paths for `loadInitialProjectData` and `loadMediaPlanGroupsList` (from `databaseService.ts`).
+    *   **`useSchedulingManagement.ts`:** Removed invalid `.sort()` operation on `MediaPlanPost` objects.
+    *   **`useStrategyManagement.ts`:** Added missing `ActiveTab` import.
+*   **Obsolete File Removal:** Deleted `src/components/FacebookPageSelectionModal.tsx` as it was no longer needed.
+
+### 2. Issues to Note (Missing things, misunderstandings, etc.)
+
+The build is **still broken**, but the errors are now more isolated and manageable. The primary remaining issues are:
+
+*   **`databaseService.ts`:** The `loadMediaPlanPostsWithPagination` function still needs to be updated to return a `pagination` object as expected by `useInfiniteScroll.ts` and `useMediaPlanPagination.ts`. This was an interrupted task.
+*   **`useInfiniteScroll.ts` & `useMediaPlanPagination.ts`:** Still report `pagination` property missing errors (dependent on `databaseService.ts` fix).
+*   **`PostDetailModal.tsx`:** Still reports `Cannot find namespace 'JSX'` error. This might be a symptom of other underlying type issues.
+*   **`TrendHubDisplay.tsx`:** Still reports "Cannot find name" errors for `fbIndustry`, `setFbIndustry`, `ideasForSelectedTrend`, and `StrategyDisplay`. (My previous fix was incomplete or overwritten).
+*   **Service-level Type Mismatches:**
+    *   `src/services/cloudinaryService.ts`: Argument count mismatch.
+    *   `src/services/configService.ts`: `Prompts` type mismatch.
+    *   `src/services/imageGenerationService.ts`: Argument count mismatch.
+    *   `src/services/khongminhService.ts`: Missing properties on `AffiliateLink`.
+    *   `src/services/lazyLoadService.ts`: `pagination` property missing (dependent on `databaseService.ts` fix).
+    *   `src/services/openrouterService.ts`: Argument count mismatch.
+    *   `src/services/response.processor.ts`: `sources` and `week` properties not found.
+    *   `src/services/textGenerationService.ts`: `textModelFallbackOrder` property missing.
+
+### 3. Uncompleted Tasks (Processing but out of quota AI tool)
+
+*   The modification of `src/services/databaseService.ts` to correctly return the `pagination` object from `loadMediaPlanPostsWithPagination` was initiated but not completed due to the session ending.
+
+### 4. Preventative Measures for Future Sessions
+
+*   **Continue Iterative Fixing:** Address errors file by file, starting with the core service dependencies, then other services, and finally components.
+*   **Strict Verification:** Run `npx tsc --noEmit` after *every* file modification to ensure incremental progress and catch new errors immediately.
+*   **Confirm Fixes:** Explicitly verify that reported errors are gone after a fix is applied.
+*   **Prioritize Core Issues:** Focus on errors that block further progress or are fundamental to the application's data flow.
+*   **Review Context:** Before modifying a file, quickly review its imports and surrounding code to avoid reintroducing old errors or creating new ones due to context changes.
+
+Session Summary (2025-09-09) [4]
+
+### 1. Summary of Accomplishments
+
+This session focused on continuing the refactoring of App.tsx and resolving numerous TypeScript errors that emerged from the previous session's large-scale code extraction into custom hooks.
+
+    Core Refactoring Continuation:* The primary objective was to make the application runnable after the extraction of all major logical domains into dedicated custom hooks (usePersonaManagement, useMediaPlanManagement, useAssetManagement, useStrategyManagement, useSchedulingManagement, useProjectIO). 
+    Resolved Pagination Logic:*
+    *   The placeholder loadMediaPlanPostsWithPagination function in src/services/databaseService.ts was replaced with a proper API call.
+    *   The backend api/mongodb.js was updated to include the load-media-plan-posts action with correct pagination logic, including the hasPrevPage field. Type Alignment and Argument Correction:*
+    *   types.ts:
+        *   AffiliateLink type was expanded to include product_description, features, use_cases, customer_reviews, product_rating, salesVolume, productId, price, promotionLink, product_avatar, and product_image_links.
+        *   Settings type was updated to include cloudinaryCloudName and cloudinaryUploadPreset.
+        *   AutoGeneratePersonaPrompts type was temporarily adjusted (and then reverted) in attempts to align with defaultPrompts.js.
+    *   src/services/cloudinaryService.ts: uploadMediaToCloudinary was modified to correctly pass settings.cloudinaryCloudName and settings.cloudinaryUploadPreset to uploadMediaWithBff.
+    *   src/services/configService.ts: Attempted to align prompt initialization with defaultPrompts.js structure.
+    *   src/services/imageGenerationService.ts: Corrected arguments passed to generateImageWithOpenRouter.
+    *   src/services/openrouterService.ts: Corrected arguments passed to generateImageWithOpenRouterBff.
+    *   src/services/response.processor.ts: Corrected sources to source and removed the week property from MediaPlanWeek object creation.
+    *   src/services/textGenerationService.ts: executeWithFallback function signature and all its call sites were updated to correctly pass and utilize the settings object for textModelFallbackOrder.
+    *   src/services/databaseService.ts: loadCompleteAssetsFromDatabase and loadStrategyHubData return types were correctly specified for callDatabaseService.
+    *   src/hooks/useMediaPlanPagination.ts: The type definition for the setGeneratedImages parameter was corrected to React.Dispatch<React.SetStateAction<Record<string, string>>>.
+    *   src/hooks/useStrategyManagement.ts: Corrected setActiveTab('strategyHub') to setActiveTab('strategy').
+    *   src/components/PostDetailModal.tsx: Added /// <reference types="react" /> directive in an attempt to resolve a Cannot find namespace 'JSX' error.
+
+### 2. Issues to Note
+
+    Critical Blocking Issue: `server_lib/defaultPrompts.js` Syntax Error:* The most significant and persistent issue is an Unterminated template literal error in server_lib/defaultPrompts.js. This error is preventing npx tsc --noEmit from completing successfully, thus blocking verification of all other fixes and further progress. My tools are unable to read the full content of this file due to truncation, making automated repair impossible. 
+    Manual Intervention Required:* The defaultPrompts.js file requires manual correction by the user.
+    Uncertainty of Other Fixes:* While many errors were addressed, their complete and final resolution cannot be definitively confirmed until the defaultPrompts.js file is fixed and a clean npx tsc --noEmit run is possible.
+
+### 3. Uncompleted Tasks
+
+    Fixing `server_lib/defaultPrompts.js`:* This task is currently processing but is blocked by tool limitations and requires user input.
+
+### 4. Preventative Measures for Future Sessions
+
+    Prioritize Blocking Issues:* Any error that prevents the build from completing or obscures other errors must be addressed immediately and with utmost priority.
+    Manual Intervention for Complex String Literals:* For files containing large, multi-line string literals (like AI prompts), if automated tools (like replace or write_file after read_file) fail due to truncation or brittleness, immediately request manual intervention from the user to provide the corrected content. Do not attempt repeated automated fixes that introduce new errors.
+    Strict Verification:* Run `npx tsc --noEmit` after *every* modification to ensure incremental progress and catch new errors immediately. This was attempted but became impossible due to the blocking defaultPrompts.js error.
+    Clear Communication on Limitations:* Clearly communicate tool limitations (e.g., file truncation) to the user and explain why manual intervention is necessary for specific cases.
+
+# Session Summary (2025-09-10) [1]
+
+## 1. Summary of Accomplishments
+
+This session was a deep and intensive debugging effort focused on resolving a cascade of TypeScript errors that left the project in a non-compilable state. The primary achievement was methodically working through the entire service layer and beginning to fix the component layer, significantly reducing the number of errors.
+
+*   **Project Unblocked:** The session began with a critical blocking error (`Unterminated template literal` in `server_lib/defaultPrompts.js`) that required manual user intervention. Once this was resolved, we were able to proceed with TypeScript compilation.
+*   **Stabilized TypeScript Configuration:** Addressed a stubborn `Cannot find namespace 'JSX'` error by creating a `src/vite-env.d.ts` file, which is the standard method for declaring global types in a Vite project. This fixed a fundamental build configuration issue.
+*   **Service Layer Refactoring & Bug Fixes:**
+    *   **Prompt Engineering (`prompt.builder.ts`):** Rewrote several prompt builder functions (`buildMediaPlanPrompt`, `buildGenerateInCharacterPostPrompt`, etc.) to align with a major refactoring of the `Prompts` type structure. This resolved all errors in this file.
+    *   **Type Synchronization (`types.ts`):** Performed multiple, comprehensive updates to the application's core type definitions. This included adding the `'published'` status to `PostStatus`, adding `imageKey` to `PersonaPhoto`, and correcting the object structure for `coverPhoto` in `UnifiedProfileAssets`. This resolved a large class of "property does not exist" errors across the codebase.
+    *   **Function Signature Alignment:** Corrected the function signatures in `databaseService.ts` and `textGenerationService.ts` to properly accept `settings` objects and other missing parameters, which resolved all argument count mismatch errors in the custom hooks that call them.
+*   **Component-Level Bug Fixes:**
+    *   **`AdminPage.tsx`:** Resolved a type mismatch for the AI model `capabilities` property by using a correctly typed array.
+    *   **`AffiliateVaultDisplay.tsx`:** Fixed an invalid `variant="outline"` prop on `Button` components.
+    *   **`AssetDisplay.tsx`:** Corrected the logic for accessing `fontRecommendations` to iterate over an array instead of accessing object properties.
+    *   **`MainDisplay.tsx`:** Fixed multiple errors, including incorrect prop types for lazy-loaded data functions (`onLoad...`), removed several invalid props being passed to child components, and corrected mismatched function signatures.
+
+
+## 2. Preventative Measures for Future Sessions
+
+*   **Continue File-by-File Fixing:** The methodical approach of fixing one file at a time, verifying with `npx tsc --noEmit`, and then moving to the next has proven effective and should be continued.
+*   **Address the `App.tsx` Blocker:** The inability to read and reliably edit `App.tsx` is a major impediment. Future sessions should prioritize finding a way to apply the necessary changes to this file, even if it requires more creative use of the available tools or more specific instructions for manual intervention.
+*   **Assume Nothing About Props:** The session revealed numerous instances where components were being passed props they didn't accept. When working on a component, I must always verify its `Props` interface before passing new data to it.
+*   **Holistic Refactoring:** When a type definition is changed (e.g., the `Prompts` interfaces), I must immediately follow up by auditing all files that *use* that type and correcting them. The errors in `prompt.builder.ts` were a direct result of not doing this initially.
+
+## Session Summary (2025-09-10) [2]
+
+### 1. Summary of Accomplishments
+
+This session focused on fixing critical TypeScript compilation errors that prevented the application from building successfully. The work involved identifying and resolving type mismatches, signature inconsistencies, and missing properties across multiple files.
+
+#### Key Fixes:
+1. **React Component Type Errors:**
+   - Fixed JSX namespace errors by updating `vite-env.d.ts` and replacing `JSX.Element` with `React.ReactElement`
+   - Resolved string vs string[] type mismatches in `MediaPlanPost` content fields
+   - Corrected function signature mismatches for `onGenerateInCharacterPost` across components
+   - Added missing props (`isRefining`, `isGenerating`) to `PostDetailModal` component calls
+
+2. **Hook Integration Fixes:**
+   - Fixed parameter mismatches in `useSchedulingManagement` hook by adding required `settings` parameter
+   - Corrected type imports in the hook
+
+3. **Database Service Corrections:**
+   - Fixed type structure errors in default asset initialization
+   - Corrected property names in `BrandFoundation` and `UnifiedProfileAssets` objects
+   - Fixed return type specifications for `callDatabaseService` calls
+
+4. **Build Success:**
+   - Successfully resolved all TypeScript compilation errors
+   - Verified successful build with `npm run build`
+
+### 2. Issues to Note
+
+1. **Critical App Rendering Issue:**
+   - The main `App.tsx` component is currently only rendering a placeholder `<div>App Shell</div>` instead of the full application UI
+   - This is a major blocker that prevents the application from being usable despite the build succeeding
+   - The file appears to be truncated or corrupted during our refactoring attempts
+
+2. **Incomplete Refactoring:**
+   - The refactoring of `App.tsx` into custom hooks was started but not completed
+   - Several hook files were created but the main App component was not properly updated to use them
+
+3. **Potential Data Loss:**
+   - Significant portions of the original `App.tsx` implementation may have been lost during the refactoring process
+   - This could affect application functionality even after restoring the UI
+
+### 3. Preventative Measures for Future Sessions
+
+1. **Always Backup Critical Files:**
+   - Before making major refactoring changes to large files like `App.tsx`, create a backup copy
+   - Use git commits more frequently during refactoring to allow for easier rollbacks
+
+2. **Verify File Integrity:**
+   - After making changes to large files, verify that the file wasn't truncated or corrupted
+   - Check file sizes and line counts before and after major edits
+
+3. **Incremental Refactoring:**
+   - Continue with the planned incremental approach: extract one hook at a time and verify functionality
+   - Run the application frequently during refactoring to catch issues early
+
+4. **Maintain Functionality:**
+   - Never leave the application in a non-functional state for extended periods
+   - Always ensure there's a working version before making major changes
+
+5. **Type Safety First:**
+   - Continue to run `npx tsc --noEmit` after every significant change to maintain type safety
+   - Address TypeScript errors immediately rather than batching them
+
+## Session Summary (2025-09-10) [3]
+
+### 1. Summary of Accomplishments
+
+This session was primarily focused on a major refactoring of `App.tsx` and subsequent debugging.
+
+*   **`App.tsx` Refactoring:** The monolithic `App.tsx` component was structurally refactored by extracting its logical domains into dedicated custom hooks (`usePersonaManagement`, `useMediaPlanManagement`, `useAssetManagement`, `useStrategyManagement`, `useSchedulingManagement`, `useProjectIO`). This aims to make `App.tsx` a leaner orchestrator component.
+*   **Reducer Extraction:** The `assetsReducer` and its associated `AssetsAction` type were moved from `App.tsx` to a new, dedicated file: `src/reducers/assetsReducer.ts`.
+*   **`App-init` Duplicate Call Fix:** Implemented a `useRef` mechanism in `App.tsx` to prevent duplicate `app-init` API calls during development in React's `StrictMode`.
+*   **Affiliate Product Card Enhancement:** The `ProductCard.tsx` component was significantly redesigned and enhanced to display all fields from the `AffiliateLink` type, including `price`, `salesVolume`, `promotionLink`, `product_description`, `features`, `use_cases`, `customer_reviews`, `product_rating`, and `product_avatar`. A `StarIcon` was added to `src/components/icons.tsx` for the rating display.
+*   **`pillar` Property Persistence Fix:** Corrected a bug in `api/mongodb.js` where the `pillar` property of `MediaPlanPost` objects was not being saved during `save-media-plan-group` and not being loaded during `load-media-plan`. This ensures the `pillar` label persists after page reloads.
+
+### 2. Issues to Note
+
+*   **Persistent `MediaPlanDisplay.tsx` Runtime Errors:** Despite multiple attempts, a `TypeError: Cannot read properties of undefined (reading 'has')` error continues to occur in `MediaPlanDisplay.tsx` when attempting to open a post detail. This indicates a fundamental and recurring issue with props not being correctly destructured or passed to the component, leading to `undefined` values at runtime. This has been a significant source of frustration and repeated failures in debugging.
+*   **Unresolved Data Loading Bug:** The original bug report regarding data not loading in the "Content Strategy", "Media Plan", "Affiliate Vault", and "KOL/KOC" tabs remains unresolved. Debugging efforts were repeatedly sidetracked by the `MediaPlanDisplay.tsx` crashes.
+
+### 3. Uncompleted Tasks
+
+*   **Fix `MediaPlanDisplay.tsx` Destructuring:** The comprehensive fix for the `MediaPlanDisplay.tsx` component's prop destructuring is still uncompleted. The component continues to crash due to `undefined` properties.
+*   **Diagnose and Fix Data Loading Issue:** The primary bug of data not loading in the various tabs (Content Strategy, Media Plan, Affiliate Vault, KOL/KOC) is still unaddressed. Logging was added to the Persona and Media Plan loading chains, but the logs could not be retrieved due to the persistent crashes.
+
+### 4. Preventative Measures for Future Sessions
+
+*   **Rigorous Component Audit:** Before any `write_file` operation on a component, especially for prop destructuring, a full, line-by-line audit will be performed comparing the component's `Props` interface with its destructuring block. Any discrepancies will be explicitly identified and corrected in a single, atomic operation.
+*   **Prioritize Stability:** No new debugging or feature implementation will commence until the application is confirmed to be stable and free of runtime crashes.
+*   **Clear Communication:** Maintain clear and concise communication regarding the current state of the application, the specific bug being addressed, and the information required from the user.

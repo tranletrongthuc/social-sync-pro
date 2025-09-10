@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { loadMediaPlanPostsWithPagination } from '../services/databaseService';
 
 /**
@@ -7,7 +7,7 @@ import { loadMediaPlanPostsWithPagination } from '../services/databaseService';
 export const useMediaPlanPagination = (
     activePlanId: string | null,
     generatedImages: Record<string, string>,
-    setGeneratedImages: (images: Record<string, string>) => void,
+    setGeneratedImages: React.Dispatch<React.SetStateAction<Record<string, string>>>,
     dispatchAssets: (action: any) => void
 ) => {
     const loadAdditionalPosts = useCallback(async (

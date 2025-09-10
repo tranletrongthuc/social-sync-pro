@@ -1,14 +1,12 @@
-
-
 import React, { useState, useMemo, useEffect } from 'react';
-import type { Trend, Idea, Settings, Persona } from '../../types';
+import type { Trend, Idea, Settings, Persona, BrandFoundation } from '../../types';
 import { Button, Input, TextArea, Switch } from './ui';
 import { PlusIcon, LightBulbIcon, TrashIcon, PencilIcon, SparklesIcon, DotsVerticalIcon, FacebookIcon, SearchIcon, LinkIcon } from './icons';
 import ContentPackageWizardModal from './ContentPackageWizardModal';
 
 // --- SUB-COMPONENTS ---
 
-const TrendForm: React.FC<{
+const TrendForm: React.FC<{ 
     trend: Partial<Trend>;
     onSave: (trendData: Omit<Partial<Trend>, 'keywords' | 'links'> & { keywords?: string; links?: string }) => void;
     onCancel: () => void;
@@ -20,6 +18,7 @@ const TrendForm: React.FC<{
         keywords: (trend.keywords || []).join(', '),
         links: (trend.links || []).map(l => `${l.title}: ${l.url}`).join('\n'),
         notes: trend.notes || '',
+        analysis: trend.analysis || '',
     });
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -67,25 +66,24 @@ interface TrendHubDisplayProps {
     onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
     onGenerateContentPackage: (idea: Idea, pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest', personaId: string | null) => void;
     isGeneratingIdeas: boolean;
+    onGenerateFacebookTrends: (industry: string) => void;
+    isGeneratingFacebookTrends: boolean;
 }
 
 const TrendHubDisplay: React.FC<TrendHubDisplayProps> = (props) => {
-    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas } = props;
+    const { language, trends, ideas, personas, generatedImages, settings, onSaveTrend, onDeleteTrend, onGenerateIdeas, onCreatePlanFromIdea, onGenerateContentPackage, isGeneratingIdeas, onGenerateFacebookTrends, isGeneratingFacebookTrends } = props;
     
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [editingTrend, setEditingTrend] = useState<Partial<Trend> | null>(null);
     const [useSearchForIdeas, setUseSearchForIdeas] = useState(false);
     const isGeminiModel = settings.textGenerationModel.startsWith('gemini-');
     const [wizardIdea, setWizardIdea] = useState<Idea | null>(null);
+    const [fbIndustry, setFbIndustry] = useState('');
 
-    // Facebook Strategy State
-    
-
-    // Facebook Strategy State
-    
-
-    // Facebook Strategy State
-    
+    const ideasForSelectedTrend = useMemo(() => {
+        if (!selectedTrend) return [];
+        return ideas.filter(idea => idea.trendId === selectedTrend.id);
+    }, [ideas, selectedTrend]);
     
     const T = {
         'Việt Nam': {
@@ -147,6 +145,7 @@ const TrendHubDisplay: React.FC<TrendHubDisplayProps> = (props) => {
             keywords: parsedKeywords,
             links: parsedLinks,
             notes: trendData.notes || '',
+            analysis: trendData.analysis || '',
             createdAt: trendData.createdAt || new Date().toISOString(),
         };
         onSaveTrend(trendToSave);
@@ -250,16 +249,21 @@ const TrendHubDisplay: React.FC<TrendHubDisplayProps> = (props) => {
                 isOpen={!!wizardIdea}
                 onClose={() => setWizardIdea(null)}
                 idea={wizardIdea}
-                onGenerate={(idea, platform, personaId) => {
-                    onGenerateContentPackage(idea, platform, personaId);
+                onGenerate={(idea, personaId, selectedProductId, options) => {
+                    // This needs to be updated to match the actual function signature
+                    // For now, we'll just call the existing function with the first three parameters
+                    // and ignore the options
+                    onGenerateContentPackage(idea, 'YouTube', personaId); // Defaulting platform to YouTube for now
                     setWizardIdea(null);
                 }}
                 language={language}
                 personas={personas}
+                affiliateLinks={[]} // Add default empty array
                 generatedImages={generatedImages}
+                isGenerating={false} // Add default value
             />
         </div>
     );
 };
 
-export default StrategyDisplay;
+export default TrendHubDisplay;

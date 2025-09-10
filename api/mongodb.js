@@ -137,7 +137,7 @@ async function handler(request, response) {
           // 1. Check Credentials
           const { MONGODB_URI } = process.env;
           if (!MONGODB_URI) {
-            return response.status(200).json({ credentialsSet: false, brands: [], adminDefaults: {} });
+            return response.status(200).json({ credentialsSet: false, brands: [], adminDefaults: {}, aiModels: [] });
           }
           await db.command({ ping: 1 });
 
@@ -150,36 +150,34 @@ async function handler(request, response) {
               name: record.name
             }));
 
-          // 3. Fetch Admin Defaults and auto-initialize if needed
+          // 3. Fetch Admin Defaults and AI Models in parallel
           const adminSettingsCollection = db.collection('adminSettings');
-          let settingsRecord = await adminSettingsCollection.findOne({});
+          const aiModelsCollection = db.collection('aiModels');
 
-          // If no settings record or no prompts exist, this is a first-time setup.
-          // We create the settings document with the hardcoded defaults.
-          if (!settingsRecord || !settingsRecord.prompts) {
+          const [settingsRecord, modelRecords] = await Promise.all([
+              adminSettingsCollection.findOne({}),
+              aiModelsCollection.find({}).toArray()
+          ]);
+
+          // Auto-initialize settings if needed
+          let adminDefaults = settingsRecord;
+          if (!adminDefaults || !adminDefaults.prompts) {
             console.log('No admin prompts found in DB, initializing from defaultSettings.js...');
-            // Use upsert to create the document if it doesn't exist, or update it if it's partial
             await adminSettingsCollection.updateOne(
                   {},
                   { $set: initialSettings },
                   { upsert: true }
               );
-            // Re-fetch the record to ensure we use the newly created settings
-            settingsRecord = await adminSettingsCollection.findOne({});
+            adminDefaults = await adminSettingsCollection.findOne({});
           }
           
-          // Now, settingsRecord is guaranteed to exist.
-          // We still deepMerge to account for any new prompts added to defaultPrompts.js in a code update.
-          const adminDefaults = {
-            ...settingsRecord,
-            prompts: deepMerge(defaultPrompts, settingsRecord.prompts || {})
-          };
+          // Sanitize models
+          const aiModels = modelRecords.map(m => ({ ...m, id: m._id.toString() }));
 
-          response.status(200).json({ credentialsSet: true, brands: brands, adminDefaults: adminDefaults });
+          response.status(200).json({ credentialsSet: true, brands: brands, adminDefaults: adminDefaults || {}, aiModels: aiModels });
           console.log('--- App init data sent ---');
         } catch (error) {
           console.error('App init failed:', error);
-          // If any part fails, send a proper 500 error with a JSON response
           response.status(500).json({ error: `App initialization failed: ${error.message}` });
         }
         break;
@@ -588,6 +586,7 @@ async function handler(request, response) {
               autoComment: record.autoComment,
               status: record.status || 'draft',
               isPillar: record.isPillar,
+              pillar: record.pillar, // ADDED: Load pillar property
               week: record.week,
               postOrder: record.postOrder
             });
@@ -1377,111 +1376,9 @@ async function handler(request, response) {
             }
             break;
     
-        case 'load-media-plan-posts-with-pagination':
-            console.log('--- Received request for /api/mongodb/load-media-plan-posts-with-pagination ---');
-            try {
-                const { planId, page = 1, limit = 30 } = request.body;
+        
     
-                if (!planId) {
-                    return response.status(400).json({ error: 'Missing planId in request body' });
-                }
-    
-                // Calculate offset for pagination
-                const offset = (page - 1) * limit;
-                
-                // Fetch posts for the specific media plan with pagination
-                const collection = db.collection('mediaPlanPosts');
-                const allPostRecords = await collection.find({ mediaPlanId: planId }).toArray();
-                
-                // Group posts by week and theme
-                const weeksMap = new Map();
-                
-                allPostRecords.forEach(record => {
-                    const weekNum = record.week || 1;
-                    const theme = record.theme || 'Untitled Week';
-                    
-                    if (!weeksMap.has(weekNum)) {
-                        weeksMap.set(weekNum, {
-                            week: weekNum,
-                            theme: theme,
-                            posts: []
-                        });
-                    }
-                    
-                    // Add post to the appropriate week
-                    weeksMap.get(weekNum).posts.push({
-                        id: record._id.toString(),
-                        platform: record.platform,
-                        contentType: record.contentType,
-                        title: record.title,
-                        content: record.content,
-                        description: record.description,
-                        hashtags: record.hashtags || [],
-                        cta: record.cta,
-                        mediaPrompt: record.mediaPrompt,
-                        script: record.script,
-                        imageKey: record.imageKey,
-                        videoKey: record.videoKey,
-                        mediaOrder: record.mediaOrder || [],
-                        sources: record.sources || [],
-                        promotedProductIds: record.promotedProductIds || [],
-                        scheduledAt: record.scheduledAt,
-                        publishedAt: record.publishedAt,
-                        publishedUrl: record.publishedUrl,
-                        autoComment: record.autoComment,
-                        status: record.status || 'draft',
-                        isPillar: record.isPillar,
-                        week: record.week,
-                        postOrder: record.postOrder
-                    });
-                });
-                
-                // Convert map to array and sort by week number
-                const allWeeks = Array.from(weeksMap.values()).sort((a, b) => a.week - b.week);
-                
-                // Flatten all posts for pagination
-                const allPosts = allWeeks.flatMap(week => 
-                    week.posts.map(post => ({ ...post, week: week.week, theme: week.theme }))
-                );
-                
-                // Apply pagination
-                const paginatedPosts = allPosts.slice(offset, offset + limit);
-                
-                // Extract image and video URLs
-                const imageUrls = {};
-                const videoUrls = {};
-                
-                allPostRecords.forEach(record => {
-                    if (record.imageKey && record.imageUrl) {
-                        imageUrls[record.imageKey] = record.imageUrl;
-                    }
-                    if (record.videoKey && record.videoUrl) {
-                        videoUrls[record.videoKey] = record.videoUrl;
-                    }
-                });
-    
-                response.status(200).json({
-                    plan: allWeeks, // Return complete plan structure
-                    imageUrls,
-                    videoUrls,
-                    pagination: {
-                        currentPage: page,
-                        totalPages: Math.ceil(allPosts.length / limit),
-                        totalPosts: allPosts.length,
-                        hasNextPage: offset + limit < allPosts.length,
-                        hasPrevPage: page > 1
-                    }
-                });
-                console.log('--- Media plan posts with pagination sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-media-plan-posts-with-pagination ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load media plan posts: ${error.message}` });
-            }
-            break;
-    
-        case 'load-media-plan-posts':
+        case 'load-media-plan-posts-DEPRECATED':
             console.log('--- Received request for /api/mongodb/load-media-plan-posts ---');
             try {
                 const { planId } = request.body;
@@ -1695,7 +1592,7 @@ async function handler(request, response) {
             }
             break;
     
-        case 'media-plan-posts':
+        case 'load-media-plan-posts':
             console.log('--- Received request for /api/mongodb/media-plan-posts ---');
             try {
                 const { planId, page = 1, limit = 30 } = request.body;

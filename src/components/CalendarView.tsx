@@ -1,13 +1,12 @@
-
 import React, { useMemo, useState } from 'react';
-import type { MediaPlan, SchedulingPost, MediaPlanPost, PostInfo } from '../../types';
+import type { MediaPlan, SchedulingPost, PostInfo } from '../../types';
 import { ChevronLeftIcon, ChevronRightIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon } from './icons';
 
 interface CalendarViewProps {
   plan: MediaPlan;
   planId: string;
   language: string;
-  onPostDrop: (postInfo: SchedulingPost, newDate: Date) => void;
+  onPostDrop: (postInfo: PostInfo, newDate: Date) => void;
   onViewDetails: (postInfo: PostInfo) => void;
 }
 
@@ -20,7 +19,7 @@ const platformIcons: Record<string, React.FC<any>> = {
 };
 
 const PostLozenge: React.FC<{
-    postInfo: SchedulingPost;
+    postInfo: PostInfo;
     onClick: () => void;
     onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
 }> = ({ postInfo, onClick, onDragStart }) => {
@@ -32,8 +31,6 @@ const PostLozenge: React.FC<{
         needs_review: 'bg-yellow-400',
         approved: 'bg-green-400',
         scheduled: 'bg-blue-400',
-        published: 'bg-indigo-400',
-        error: 'bg-red-400',
     };
     const statusColor = statusColors[post.status || 'draft'] || 'bg-gray-400';
 
@@ -68,7 +65,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ plan, planId, language, onP
     const handleNextMonth = () => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
 
     const allPosts = useMemo(() => {
-        const postsWithDate: (SchedulingPost & { date: Date })[] = [];
+        const postsWithDate: (PostInfo & { date: Date })[] = [];
         
         (plan || []).forEach((week, weekIndex) => {
             (week.posts || []).forEach((post, postIndex) => {
@@ -91,7 +88,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ plan, planId, language, onP
         const daysInMonth = lastDayOfMonth.getDate();
         const startDayOfWeek = firstDayOfMonth.getDay(); // 0 for Sunday
 
-        const grid: { date: Date; posts: SchedulingPost[]; isCurrentMonth: boolean }[] = [];
+        const grid: { date: Date; posts: (PostInfo & { date: Date })[]; isCurrentMonth: boolean }[] = [];
         
         // Days from previous month
         const prevMonthLastDay = new Date(year, month, 0);
@@ -124,7 +121,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ plan, planId, language, onP
         return grid;
     }, [currentDate, allPosts]);
 
-    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, postInfo: SchedulingPost) => {
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, postInfo: PostInfo) => {
         e.dataTransfer.setData('application/json', JSON.stringify(postInfo));
         e.dataTransfer.effectAllowed = 'move';
     };
@@ -142,7 +139,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ plan, planId, language, onP
         try {
             const postInfoJSON = e.dataTransfer.getData('application/json');
             if (!postInfoJSON) return;
-            const postInfo = JSON.parse(postInfoJSON) as SchedulingPost;
+            const postInfo = JSON.parse(postInfoJSON) as PostInfo;
             onPostDrop(postInfo, date);
         } catch (err) {
             console.error("Failed to handle drop:", err);

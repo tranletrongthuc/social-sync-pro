@@ -13,9 +13,9 @@ const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: ()
     const texts = (T as any)[language] || T['English'];
 
     const getAvatar = () => {
-        if (persona.avatarImageUrl) return persona.avatarImageUrl;
-        const firstPhoto = persona.photos?.find(p => generatedImages[p.imageKey]);
-        return firstPhoto ? generatedImages[firstPhoto.imageKey] : null;
+        if (persona.imageUrl) return persona.imageUrl;
+        const firstPhotoKey = persona.imageKey;
+        return firstPhotoKey ? generatedImages[firstPhotoKey] : null;
     };
 
     const avatarUrl = getAvatar();
@@ -33,20 +33,20 @@ const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: ()
                     )}
                     <div>
                         <h3 className="text-lg font-bold text-gray-900">{persona.nickName}</h3>
-                        <p className="text-sm text-gray-600">{persona.demographics?.occupation || persona.activityField}</p>
+                        <p className="text-sm text-gray-600">{persona.demographics?.occupation}</p>
                         <p className="text-xs text-gray-500">{persona.demographics?.location}</p>
                     </div>
                 </div>
                 <MenuDropDown onEdit={onEdit} onDelete={onDelete} texts={texts} />
             </div>
             <div className="flex-grow">
-                <p className="text-sm text-gray-700 line-clamp-3">{persona.backstory || persona.outfitDescription}</p>
+                <p className="text-sm text-gray-700 line-clamp-3">{persona.backstory || persona.background}</p>
             </div>
             <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                {(persona.voice?.personalityTraits || []).slice(0, 3).map(trait => (
+                {(persona.personalityTraits || []).slice(0, 3).map(trait => (
                     <span key={trait} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{trait}</span>
                 ))}
-                {(persona.knowledgeBase || []).slice(0, 3).map(interest => (
+                {(persona.interestsAndHobbies || []).slice(0, 3).map(interest => (
                     <span key={interest} className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">{interest}</span>
                 ))}
             </div>
@@ -121,17 +121,19 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
         return {
             id,
             nickName: '',
-            demographics: { age: 0, location: '', occupation: '' },
-            backstory: '',
-            voice: { personalityTraits: [], communicationStyle: { formality: 50, energy: 50 }, linguisticRules: [] },
-            knowledgeBase: [],
-            brandRelationship: { originStory: '', coreAffinity: '', productUsage: '' },
-            // Legacy fields for compatibility
+            fullName: '',
+            background: '',
             outfitDescription: '',
-            mainStyle: '',
-            activityField: '',
-            photos: [],
-            socialAccounts: [],
+            brandId: '',
+            demographics: { age: 30, gender: 'Non-binary', location: '', occupation: '', incomeLevel: '' },
+            backstory: '',
+            personalityTraits: [],
+            goalsAndMotivations: [],
+            painPoints: [],
+            communicationStyle: { tone: '', voice: '', preferredChannels: [] },
+            interestsAndHobbies: [],
+            knowledgeBase: [],
+            brandRelationship: { awareness: '', perception: '', engagement: '' },
         };
     };
     

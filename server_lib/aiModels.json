@@ -1,0 +1,49 @@
+[{
+  "_id": "recMpDXtmVvpm9pK1",
+  "name": "gemini-2.5-pro",
+  "capabilities": "text",
+  "provider": "Google",
+  "service": "Google"
+},
+{
+  "_id": "recZaqueKkm2awuv6",
+  "name": "gemini-2.5-flash",
+  "capabilities": "text",
+  "provider": "Google",
+  "service": "Google"
+},
+{
+  "_id": "recafXrjeYZUU2nOC",
+  "name": "qwen/qwen3-235b-a22b:free",
+  "capabilities": "text",
+  "provider": "Open Router",
+  "service": "Open Router"
+},
+{
+  "_id": "recKXddcjhSHZzV8x",
+  "name": "deepseek/deepseek-r1-0528:free",
+  "capabilities": "text",
+  "provider": "Open Router",
+  "service": "Open Router"
+},
+{
+  "_id": "reca2Ui1flPE13LmQ",
+  "name": "@cf/lykon/dreamshaper-8-lcm",
+  "capabilities": "image",
+  "provider": "Cloudflare",
+  "service": "Cloudflare"
+},
+{
+  "_id": "rec3kl6hUiCsFpGpd",
+  "name": "banana/gemini-2.5-flash-image-preview",
+  "capabilities": "image",
+  "provider": "Google",
+  "service": "Google"
+},
+{
+  "_id": "recJyhtuLU75zH3si",
+  "name": "google/gemini-2.0-flash-exp:free",
+  "capabilities": "text",
+  "provider": "Open Router",
+  "service": "Open Router"
+}]

@@ -1,27 +1,8 @@
 import { 
-  refinePostContentWithGemini, 
-  generateBrandProfile, 
-  generateBrandKit, 
-  generateMediaPlanGroup, 
-  generateMediaPromptForPost, 
-  generateAffiliateComment, 
-  generateViralIdeas, 
-  generateContentPackage,
-  generateFacebookTrends,
-  generatePostsForFacebookTrend,
-  generateIdeasFromProduct,
-  generateInCharacterPost
+  generateRawContentWithGemini,
 } from './geminiService';
 import { 
-  refinePostContentWithOpenRouter, 
-  generateBrandProfileWithOpenRouter, 
-  generateBrandKitWithOpenRouter, 
-  generateMediaPlanGroupWithOpenRouter, 
-  generateMediaPromptForPostWithOpenRouter, 
-  generateAffiliateCommentWithOpenRouter, 
-  generateViralIdeasWithOpenRouter, 
-  generateContentPackageWithOpenRouter,
-  generateIdeasFromProductWithOpenRouter
+  generateRawContentWithOpenRouter,
 } from './openrouterService';
 import type { 
   BrandInfo, 
@@ -34,372 +15,270 @@ import type {
   BrandFoundation, 
   FacebookTrend, 
   FacebookPostIdea,
-  Settings
+  Settings,
+  PostInfo,
+  GenerationOptions
 } from '../../types';
-import { ConfigService } from './configService';
+import { 
+    buildMediaPlanPrompt, 
+    buildBrandKitPrompt, 
+    buildRefinePostPrompt, 
+    buildGenerateBrandProfilePrompt, 
+    buildGenerateInCharacterPostPrompt, 
+    buildGenerateMediaPromptForPostPrompt, 
+    buildAffiliateCommentPrompt, 
+    buildGenerateViralIdeasPrompt, 
+    buildGenerateContentPackagePrompt,
+    buildGenerateFacebookTrendsPrompt,
+    buildGeneratePostsForFacebookTrendPrompt,
+    buildGenerateIdeasFromProductPrompt,
+    buildAutoGeneratePersonaPrompt
+} from './prompt.builder';
+import { 
+    processMediaPlanResponse, 
+    processBrandKitResponse, 
+    processBrandProfileResponse, 
+    processGenerateMediaPromptForPostResponse,
+    processViralIdeasResponse,
+    processContentPackageResponse,
+    processFacebookTrendsResponse,
+    processPostsForFacebookTrendResponse,
+    processIdeasFromProductResponse,
+    processAutoGeneratePersonaResponse
+} from './response.processor';
+import { AiModelConfig } from './configService';
 
-// Unified interface for all text generation functions
-export interface TextGenerationService {
-  refinePostContent: (postText: string, model: string, settings: Settings) => Promise<string>;
-  generateBrandProfile: (idea: string, language: string, model: string, settings: Settings) => Promise<BrandInfo>;
-  generateBrandKit: (brandInfo: BrandInfo, language: string, model: string, settings: Settings) => Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>>;
-  generateMediaPlanGroup: (
-    brandFoundation: BrandFoundation,
-    userPrompt: string,
-    language: string,
-    totalPosts: number,
-    useSearch: boolean,
-    selectedPlatforms: string[],
-    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-    settings: Settings,
-    model: string,
-    persona: Persona | null,
-    selectedProduct: AffiliateLink | null,
-    pillar: string
-  ) => Promise<MediaPlanGroup>;
-  generateMediaPromptForPost: (
-    postContent: { title: string; content: string; contentType: string },
-    brandFoundation: BrandFoundation,
-    language: string,
-    model: string,
-    persona: Persona | null,
-    settings: Settings
-  ) => Promise<string | string[]>;
-  generateAffiliateComment: (
-    post: MediaPlanPost,
-    products: AffiliateLink[],
-    brandFoundation: BrandFoundation,
-    language: string,
-    model: string,
-    settings: Settings
-  ) => Promise<string>;
-  generateViralIdeas: (
-    trend: { topic: string; keywords: string[] },
-    language: string,
-    useSearch: boolean,
-    model: string,
-    settings: Settings
-  ) => Promise<Omit<Idea, 'id' | 'trendId'>[]>;
-  generateContentPackage: (
-    idea: Idea,
-    brandFoundation: BrandFoundation,
-    language: string,
-    settings: Settings,
-    model: string,
-    persona: Persona | null,
-    pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-    selectedProduct: AffiliateLink | null
-  ) => Promise<MediaPlanGroup>;
-  generateFacebookTrends: (
-    industry: string,
-    language: string,
-    model: string,
-    settings: Settings
-  ) => Promise<Omit<FacebookTrend, 'id'|'brandId'>[]>;
-  generatePostsForFacebookTrend: (
-    trend: FacebookTrend,
-    language: string,
-    model: string,
-    settings: Settings
-  ) => Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]>;
-    generateIdeasFromProduct: (
-    product: AffiliateLink,
-    language: string,
-    model: string,
-    settings: Settings
-  ) => Promise<Omit<Idea, 'id' | 'trendId'>[]>;
-    generateInCharacterPost: (
-    objective: string,
-    platform: string,
-    personaId: string,
-    model: string,
-    keywords: string[],
-    pillar: string,
-    settings: Settings
-  ) => Promise<string>;
+// --- Provider Service Abstraction ---
+
+interface ProviderService {
+    generateRawContent: (prompt: string, model: string, settings: Settings, useSearch: boolean) => Promise<string>;
 }
 
-// Determine if a model is a Google model
-const isGoogleModel = (model: string): boolean => {
-  return model.startsWith('gemini-') && !model.includes('free');
+const googleProvider: ProviderService = {
+    generateRawContent: generateRawContentWithGemini,
 };
 
-// Create service instances
-const googleService: TextGenerationService = {
-  refinePostContent: refinePostContentWithGemini,
-  generateBrandProfile,
-  generateBrandKit,
-  generateMediaPlanGroup,
-  generateMediaPromptForPost,
-  generateAffiliateComment,
-  generateViralIdeas,
-  generateContentPackage,
-  generateFacebookTrends,
-  generatePostsForFacebookTrend,
-  generateIdeasFromProduct,
-  generateInCharacterPost
+const openRouterProvider: ProviderService = {
+    generateRawContent: generateRawContentWithOpenRouter,
 };
 
-const openRouterService: TextGenerationService = {
-  refinePostContent: refinePostContentWithOpenRouter,
-  generateBrandProfile: generateBrandProfileWithOpenRouter,
-  generateBrandKit: generateBrandKitWithOpenRouter,
-  generateMediaPlanGroup: (brandFoundation, userPrompt, language, totalPosts, useSearch, selectedPlatforms, options, settings, model, persona, selectedProduct, pillar) => {
-    // OpenRouter doesn't use the useSearch parameter, so we ignore it
-    if (!Array.isArray(selectedPlatforms)) {
-      throw new Error(`selectedPlatforms must be an array, got ${typeof selectedPlatforms}: ${JSON.stringify(selectedPlatforms)}`);
+const getProviderService = (modelName: string, aiModelConfig: AiModelConfig): ProviderService => {
+    const modelData = aiModelConfig.allModels.find(m => m.name === modelName);
+    const serviceId = modelData?.service || 'google';
+
+    switch (serviceId) {
+        case 'google':
+            return googleProvider;
+        case 'openrouter':
+            return openRouterProvider;
+        default:
+            console.warn(`Unknown service ID "${serviceId}" for model "${modelName}". Defaulting to Google service.`);
+            return googleProvider;
     }
-    return generateMediaPlanGroupWithOpenRouter(
-      brandFoundation,
-      userPrompt,
-      language,
-      totalPosts,
-      selectedPlatforms,
-      options,
-      settings.affiliateContentKit,
-      model,
-      persona,
-      selectedProduct,
-
-    );
-  },
-  generateMediaPromptForPost: (postContent, brandFoundation, language, model, persona, settings) => {
-    return generateMediaPromptForPostWithOpenRouter(postContent, brandFoundation, language, model, persona, settings.mediaPromptSuffix);
-  },
-  generateAffiliateComment: (post, products, brandFoundation, language, model, settings) => {
-    return generateAffiliateCommentWithOpenRouter(post, products, brandFoundation, language, model);
-  },
-  generateViralIdeas: (trend, language, useSearch, model, settings) => {
-    // OpenRouter doesn't use the useSearch parameter, so we ignore it
-    return generateViralIdeasWithOpenRouter(trend, language, model);
-  },
-  generateContentPackage: async () => {
-    throw new Error('Content package generation is not supported with OpenRouter models');
-  },
-  generateFacebookTrends: async () => {
-    throw new Error('Facebook trend generation is not supported with OpenRouter models');
-  },
-  generatePostsForFacebookTrend: async () => {
-    throw new Error('Facebook post generation is not supported with OpenRouter models');
-  },
-  generateIdeasFromProduct: generateIdeasFromProductWithOpenRouter,
-  generateInCharacterPost: async () => {
-    throw new Error('In-character post generation is not supported with OpenRouter models');
-  }
 };
 
-// Generic function to handle API calls with fallback
-async function withFallback<T>(
-  fn: (model: string) => Promise<T>,
-  initialModel: string
+// --- Centralized Fallback Logic ---
+
+async function executeWithFallback<T>(
+    aiModelConfig: AiModelConfig,
+    settings: Settings,
+    preferredModel: string,
+    generationFn: (model: string) => Promise<T>
 ): Promise<T> {
-  const configService = ConfigService.getInstance();
-  const fallbackModels = configService.getAiModelConfig().textModelFallbackOrder || [];
-  const modelsToTry = [initialModel, ...fallbackModels];
+    const modelsToTry = [
+        preferredModel,
+        ...(settings.textModelFallbackOrder || []).filter(m => m !== preferredModel)
+    ];
 
-  let lastError: any;
+    let lastError: any;
 
-  for (const model of modelsToTry) {
-    try {
-      return await fn(model);
-    } catch (error: any) {
-      lastError = error;
-      // Check for 503 Service Unavailable or similar errors
-      const errorMessage = String(error).toLowerCase();
-      if (errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('service unavailable')) {
-        console.warn(`Model ${model} is overloaded or unavailable. Trying next model...`);
-        continue; // Try the next model
-      }
-      // For other errors, fail immediately
-      throw error;
+    for (const model of modelsToTry) {
+        try {
+            return await generationFn(model);
+        } catch (error: any) {
+            lastError = error;
+            const errorMessage = String(error).toLowerCase();
+            const isRetryable = errorMessage.includes('503') || errorMessage.includes('overloaded') || errorMessage.includes('service unavailable') || errorMessage.includes('rate limit');
+            if (isRetryable) {
+                console.warn(`Model ${model} failed with a retryable error. Trying next model...`);
+                continue;
+            }
+            throw error;
+        }
     }
-  }
-
-  // If all models fail, throw the last recorded error
-  throw lastError;
+    throw lastError;
 }
 
+// --- Orchestrator Functions ---
 
-// Unified service that selects the appropriate implementation based on the model
-export const textGenerationService: TextGenerationService = {
-  refinePostContent: async (postText: string, model: string, settings: Settings): Promise<string> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      return service.refinePostContent(postText, currentModel, settings);
-    }, model);
-  },
-  
-  generateBrandProfile: async (idea: string, language: string, model: string, settings: Settings): Promise<BrandInfo> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      return service.generateBrandProfile(idea, language, currentModel, settings);
-    }, model);
-  },
-  
-  generateBrandKit: async (brandInfo: BrandInfo, language: string, model: string, settings: Settings): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      return service.generateBrandKit(brandInfo, language, currentModel, settings);
-    }, model);
-  },
-  
-  generateMediaPlanGroup: async (
-    brandFoundation: BrandFoundation,
-    userPrompt: string,
-    language: string,
-    totalPosts: number,
-    useSearch: boolean,
-    selectedPlatforms: string[],
-    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-    settings: Settings,
-    model: string,
-    persona: Persona | null,
-    selectedProduct: AffiliateLink | null,
-    pillar: string
-  ): Promise<MediaPlanGroup> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      const actualUseSearch = isGoogleModel(currentModel) ? useSearch : false;
-      
-      if (!Array.isArray(selectedPlatforms)) {
-        throw new Error(`selectedPlatforms must be an array, got ${typeof selectedPlatforms}: ${JSON.stringify(selectedPlatforms)}`);
-      }
-      
-      return service.generateMediaPlanGroup(
-        brandFoundation,
-        userPrompt,
-        language,
-        totalPosts,
-        actualUseSearch,
-        selectedPlatforms,
-        options,
-        settings,
-        currentModel,
-        persona,
-        selectedProduct,
-        pillar
-      );
-    }, model);
-  },
-  
-  generateMediaPromptForPost: async (
-    postContent: { title: string; content: string; contentType: string },
-    brandFoundation: BrandFoundation,
-    language: string,
-    model: string,
-    persona: Persona | null,
-    settings: Settings
-  ): Promise<string | string[]> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      return service.generateMediaPromptForPost(postContent, brandFoundation, language, currentModel, persona, settings);
-    }, model);
-  },
-  
-  generateAffiliateComment: async (
-    post: MediaPlanPost,
-    products: AffiliateLink[],
-    brandFoundation: BrandFoundation,
-    language: string,
-    model: string,
-    settings: Settings
-  ): Promise<string> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      return service.generateAffiliateComment(post, products, brandFoundation, language, currentModel, settings);
-    }, model);
-  },
-  
-  generateViralIdeas: async (
-    trend: { topic: string; keywords: string[] },
-    language: string,
-    useSearch: boolean,
-    model: string,
-    settings: Settings
-  ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      const actualUseSearch = isGoogleModel(currentModel) ? useSearch : false;
-      return service.generateViralIdeas(trend, language, actualUseSearch, currentModel, settings);
-    }, model);
-  },
-  
-  generateContentPackage: async (
-    idea: Idea,
-    brandFoundation: BrandFoundation,
-    language: string,
-    settings: Settings,
-    model: string,
-    persona: Persona | null,
-    pillarPlatform: 'YouTube' | 'Facebook' | 'Instagram' | 'TikTok' | 'Pinterest',
-    options: { tone: string; style: string; length: string; includeEmojis: boolean; },
-    selectedProduct: AffiliateLink | null
-  ): Promise<MediaPlanGroup> => {
-    return withFallback((currentModel) => {
-      if (!isGoogleModel(currentModel)) {
-        throw new Error('Content package generation is not supported with OpenRouter models');
-      }
-      return googleService.generateContentPackage(
-          idea,
-          brandFoundation,
-          language,
-          settings,
-          currentModel,
-          persona,
-          pillarPlatform,
-          options,
-          selectedProduct
-      );
-    }, model);
-  },
-  
-  generateFacebookTrends: async (
-    industry: string,
-    language: string,
-    model: string,
-    settings: Settings
-  ): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
-    return withFallback((currentModel) => {
-      if (!isGoogleModel(currentModel)) {
-        throw new Error('Facebook trend generation is not supported with OpenRouter models');
-      }
-      return googleService.generateFacebookTrends(industry, language, currentModel, settings);
-    }, model);
-  },
-  
-  generatePostsForFacebookTrend: async (
-    trend: FacebookTrend,
-    language: string,
-    model: string,
-    settings: Settings
-  ): Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]> => {
-    return withFallback((currentModel) => {
-      if (!isGoogleModel(currentModel)) {
-        throw new Error('Facebook post generation is not supported with OpenRouter models');
-      }
-      return googleService.generatePostsForFacebookTrend(trend, language, currentModel, settings);
-    }, model);
-  },
-  
-  generateIdeasFromProduct: async (
-    product: AffiliateLink,
-    language: string,
-    model: string,
-    settings: Settings
-  ): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    return withFallback((currentModel) => {
-      const service = isGoogleModel(currentModel) ? googleService : openRouterService;
-      return service.generateIdeasFromProduct(product, language, currentModel, settings);
-    }, model);
-  },
+const generateMediaPlanGroup = (
+    params: { brandFoundation: BrandFoundation, userPrompt: string, language: string, totalPosts: number, useSearch: boolean, selectedPlatforms: string[], options: GenerationOptions, settings: Settings, persona: Persona | null, selectedProduct: AffiliateLink | null, pillar: string },
+    aiModelConfig: AiModelConfig
+): Promise<MediaPlanGroup> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildMediaPlanPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, params.useSearch);
+        return processMediaPlanResponse(jsonText, params);
+    });
+};
 
-  generateInCharacterPost: async (objective: string, platform: string, personaId: string, model: string, keywords: string[], pillar: string, settings: Settings): Promise<string> => {
-    return withFallback((currentModel) => {
-      if (!isGoogleModel(currentModel)) {
-        throw new Error('In-character post generation is not supported with non-Google models');
-      }
-      return googleService.generateInCharacterPost(objective, platform, personaId, currentModel, keywords, pillar, settings);
-    }, model);
-  }
-}; 
+const generateBrandKit = (
+    params: { brandInfo: BrandInfo, language: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'>> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildBrandKitPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, false);
+        return processBrandKitResponse(jsonText, params.language);
+    });
+};
+
+const refinePostContent = (
+    params: { postText: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<string> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildRefinePostPrompt(params);
+        const provider = getProviderService(model, aiModelConfig);
+        return await provider.generateRawContent(prompt, model, params.settings, false);
+    });
+};
+
+const generateBrandProfile = (
+    params: { idea: string, language: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<BrandInfo> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateBrandProfilePrompt({ ...params});
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
+        return processBrandProfileResponse(jsonText);
+    });
+};
+
+const generateInCharacterPost = (
+    params: { objective: string, platform: string, persona: Persona, keywords: string[], pillar: string, settings: Settings, options: GenerationOptions },
+    aiModelConfig: AiModelConfig
+): Promise<string> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateInCharacterPostPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        return await provider.generateRawContent(prompt, model, params.settings, false);
+    });
+};
+
+const generateMediaPromptForPost = (
+    params: { postContent: { title: string; content: string, contentType: string }, brandFoundation: BrandFoundation, language: string, persona: Persona | null, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<string | string[]> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateMediaPromptForPostPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const isJson = params.postContent.contentType === 'Carousel Post';
+        const responseText = await provider.generateRawContent(prompt, model, params.settings, isJson);
+        return processGenerateMediaPromptForPostResponse(responseText, params.postContent.contentType, params.settings);
+    });
+};
+
+const generateAffiliateComment = (
+    params: { post: PostInfo, products: AffiliateLink[], language: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<string> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildAffiliateCommentPrompt({ ...params, post: params.post.post });
+        const provider = getProviderService(model, aiModelConfig);
+        return await provider.generateRawContent(prompt, model, params.settings, false);
+    });
+};
+
+const generateViralIdeas = (
+    params: { trend: { topic: string; keywords: string[] }, language: string, useSearch: boolean, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateViralIdeasPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, params.useSearch);
+        return processViralIdeasResponse(jsonText, params.useSearch);
+    });
+};
+
+const generateContentPackage = (
+    params: { idea: Idea, brandFoundation: BrandFoundation, language: string, settings: Settings, persona: Persona | null, pillarPlatform: 'YouTube', options: GenerationOptions, selectedProduct: AffiliateLink | null, repurposedPlatforms: string[] },
+    aiModelConfig: AiModelConfig
+): Promise<MediaPlanGroup> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateContentPackagePrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
+        return processContentPackageResponse(jsonText, params);
+    });
+};
+
+const generateFacebookTrends = (
+    params: { industry: string, language: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateFacebookTrendsPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
+        return processFacebookTrendsResponse(jsonText);
+    });
+};
+
+const generatePostsForFacebookTrend = (
+    params: { trend: FacebookTrend, language: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGeneratePostsForFacebookTrendPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
+        return processPostsForFacebookTrendResponse(jsonText);
+    });
+};
+
+const generateIdeasFromProduct = (
+    params: { product: AffiliateLink, language: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildGenerateIdeasFromProductPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
+        return processIdeasFromProductResponse(jsonText, params.product);
+    });
+};
+
+const autoGeneratePersonaProfile = (
+    params: { mission: string, usp: string, settings: Settings },
+    aiModelConfig: AiModelConfig
+): Promise<Partial<Persona>[]> => {
+    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (model) => {
+        const prompt = buildAutoGeneratePersonaPrompt({ ...params });
+        const provider = getProviderService(model, aiModelConfig);
+        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
+        return processAutoGeneratePersonaResponse(jsonText);
+    });
+};
+
+
+// This object is what the UI layer (App.tsx) interacts with.
+export const textGenerationService = {
+    generateMediaPlanGroup,
+    generateBrandKit,
+    refinePostContent,
+    generateBrandProfile,
+    generateInCharacterPost,
+    generateMediaPromptForPost,
+    generateAffiliateComment,
+    generateViralIdeas,
+    generateContentPackage,
+    generateFacebookTrends,
+    generatePostsForFacebookTrend,
+    generateIdeasFromProduct,
+    autoGeneratePersonaProfile,
+};

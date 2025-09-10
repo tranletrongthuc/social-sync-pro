@@ -306,7 +306,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ onLogout }) => {
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Capabilities</label>
                             <div className="flex flex-wrap gap-2 p-2 border border-gray-300 rounded-md bg-white">
-                                {['text', 'image'].map(cap => (
+                                {(['text', 'image', 'vision'] as const).map(cap => (
                                     <label key={cap} className="inline-flex items-center"><input type="checkbox" className="rounded" checked={(editingModel?.capabilities || newModel.capabilities).includes(cap)} onChange={(e) => {
                                         const currentCaps = editingModel?.capabilities || newModel.capabilities;
                                         const newCaps = e.target.checked ? [...currentCaps, cap] : currentCaps.filter(c => c !== cap);
