@@ -25,6 +25,7 @@ const BrandProfiler: React.FC<BrandProfilerProps> = ({ initialBrandInfo, onGener
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("BrandProfiler handleSubmit called with brandInfo:", brandInfo);
     onGenerate(brandInfo);
   };
 

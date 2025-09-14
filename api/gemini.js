@@ -8,7 +8,7 @@ if (!process.env.GEMINI_API_KEY) {
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // The constructBelievablePersonaPrompt function is removed as its logic is now handled by configurable prompts.
 
@@ -168,21 +168,115 @@ async function handler(request, response) {
           return response.status(400).json({ error: 'Missing required field: prompt and model' });
         }
         
-        const model = genAI.getGenerativeModel({ model: modelName.replace('banana/', '') });
+        // Extract the actual model name by removing the 'banana/' prefix
+        const actualModelName = modelName.replace('banana/', '');
+        const model = genAI.getGenerativeModel({ model: actualModelName });
         
-        console.log(`Generating banana image with ${modelName}...`);
+        console.log(`Generating banana image with ${modelName} (${actualModelName})...`);
 
-        const result = await model.generateContent(prompt);
+        let result;
+        const MAX_RETRIES = 3;
+        let lastError;
+        
+        for (let i = 0; i < MAX_RETRIES; i++) {
+          try {
+            // Use the latest Google Generative AI SDK method for content generation
+            result = await model.generateContent({
+              contents: [{
+                role: 'user',
+                parts: [
+                  { text: prompt }
+                ]
+              }]
+            });
+            break; // Success, exit loop
+          } catch (error) {
+            lastError = error;
+            // Check for rate limit error
+            if (error.status === 429 || error.message.includes('429') || error.message.includes('Too Many Requests') || error.message.toLowerCase().includes('rate limit')) {
+              if (i < MAX_RETRIES - 1) {
+                // Extract retry delay from error if available, otherwise use default
+                let retryDelay = 8500; // Default to 8.5 seconds
+                if (error.errorDetails) {
+                  // Look for retry info in error details
+                  const retryInfo = error.errorDetails.find(detail => detail['@type'] === 'type.googleapis.com/google.rpc.RetryInfo');
+                  if (retryInfo && retryInfo.retryDelay) {
+                    // Parse the retry delay (e.g., "24s")
+                    const delayString = retryInfo.retryDelay;
+                    if (delayString.endsWith('s')) {
+                      const seconds = parseInt(delayString.replace('s', ''));
+                      if (!isNaN(seconds)) {
+                        retryDelay = seconds * 1000; // Convert to milliseconds
+                      }
+                    }
+                  }
+                }
+                console.warn(`Rate limit hit. Retrying in ${retryDelay/1000} seconds... (${i + 1}/${MAX_RETRIES})`);
+                await delay(retryDelay);
+              } else {
+                console.error('Max retries reached for rate limit error.');
+                throw error; // Re-throw the last error
+              }
+            } else {
+              throw error; // Not a rate limit error, throw immediately
+            }
+          }
+        }
+
+        if (!result) {
+          throw new Error("Failed to generate content after retries: " + (lastError?.message || "Unknown error"));
+        }
+
         const resultResponse = result.response;
 
-        const inlineDataPart = resultResponse.candidates[0].content.parts.find(part => part.inlineData);
+        // Check if we have a valid response
+        if (!resultResponse || !resultResponse.candidates || resultResponse.candidates.length === 0) {
+          throw new Error("No valid response from Gemini API");
+        }
 
-        if (inlineDataPart) {
-          const imageData = inlineDataPart.inlineData.data;
-          const mimeType = inlineDataPart.inlineData.mimeType;
+        // Look for inline image data in the response
+        let imageData = null;
+        let mimeType = null;
+        
+        // Iterate through candidates to find image data
+        for (const candidate of resultResponse.candidates) {
+          if (candidate.content && candidate.content.parts) {
+            for (const part of candidate.content.parts) {
+              if (part.inlineData) {
+                imageData = part.inlineData.data;
+                mimeType = part.inlineData.mimeType;
+                break;
+              }
+            }
+            if (imageData) break;
+          }
+        }
+
+        // If we found image data, return it
+        if (imageData && mimeType) {
           response.status(200).json({ image: `data:${mimeType};base64,${imageData}` });
         } else {
-          throw new Error("No inline image data found in Gemini response.");
+          // If no image data found, check if we have text content as fallback
+          let textContent = null;
+          for (const candidate of resultResponse.candidates) {
+            if (candidate.content && candidate.content.parts) {
+              for (const part of candidate.content.parts) {
+                if (part.text) {
+                  textContent = part.text;
+                  break;
+                }
+              }
+              if (textContent) break;
+            }
+          }
+          
+          // If we have text content, it might be a description of an image
+          if (textContent) {
+            console.warn("No image data found in response, returning text content as fallback");
+            response.status(200).json({ text: textContent });
+          } else {
+            throw new Error("No image or text data found in Gemini response.");
+          }
         }
 
         console.log('--- Banana image response sent to client ---');
@@ -190,7 +284,19 @@ async function handler(request, response) {
       } catch (error) {
         console.error('--- CRASH in /api/gemini/generate-banana-image ---');
         console.error('Error object:', error);
-        response.status(500).json({ error: 'Failed to generate banana image from Gemini API: ' + error.message });
+        
+        // Handle quota exceeded errors more gracefully
+        if (error.status === 429 || (error.message && error.message.includes('quota'))) {
+          response.status(429).json({ 
+            error: 'Rate limit exceeded. Please try again later or use a different model.',
+            details: 'You have exceeded your current quota for the Gemini API. Please check your plan and billing details.'
+          });
+        } else {
+          response.status(500).json({ 
+            error: 'Failed to generate banana image from Gemini API: ' + error.message,
+            details: error.stack || 'No stack trace available'
+          });
+        }
       }
       break;
     }
@@ -208,7 +314,7 @@ async function handler(request, response) {
 
         const prompts = settings.prompts.autoGeneratePersona;
 
-        const model = genAI.getGenerativeModel({ 
+        const model = genAI.getGenerativeModel({
           model: modelName,
           systemInstruction: prompts.systemInstruction,
         });

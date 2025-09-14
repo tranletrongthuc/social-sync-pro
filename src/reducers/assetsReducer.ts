@@ -1,12 +1,29 @@
-import type { GeneratedAssets, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, PostInfo, FacebookTrend, FacebookPostIdea, LogoConcept, MediaPlanWeek } from '../../types';
+import type { GeneratedAssets, MediaPlanGroup, MediaPlan, MediaPlanPost, AffiliateLink, Persona, PostStatus, Trend, Idea, PostInfo, FacebookTrend, FacebookPostIdea, LogoConcept, MediaPlanWeek, Settings } from '../../types';
+
+// Define initial settings directly in this file to avoid cross-module import issues.
+const initialSettings: Settings = {
+    language: "English",
+    totalPostsPerMonth: 30,
+    mediaPromptSuffix: "",
+    affiliateContentKit: "",
+    textGenerationModel: "gemini-1.5-pro-latest",
+    imageGenerationModel: "dall-e-3",
+    textModelFallbackOrder: [],
+    visionModels: [],
+    contentPillars: [],
+    prompts: { rules: {} },
+};
 
 export type AssetsAction =
   | { type: 'INITIALIZE_ASSETS'; payload: GeneratedAssets | null }
+  | { type: 'UPDATE_SETTINGS'; payload: Settings }
+  | { type: 'UPDATE_BRAND_KIT'; payload: Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> }
   | { type: 'ADD_MEDIA_PLAN'; payload: MediaPlanGroup }
   | { type: 'UPDATE_POST'; payload: { planId: string; weekIndex: number; postIndex: number; updates: Partial<MediaPlanPost> } }
   | { type: 'UPDATE_PLAN'; payload: { planId: string; plan: MediaPlan } }
-  | { type: 'UPDATE_ASSET_IMAGE'; payload: { oldImageKey: string; newImageKey: string; postInfo?: PostInfo } }
+  | { type: 'UPDATE_ASSET_IMAGE'; payload: { oldImageKey: string; newImageKey: string; postInfo?: PostInfo; carouselImageIndex?: number } }
   | { type: 'ADD_OR_UPDATE_AFFILIATE_LINK'; payload: AffiliateLink }
+  | { type: 'ADD_OR_UPDATE_AFFILIATE_LINKS'; payload: AffiliateLink[] }
   | { type: 'DELETE_AFFILIATE_LINK'; payload: string }
   | { type: 'IMPORT_AFFILIATE_LINKS'; payload: AffiliateLink[] }
   | { type: 'SET_AFFILIATE_LINKS'; payload: AffiliateLink[] }
@@ -57,7 +74,8 @@ export const initialGeneratedAssets: GeneratedAssets = {
         coverPhotoId: ''
     },
     facebookPostIdeas: [],
-    selectedPlatforms: []
+    selectedPlatforms: [],
+    settings: initialSettings, // Add settings to initial state
 };
 
 export const assetsReducer = (state: GeneratedAssets | null, action: AssetsAction): GeneratedAssets | null => {
@@ -71,6 +89,18 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
     switch (action.type) {
         case 'INITIALIZE_ASSETS':
             return action.payload;
+
+        case 'UPDATE_SETTINGS':
+            return { ...state, settings: action.payload };
+
+        case 'UPDATE_BRAND_KIT': {
+            const newMediaPlans = [...state.mediaPlans, ...(action.payload.mediaPlans || [])];
+            return {
+                ...state,
+                ...action.payload,
+                mediaPlans: newMediaPlans,
+            };
+        }
         
         case 'ADD_MEDIA_PLAN': {
             return {
@@ -105,7 +135,7 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
         }
         
         case 'UPDATE_ASSET_IMAGE': {
-            const { oldImageKey, newImageKey, postInfo } = action.payload;
+            const { oldImageKey, newImageKey, postInfo, carouselImageIndex } = action.payload;
             const newState = JSON.parse(JSON.stringify(state));
 
             if (postInfo) {
@@ -113,7 +143,17 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
                 if (plan) {
                     const post = plan.plan[postInfo.weekIndex]?.posts[postInfo.postIndex];
                     if (post?.id === postInfo.post.id) {
-                        post.imageKey = newImageKey;
+                        // If carouselImageIndex is a number, handle carousel logic
+                        if (typeof carouselImageIndex === 'number') {
+                            if (!post.imageKeys) {
+                                post.imageKeys = [];
+                            }
+                            post.imageKeys[carouselImageIndex] = newImageKey;
+                        } else {
+                            // Otherwise, handle single image logic
+                            post.imageKey = newImageKey;
+                        }
+
                         if (!post.mediaOrder) post.mediaOrder = [];
                         if (!post.mediaOrder.includes('image')) post.mediaOrder.push('image');
                     }
@@ -270,11 +310,19 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
 
         case 'ADD_IDEAS': {
             const newIdeas = action.payload;
-            if (newIdeas.length === 0) return state;
-            const trendId = newIdeas[0].trendId;
+            if (!newIdeas || newIdeas.length === 0) return state;
+
             const existingIdeas = state.ideas || [];
-            const otherIdeas = existingIdeas.filter(i => i.trendId !== trendId);
-            return { ...state, ideas: [...otherIdeas, ...newIdeas] };
+            // Create a map of the new ideas for efficient lookup
+            const newIdeasMap = new Map(newIdeas.map((idea: Idea) => [idea.id, idea]));
+
+            // Filter out any old versions of the ideas we are adding/updating
+            const updatedIdeas = existingIdeas.filter((idea: Idea) => !newIdeasMap.has(idea.id));
+            
+            // Add the new/updated ideas to the list
+            updatedIdeas.push(...newIdeas);
+
+            return { ...state, ideas: updatedIdeas };
         }
         
         case 'ADD_CONTENT_PACKAGE': {

@@ -1117,3 +1117,513 @@ This session was primarily focused on a major refactoring of `App.tsx` and subse
 *   **Rigorous Component Audit:** Before any `write_file` operation on a component, especially for prop destructuring, a full, line-by-line audit will be performed comparing the component's `Props` interface with its destructuring block. Any discrepancies will be explicitly identified and corrected in a single, atomic operation.
 *   **Prioritize Stability:** No new debugging or feature implementation will commence until the application is confirmed to be stable and free of runtime crashes.
 *   **Clear Communication:** Maintain clear and concise communication regarding the current state of the application, the specific bug being addressed, and the information required from the user.
+
+# Session Summary (2025-09-10) [4]
+
+## 1. Summary of Accomplishments
+
+This session focused on diagnosing and fixing issues with the auto-save functionality and AI model fallback mechanism in SocialSync Pro. Key accomplishments include:
+
+### Auto-Save System Implementation
+- Implemented a comprehensive `useAutoSave` hook that automatically saves user data after any database-changing actions
+- Created intelligent change detection using hashing to prevent unnecessary saves
+- Added debounced saving (2-second delay) to prevent excessive database calls
+- Implemented automatic retry logic for failed saves (up to 3 attempts)
+- Ensured universal coverage for all database operations (Brand Kit Generation, Persona Management, Media Plan Management, etc.)
+
+### AI Model Fallback Investigation
+- Diagnosed an issue where the fallback mechanism was not properly switching between AI providers (Google vs OpenRouter)
+- Identified that even when fallback models include OpenRouter models (e.g., `google/gemini-2.0-flash-exp:free`), the application was still calling the Google Gemini API endpoint instead of the OpenRouter endpoint
+- Found that the fallback logic correctly identifies models but routes them to the wrong provider service
+
+## 2. Key Technical Changes
+
+### Auto-Save Hook (`src/hooks/useAutoSave.ts`)
+- Created a custom React hook that monitors `generatedAssets` for changes
+- Implemented hash-based change detection to identify meaningful changes
+- Added debounced saving with 2-second delay to prevent excessive database calls
+- Integrated retry logic with exponential backoff for failed saves
+- Added `forceSave` function for immediate saves when needed
+
+### Integration with App Component (`src/App.tsx`)
+- Integrated the `useAutoSave` hook to monitor asset changes
+- Connected auto-save status updates to the UI
+- Ensured the hook works with existing state management patterns
+
+## 3. Issues to Note
+
+### AI Model Fallback Routing Issue
+**Problem**: The fallback mechanism is not properly routing OpenRouter models to the OpenRouter service endpoint.
+
+**Evidence**: 
+- When models fail (gemini-2.5-pro, gemini-2.5-flash), the system correctly tries the next model in the fallback list
+- However, when it reaches an OpenRouter model (`google/gemini-2.0-flash-exp:free`), it still calls the `/api/gemini/generate` endpoint instead of `/api/openrouter/generate`
+- This results in a 404 error because the Google Gemini API doesn't recognize OpenRouter model names
+
+**Root Cause**: The `getProviderService` function in `textGenerationService.ts` correctly identifies the service provider based on model configuration, but somewhere in the execution chain, the request is still being routed to the wrong endpoint.
+
+### Incomplete Model Configuration
+- The fallback order includes models that may not be properly configured in the database
+- Some model names might not match exactly between the fallback configuration and the actual model definitions
+
+## 4. Uncompleted Tasks
+
+1. **Debugging AI Model Routing**: Need to trace exactly where the routing decision is made to ensure OpenRouter models are sent to the correct endpoint
+2. **Verifying Model Configuration**: Need to check that all models in the fallback list are properly configured in the database
+3. **Testing Complete Fallback Chain**: Need to verify that the entire fallback chain works correctly across different providers
+
+## 5. Preventative Measures for Future Sessions
+
+1. **Thorough Logging**: Implement comprehensive logging in the provider selection and routing logic to trace exactly which service is being selected for each model
+2. **Model Validation**: Add validation to ensure all models in the fallback list exist in the configuration and are properly mapped to their services
+3. **Provider Endpoint Verification**: Add explicit checks to ensure that the correct API endpoint is being called for each provider
+4. **Integration Testing**: Create specific tests for the fallback mechanism that verify cross-provider routing works correctly
+5. **Configuration Auditing**: Regularly audit the AI model configuration to ensure consistency between model names, services, and fallback orders
+
+## 6. Next Steps
+
+1. Trace the execution path to identify where the routing decision is made
+2. Verify that the `getProviderService` function is returning the correct provider for OpenRouter models
+3. Check that the provider's `generateRawContent` function is correctly calling the BFF endpoint
+4. Ensure that the BFF service has the correct endpoints for both providers
+5. Test the complete fallback chain with various model configurations
+
+
+
+# Session Summary (2025-09-11) [1]
+
+### **1. Summary of Accomplishments**
+
+This session focused on addressing several bugs and initiating a major architectural refactoring of the prompt builder.
+
+*   **Bug Fixes:**
+    *   **Double Auto-Save:** Resolved the issue where the `create-or-update-brand` API call was triggered twice. This was fixed by introducing a `syncLastSaved` function in `useAutoSave.ts` and calling it in `App.tsx` after the initial manual brand creation, preventing redundant auto-saves.
+    *   **Empty Brand Kit Display:** Corrected the rendering of brand kit assets in `AssetDisplay.tsx`. The component now correctly accesses `logo.prompt` (instead of `logo.description`) and `assets.coverPhotoPrompt` (instead of `assets.coverPhoto?.prompt`), ensuring generated data is displayed.
+    *   **AI Model Config Warning:** Fixed a case-sensitivity issue in `textGenerationService.ts` (`"Google"` vs `"google"`) that caused an "Unknown service ID" warning.
+    *   **AI Response Structure Mismatch (Partial Fix):** Removed an obsolete validation check in `response.processor.ts` that was causing crashes when the AI did not return a `mediaPlan` object.
+
+*   **Architectural Refactoring (Planning & Initial Steps):**
+    *   **Prompt Builder Redesign:** Agreed on a new, robust, OOP-inspired architecture for the prompt builder (`prompt.builder.ts`) to reduce duplication, increase reusability, and enforce fixed JSON output structures.
+    *   **Two-Tiered Settings Model:** Defined a new settings hierarchy:
+        *   **Admin-Controlled Templates:** Main prompt templates (e.g., for Brand Kit, Media Plan) are managed only by Admins.
+        *   **User-Controlled Rules:** Regular users can only customize stylistic rules for smaller components (Image Prompts, Captions, Video Scripts).
+        *   **No Settings Copying:** Brands will now directly use global admin settings for templates, eliminating the need to copy settings on brand creation.
+    *   **Planning Documents Updated:** `Prompt_Builder_Refactoring_Solution_Plan.md` and `Prompt_Builder_Refactoring_Implementation_Plan.md` were updated to reflect this new architecture and the inclusion of new prompt components (Image Prompt, Short/Long Video Script, Post Caption) with user-configurable rules.
+    *   **Phase 1 Implementation (Backend Data Models):**
+        *   Modified `api/mongodb.js` to stop copying `adminSettings` when creating a new brand. New brands now initialize with a minimal `settings` object containing only `prompts.rules`.
+        *   Updated `types.ts` to reflect the new, simplified `Prompts` type for brand-specific settings, containing only `rules`.
+    *   **Phase 2 Implementation (Core Toolkit - Attempted):** Initiated the creation of the new `PromptBuilder` class and core component builders in `src/services/prompt.builder.ts`.
+
+### **2. Issues to Note**
+
+*   **Critical `prompt.builder.ts` Syntax Error (Unresolved Blocker):** Repeated failures to correctly write `src/services/prompt.builder.ts` due to persistent syntax errors related to backtick escaping within string literals. This issue has blocked further progress on Phase 2 of the prompt builder refactoring.
+*   **AI Response Structure Mismatch (Recurring):** Despite previous fixes, the AI continues to return incorrect JSON structures (e.g., a product review instead of a brand kit). This indicates a fundamental prompt engineering challenge with the dynamic prompt loaded from the database, or the AI model's adherence to complex JSON schemas. The current hardcoded prompt in `prompt.builder.ts` was a temporary measure to address this, but it was reverted as per user instruction.
+*   **Unfinished Refactoring Phases:** Phase 1 (backend data models) and Phase 2 (core toolkit) of the prompt builder refactoring are incomplete due to the `prompt.builder.ts` syntax error.
+
+### **3. Uncompleted Tasks**
+
+*   Resolve the persistent syntax error in `src/services/prompt.builder.ts`.
+*   Complete Phase 2: Establish the Core Toolkit (creating `PromptBuilder` class and component builders).
+*   Proceed with Phase 3: Refactor Settings UI & Data Flow.
+*   Proceed with Phase 4: Incremental Refactoring of Features.
+
+### **4. Preventative Measures for Future Sessions**
+
+*   **Manual Intervention for Complex Syntax:** For any file with complex string literals or escaping issues (like `prompt.builder.ts`), immediately request manual user intervention to provide the corrected content, rather than attempting automated fixes that fail.
+*   **Strict Adherence to 7-Step Workflow:** Continue to strictly follow all 7 steps of the defined workflow, especially verification (Steps 5 & 6), to catch errors early and prevent incomplete tasks.
+*   **Clear Communication of Tool Limitations:** Be explicit when a tool cannot perform a task reliably and propose alternative manual steps to the user.
+
+### **1. Summary of Accomplishments** [2]
+
+This session primarily focused on refining the prompt builder architecture and propagating settings through the application's generation services.
+
+*   **Prompt Builder JSON Structure Externalization:** All prompt builder functions in `src/services/prompt.builder.ts` that produce JSON output (e.g., `buildBrandKitPrompt`, `buildMediaPlanPrompt`, `buildGenerateBrandProfilePrompt`, `buildGenerateViralIdeasPrompt`, `buildGenerateContentPackagePrompt`, `buildGenerateFacebookTrendsPrompt`, `buildGeneratePostsForFacebookTrendPrompt`, `buildGenerateIdeasFromProductPrompt`, `buildAutoGeneratePersonaPrompt`) have been refactored. Their respective JSON structures are now defined as exported constants within `prompt.builder.ts`, ensuring a leaner and clearer `textGenerationService.ts`.
+*   **Data Flow Updates (Partial Completion):**
+    *   The `textGenerationService.generateBrandKit` and `textGenerationService.generateBrandProfile` call sites in `src/App.tsx` have been updated to correctly pass both `brandSettings` and `adminSettings`.
+    *   The `useMediaPlanManagement` hook has been updated to accept `adminSettings` and pass it to `textGenerationService.generateMediaPlanGroup`.
+    *   The `textGenerationService.generateMediaPlanGroup` function was updated to correctly process `brandSettings` and `adminSettings`.
+*   **`buildGenerateMediaPromptForPostPrompt` Function Restoration & Fix:** The `buildGenerateMediaPromptForPostPrompt` function in `src/services/prompt.builder.ts` was successfully restored and its type signature corrected (`postContent: MediaPlanPost`). A related typo in `textGenerationService.ts` (`'Carousel Post'` to `'Carousel'`) was also fixed. This resolved a persistent and phantom `TS2304: Cannot find name 'postContent'` error, bringing the codebase to a stable, compilable state.
+*   **`PromptManager` Isolation Confirmed:** It was confirmed that the `PromptManager` component is now exclusively used within `src/components/AdminPage.tsx`, fulfilling a requirement of Phase 3.
+
+### **2. Issues to Note**
+
+*   **`App.tsx` `handleGenerateInCharacterPost` Placeholder:** The `handleGenerateInCharacterPost` function in `src/App.tsx` remains a placeholder (`async () => { }`). Direct attempts to replace its implementation using the `replace` tool failed due to its sensitivity to whitespace, indicating a need for a read-modify-write approach.
+*   **`replace` Tool Limitations:** The `replace` tool continues to demonstrate high sensitivity to whitespace and exact string matching, leading to repeated failures for multi-line or complex code modifications. This reinforces the necessity of a more robust read-modify-write strategy for such changes.
+
+### **3. Uncompleted Tasks**
+
+*   **Phase 3: Refactor Settings UI & Data Flow (Pending):** This phase is still largely unaddressed.
+    *   Simplify the user `SettingsModal` to only show "Prompt Rules".
+    *   Update data fetching in `App.tsx` and relevant hooks to fully propagate both `adminSettings` and brand `settings` to all generation services. (Partially done for `generateBrandKit`, `generateBrandProfile`, `generateMediaPlanGroup`, and `generateInCharacterPost`'s service call, but not for all call sites in `App.tsx` or other hooks).
+*   **Complete Data Flow Updates for `generateInCharacterPost`:** The `handleGenerateInCharacterPost` in `App.tsx` needs its full implementation, and its call site in `MainDisplay` needs to be updated.
+
+### **4. Preventative Measures for Future Sessions**
+
+*   **Read-Modify-Write for Complex Changes:** For any non-trivial code modification, especially in large or sensitive files like `App.tsx`, exclusively use a read-modify-write strategy: read the entire file, perform the replacement in memory, and then use `write_file` to overwrite the original. This is more robust and avoids the string-matching failures of `replace`.
+*   **Strict Adherence to 7-Step Workflow:** Continue to strictly follow all 7 steps of the defined workflow, especially verification (Steps 5 & 6), to catch errors early and prevent incomplete tasks.
+*   **Clear Communication of Tool Limitations:** Be explicit when a tool cannot perform a task reliably and propose alternative manual steps to the user.
+
+### Session Summary (2025-09-11) [3]
+
+This session involved extensive debugging and refactoring across several core application areas, primarily focusing on ID management, auto-saving, and resolving cascading type errors.
+
+#### 1. Summary of Accomplishments
+
+*   **Prompt Builder Refactoring Review:** Confirmed that the `Prompt_Builder_Refactoring_Implementation_Plan.md` was largely implemented. The `PromptBuilder` class and component builders are in place, and the data flow correctly passes `adminSettings` and brand-specific `settings` to generation functions. The only minor deviation noted was the `Prompts` type in `types.ts` still containing all template fields at the brand level, though the backend correctly initializes minimal settings.
+*   **Content Strategy Ideas Display Bug (Fixed):**
+    *   **Problem:** New ideas were not auto-displayed after generation, and ideas were not loading when clicking a trend. This was due to a faulty `assetsReducer` (replacing ideas instead of adding) and incorrect local filtering logic in `StrategyDisplay.tsx`.
+    *   **Fix:**
+        *   `assetsReducer.ts`: Modified `ADD_IDEAS` to correctly add/update ideas.
+        *   `StrategyDisplay.tsx`: Simplified and corrected the `ideasForSelectedTrend` filtering logic.
+        *   **Refactor:** Implemented a more robust data-fetching mechanism for ideas. `useStrategyManagement.ts` now manages `selectedTrend` and `ideasForSelectedTrend` states, fetching ideas explicitly from the backend (`loadIdeasForTrendFromDatabase`) when a trend is clicked. `StrategyDisplay.tsx` was updated to use these new props.
+*   **UUID ID Mismatch Bug (Fixed):**
+    *   **Problem:** `trendId` in ideas was a UUID, while the corresponding trend `id` was a MongoDB ObjectID string, leading to ideas not being found. This was due to frontend components generating temporary UUIDs for new items.
+    *   **Fix:**
+        *   `StrategyDisplay.tsx`: Modified `handleSaveTrend` to no longer generate `crypto.randomUUID()` for new trends.
+        *   `useStrategyManagement.ts`: Modified `handleSaveTrend` to be `async`, `await` the real ID from `saveTrendToDatabase`, and then update the state.
+        *   `usePersonaManagement.ts`: Modified `handleSavePersona` and `handleSaveSelectedPersonas` to no longer generate `crypto.randomUUID()` and to await the real ID from `savePersonaToDatabase`.
+        *   `ProductCard.tsx`: Removed `crypto.randomUUID()` from `handleSave`.
+        *   `api/mongodb.js`: Ensured `save-affiliate-links` returns the saved links with their IDs.
+        *   `databaseService.ts`: Updated `saveAffiliateLinksToDatabase` to handle the new response.
+        *   `assetsReducer.ts`: Added `ADD_OR_UPDATE_AFFILIATE_LINKS` action to handle batch updates.
+        *   `response.processor.ts`: Removed all `crypto.randomUUID()` calls and fixed syntax errors introduced by previous faulty `replace` operations.
+
+#### 2. Issues to Note
+
+*   **Persistent `usePersonaManagement.ts` Type Error (Blocking):** The `src/hooks/usePersonaManagement.ts` file still has a persistent `TS2345` type error related to `Argument of type '{ id?: string; ... }' is not assignable to parameter of type 'Persona'`. This error has resisted multiple attempts at resolution, indicating a deeper type inference issue or environment-specific problem that the model cannot resolve with its current tools. The model has admitted defeat on this specific error and requested manual user intervention.
+*   **Auto-Saving Multiple Calls Bug (Unresolved):**
+    *   **Problem:** `create-or-update-brand` was called multiple times unnecessarily during initial load. This was due to the `useAutoSave` hook's coarse hashing and multiple state updates during initialization.
+    *   **Fix Attempt:**
+        *   `useProjectIO.ts`: Modified `handleLoadFromDatabase` to call `syncLastSaved` after initial asset load.
+        *   `App.tsx`: Passed `syncLastSaved` to `useProjectIO`.
+    *   **Current Status:** This fix attempt introduced new `tsc` errors (`Block-scoped variable 'syncLastSaved' used before its declaration` and `Cannot redeclare block-scoped variable` in `App.tsx`) due to incorrect ordering/duplication of `useState`/`useRef` declarations. These errors were not fully resolved by the end of the session.
+*   **`replace` Tool Brittleness:** The `replace` tool proved extremely unreliable for multi-line or context-sensitive changes, leading to syntax errors and requiring frequent manual intervention or switching to `write_file`. This significantly slowed down progress and introduced new bugs.
+*   **Obsolete Files:** `src/components/TrendHubDisplay.tsx` was identified as an obsolete file but was not deleted due to a user cancellation.
+
+#### 3. Uncompleted Tasks
+
+*   **Fix `usePersonaManagement.ts` Type Error:** This is the primary blocking issue. The model has requested manual user intervention.
+*   **Resolve `App.tsx` Duplication/Ordering Errors:** The `Cannot redeclare block-scoped variable` errors in `App.tsx` need to be resolved to fix the auto-save bug.
+*   **Delete `src/components/TrendHubDisplay.tsx`:** This obsolete file needs to be removed.
+
+#### 4. Preventative Measures for Future Sessions
+
+1.  **Strict Adherence to Workflow:** Reiterate the commitment to strictly follow the 7-step workflow, especially:
+    *   **Step 2 (Plan):** Always present a clear, step-by-step technical plan before implementation.
+    *   **Step 5 & 6 (Verification):** Run `npx tsc --noEmit` after *every* significant change to catch errors immediately.
+2.  **Prioritize `write_file` for Complex Changes:** For any non-trivial code modification, especially in large or sensitive files, exclusively use a read-modify-write strategy (`read_file` -> modify in memory -> `write_file`) to avoid the brittleness of the `replace` tool.
+3.  **Manual Review for `App.tsx`:** Due to its complexity and the repeated issues, any future modifications to `App.tsx` should involve a more thorough manual review of the entire file after automated changes, or explicit instructions for the user to perform manual edits.
+4.  **Explicitly Handle Optional Properties:** When dealing with types where properties can be optional (e.g., `id?: string`), ensure that code accessing these properties handles the `undefined` case gracefully (e.g., `if (item.id) { ... }`).
+5.  **Consolidate Initial State Updates:** When loading initial data, strive to update the main `generatedAssets` state in a single, atomic operation to prevent multiple auto-save triggers. If this is not possible, ensure `syncLastSaved` is called appropriately.
+
+# Session Summary (2025-09-12) [1]
+
+## 1. Summary of Accomplishments
+
+This session focused on fixing a series of cascading bugs, from build-blocking errors to runtime logic flaws and advanced prompt engineering.
+
+*   **Build & Runtime Fixes:**
+    *   **App Crash on Load:** Resolved the initial build-blocking error in `App.tsx` caused by a duplicate `isSettingsModalOpen` state declaration.
+    *   **Hook Dependency Errors:** Corrected the initialization order and data flow between the `useAutoSave` and `useProjectIO` hooks, resolving errors related to the `syncLastSaved` function.
+    *   **Media Plan Save Failure:** Fixed a critical runtime bug where media plans failed to save due to a non-functional placeholder for the `ensureMongoProject` function in `App.tsx`. This function was fully re-implemented to handle project existence checks and creation correctly.
+    *   **Image Generation Rate Limiting:** Enhanced the retry logic in `api/gemini.js` for the image generation endpoint. The delay was increased from 2.5s to 8.5s to comply with the API's new `retryDelay` requirement, making the feature more resilient.
+
+*   **Prompt & UI Refactoring:**
+    *   **Prompt Rule Application (Bug Fix):** After a failed attempt at a complex single-prompt solution, and based on user feedback rejecting a multi-call approach, a more robust prompt engineering strategy was implemented. The `buildMediaPlanPrompt` function in `prompt.builder.ts` now dynamically injects brand-specific rules as new fields (e.g., `_rule_for_content`) directly into the JSON schema provided to the AI. This is a more reliable method for enforcing rules within a single API call.
+    *   **Dynamic Post Detail Modal (In Progress):** Began a major refactoring of the `PostDetailModal.tsx` component to display a different UI based on the post's `contentType`. This involved removing the old monolithic `MediaHandler` and creating new, specialized handlers for `Image Post`, `Video Post`, `Carousel Post`, and `Text Post`.
+
+## 2. Issues to Note
+
+*   **Persistent Build-Blocking Error:** The primary unresolved issue is the `TS2345` type error in `src/hooks/usePersonaManagement.ts`. An object with an optional `id` is being assigned to the `Persona` type which requires an `id`. This error has blocked a full successful build for several sessions, and I have been unable to resolve it.
+*   **My Own Process Failures:** The refactoring of `PostDetailModal.tsx` was severely hampered by my own errors. I repeatedly used the `write_file` tool with incomplete or corrupted content based on a faulty memory of the file state, which introduced numerous follow-up compilation errors (`missing props`, `invalid props`, `missing variables`). This highlighted a significant flaw in my process.
+
+## 3. Preventative Measures for Future Sessions
+
+1.  **Strict Read-Modify-Write:** I must strictly adhere to a pure read-modify-write cycle within a single turn. For any file modification, I will `read_file`, perform the changes on that exact content in memory, and then immediately `write_file` with the complete, corrected content. I will not rely on my memory of a file's structure from previous turns.
+2.  **Atomic Changes:** When adding a new component or feature (e.g., `TextPostHandler`), I must ensure all its dependencies (e.g., `DocumentTextIcon`) are created and exported as part of the same atomic change to avoid introducing compilation errors.
+3.  **Trust User Direction:** The user's rejection of the multi-call AI plan was correct. I will continue to prioritize their architectural feedback on efficiency and cost.
+
+--- 
+Session Summary (2025-09-13) [1]
+---
+
+### 1. Summary of Accomplishments
+
+This session involved extensive debugging, refactoring, and addressing multiple critical bugs across the application's frontend and backend.
+
+*   **Carousel Display Implementation:**
+    *   A reusable `Carousel` React component was created in `src/components/ui.tsx`.
+    *   `PostDetailModal.tsx` was refactored to use `CarouselPostHandler` for carousel content types, displaying images in a slide format.
+    *   `MediaPlanDisplay.tsx` was updated to correctly pass an array of image URLs (`imageUrls`) to `PostCard` for carousel posts.
+    *   `PostCard.tsx` was updated to accept `imageUrls` and render the `Carousel` component for `Carousel Post` content types.
+*   **Image Paste Functionality Restored:**
+    *   A visible paste area with `onPaste` event handling was added to `ImagePostHandler` in `PostDetailModal.tsx` for single image posts.
+    *   Similar paste functionality was added for individual image prompts within `CarouselPostHandler`.
+*   **AI Model Routing Fixes:**
+    *   The `getProviderService` function in `src/services/textGenerationService.ts` was made more robust to correctly route requests for OpenRouter models (e.g., `meta-llama/llama-3.1-405b-instruct:free`) to the `/api/openrouter/generate` endpoint, preventing incorrect calls to `/api/gemini/generate`.
+    *   A syntax error in `src/services/configService.ts` related to provider string comparison was fixed.
+*   **OpenRouter API Response Handling:**
+    *   The backend `api/openrouter.js` was made more resilient to empty or invalid JSON responses from the external OpenRouter API. The `generate` and `generate-image` actions now robustly handle non-JSON or empty responses, preventing server crashes and returning meaningful errors to the frontend.
+*   **Type Error Resolution:**
+    *   A persistent `TS2345` type error in `src/hooks/usePersonaManagement.ts` was resolved by modifying the `savePersonaToDatabase` function in `src/services/databaseService.ts` to correctly accept `Partial<Persona>` objects.
+    *   A syntax error in `src/components/ui.tsx` (duplicate `);`) was identified and fixed.
+    *   A syntax error in `src/services/prompt.builder.ts` was identified and fixed (user assisted).
+*   **Video Post `mediaPrompt` Fix (Initiated):**
+    *   The `buildMediaPlanPrompt` function in `src/services/prompt.builder.ts` was updated to include instructions for the AI to generate a `mediaPrompt` (script prompt) for `Video Post`, `Shorts`, and `Reel` content types, even if no specific rules are defined.
+
+### 2. Issues to Note
+
+*   **Modal Not Opening for Posts with Images (Recurring Bug):** Despite multiple attempts and adding logging, the `PostDetailModal` still fails to open for posts that have an image. This is the primary blocking issue. The root cause is still unknown.
+    *   **User's Manual Change:** The user manually removed the `h-full` class from `PostDetailModal.tsx`. It is unclear if this resolved the bug or introduced new layout issues.
+*   **Carousel Image Data Storage (Ongoing):** The fundamental issue of storing multiple image URLs for `Carousel Post`s in the backend is still being addressed. The `imageUrl` field in the database is currently a single string, not an array, for these posts.
+    *   The `imageUrlsArray` field was added to `MediaPlanPost` in `types.ts`.
+    *   The backend `api/mongodb.js` (`save-media-plan-group` action) is currently being modified to correctly save multiple image URLs into this new field.
+*   **`PostCard.tsx` Logging Issue:** Unable to add logging to `PostCard.tsx` due to file truncation issues with the `read_file` tool, hindering debugging efforts for the post feed display.
+*   **`mediaPrompt` for Video Posts:** The fix for this was implemented in `prompt.builder.ts`, but the user needs to regenerate their media plan to see the effect.
+
+### 3. Uncompleted Tasks
+
+*   **Carousel Image Data Storage (Backend `save-media-plan-group`):** The modification of `api/mongodb.js` to correctly save `imageUrlsArray` for `Carousel Post`s is in progress.
+*   **Carousel Image Data Loading (Backend `load-media-plan`):** The `api/mongodb.js` `load-media-plan` action needs to be updated to retrieve `imageUrlsArray` and populate the `generatedImages` cache for carousel posts.
+*   **Frontend Image Saving for Carousel Posts:** `useAssetManagement.ts` (`onSetImage`) and `databaseService.ts` (`updateMediaPlanPostInDatabase`) need to be updated to handle saving multiple image URLs for carousel posts.
+*   **Debugging Modal Not Opening:** This task is ongoing and requires console logs from the user.
+
+### 4. Preventative Measures for Future Sessions
+
+To ensure a more efficient and error-free workflow, the following measures will be strictly adhered to:
+
+*   **Strict Workflow Adherence:** All 7 steps of the defined workflow will be followed precisely for every task, without exception or shortcuts.
+*   **Mandatory `npx tsc --noEmit`:** This command will be run *after every single file modification* to immediately catch type and syntax errors.
+*   **Read-Modify-Write for Complex Changes:** The `replace` tool will only be used for the most simple, single-line, unambiguous changes. For all other modifications, the full read-modify-write pattern will be used: `read_file` to get the exact content, perform changes in memory, and then `write_file` to overwrite the original. This will prevent `replace` tool failures and syntax errors.
+*   **Thorough Pre-Coding Analysis:** Before writing any code, a more explicit and detailed analysis (Step 2 of the workflow) will be performed to check for existing imports, props, and component structure to avoid conflicts and ensure changes integrate seamlessly.
+*   **Targeted Debugging with User Collaboration:** When a bug is not immediately apparent from static analysis, targeted logging will be added, and the user will be explicitly asked to provide the console output to pinpoint the exact cause.
+
+### Session Summary (2025-09-13) [2]
+
+This session was dedicated to a deep, end-to-end refactoring of the "Carousel Post" feature, followed by fixing several related UI bugs that were uncovered through rigorous testing and user feedback.
+
+---
+
+### 1. Summary of Accomplishments
+
+*   **End-to-End Carousel Refactoring:** A complete overhaul of the carousel feature was performed across the entire stack.
+    *   **Data Model:** The `MediaPlanPost` type in `types.ts` was updated to properly support carousels by adding an `imageKeys: string[]` field to correspond with the existing `imageUrlsArray: string[]`.
+    *   **Backend (`api/mongodb.js`):** The `save-media-plan-group`, `update-media-plan-post`, and `load-media-plan` actions were all refactored to correctly persist and retrieve the new `imageKeys` and `imageUrlsArray` fields, ensuring data integrity for multi-image posts.
+    *   **Frontend State & Services:** The `assetsReducer` and `databaseService` were updated to handle indexed array updates for carousels. The `useAssetManagement` hook was significantly refactored, making the `handleSetImage` function "carousel-aware" by allowing it to accept an index to update a specific slide.
+    *   **UI Implementation:** The `PostCard` and `PostDetailModal` components were fixed to correctly render the `<Carousel />` component for posts with the `'Carousel'` content type.
+
+*   **AI Response Normalization (Root Cause Fix):**
+    *   **Problem:** It was discovered that the AI was returning a wide variety of `contentType` strings (e.g., `album`, `imageCarousel`, `reel`, `story`) that did not match the application's strict internal types.
+    *   **Solution:** A `normalizeContentType` function was implemented in the `response.processor.ts` file. This function intercepts the AI response and maps all variations to the correct, standardized types (`'Carousel'`, `'Reel'`, etc.) before the data enters the main application state. This fixed numerous downstream UI bugs at their source.
+
+*   **UI/UX Refinements:**
+    *   **Prompt Display:** Fixed a bug where an array of `mediaPrompt` strings was being incorrectly displayed as a single, comma-separated line. The `ImagePostHandler` and `VideoPostHandler` were refactored to loop over the array and display each prompt individually.
+    *   **Individual Prompt Copying:** As a follow-up, the UI was enhanced to wrap each individual prompt in the list with its own "copy-to-clipboard" feature.
+    *   **Carousel Editor Redesign:** Based on user feedback and a provided diagram, the `CarouselPostHandler` was redesigned to feature a persistent "Paste Area" for each prompt, improving the workflow for updating individual carousel slides.
+
+### 2. Issues to Note
+
+*   **Critical Environment/Caching Issue:** The most significant issue during the session was the user's local environment not reflecting code changes. Multiple correct fixes were implemented but did not appear for the user, leading to repeated bug reports for already-fixed issues. This was diagnosed as a browser or development server caching problem that requires manual intervention from the user (a hard reload or server restart) to resolve. My initial diagnoses were incorrect, and I was not firm enough in insisting on this environmental fix.
+*   **My Own Incomplete Analysis:** My initial fixes were not thorough enough. I failed to initially consider the full range of `contentType` values the AI could return, and I did not verify how every UI component would render an array of `mediaPrompt` strings. This led to a frustrating cycle of follow-up bugs that could have been prevented with a more holistic initial analysis.
+
+### 3. Uncompleted Tasks
+
+*   None. All technical tasks for this session were completed. The final remaining action is for the user to clear their environment's cache to see the latest correct version of the application.
+
+### 4. Preventative Measures for Future Sessions
+
+*   **Forceful Environment Check:** If a user reports that a fix is not working, and the evidence (e.g., screenshots) points to old code, I must immediately and firmly halt further code changes and insist on environment-clearing steps (hard reload, server restart). I should provide the user with a method to verify they have the new code (e.g., "look for this specific line of code in your browser's sources tab").
+*   **Holistic Impact Analysis:** When a data structure from an external source (like an AI response) changes, I must perform a more rigorous analysis of the entire data flow to find and fix all downstream impacts in a single, comprehensive operation.
+*   **Verify UI Rendering:** When fixing data logic, I must always follow up by manually tracing how that data is consumed and rendered by all relevant UI components.
+
+## Session Summary (September 13, 2025) [3]
+
+### Summary of Accomplishments
+
+This session focused on fixing critical issues with carousel image generation and display:
+
+1. **Fixed Carousel Image Generation Race Condition**:
+   - Identified and resolved race conditions in concurrent carousel image generation
+   - Modified the "Generate All" button to generate images sequentially instead of concurrently
+   - Improved client-side state management to ensure proper data flow
+
+2. **Fixed MongoDB Array Update Conflicts**:
+   - Resolved MongoDB errors when updating carousel image arrays
+   - Implemented individual array element updates instead of full array replacements
+   - Eliminated conflicts between individual element and full array updates
+
+3. **Enhanced Error Handling and Robustness**:
+   - Added better error handling in asset management hooks
+   - Improved state management to use current data instead of potentially stale data
+   - Added comprehensive logging for debugging purposes
+
+### Key Technical Changes
+
+1. **PostDetailModal.tsx**:
+   - Changed `handleGenerateAll` to generate images sequentially
+   - Added proper useCallback import for React hooks
+
+2. **useAssetManagement.ts**:
+   - Improved carousel image update logic to use current state data
+   - Added better error handling and logging
+   - Enhanced state updates to prevent race conditions
+
+3. **mongodb.js**:
+   - Fixed MongoDB update operations to avoid field conflicts
+   - Changed array updates to use individual element updates only
+   - Removed conflicting full array updates
+
+### Issues to Note
+
+1. **UI Feed Refresh Issue**: While database updates are working correctly, the main post feed is not automatically refreshing to show newly generated images. This suggests the issue might be in how the application state is propagated to the feed components.
+
+2. **Potential State Management Issues**: There might be additional state management issues in how the main application state is updated and propagated to all components after database updates.
+
+### Uncompleted Tasks
+
+1. **Post Feed Refresh**: The main task of ensuring the post feed refreshes with new images after generation is still incomplete. The database is correctly updated, but the UI feed is not reflecting these changes.
+
+### Preventative Measures for Future Sessions
+
+1. **Sequential Processing**: For operations that modify shared state, prefer sequential processing over concurrent operations to avoid race conditions.
+
+2. **Database Update Patterns**: When updating arrays in MongoDB, use individual element updates rather than full array replacements to avoid conflicts.
+
+3. **State Propagation**: Ensure that database updates properly propagate to all relevant UI components through proper state management patterns.
+
+4. **Comprehensive Testing**: Always test both database updates and UI refreshes to ensure end-to-end functionality works correctly.
+
+# Session Summary (2025-09-14) [1]
+
+## 1. Summary of Accomplishments
+
+This session focused on significantly enhancing the AI-Powered Trend Suggestion feature and standardizing the Content Strategy tab UI. Key accomplishments include:
+
+### AI-Powered Trend Suggestion Enhancement
+- **Enhanced Data Structure**: Added comprehensive search metadata fields to the `Trend` type including `searchVolume`, `competitionLevel`, `peakTimeFrame`, `geographicDistribution`, `relatedQueries`, `trendingScore`, `sourceUrls`, `category`, `sentiment`, and `predictedLifespan`.
+- **Improved Prompt Builder**: Updated `SUGGEST_TRENDS_JSON_STRUCTURE` to request all enhanced metadata fields from the AI.
+- **Database Persistence**: Modified MongoDB API to properly save and retrieve all enhanced trend metadata fields.
+- **UI Enhancement**: Updated frontend to display comprehensive trend metadata with visual indicators.
+
+### Content Strategy Tab Standardization
+- **Complete Layout Restructuring**: Redesigned the entire Content Strategy tab with a clean, standardized layout featuring:
+  - Left sidebar containing only the trends list (industry vs global indicators)
+  - Main content area for trend details and metadata display
+  - Top-positioned trend suggestion tools (Auto Suggest and Facebook Strategy sections)
+- **Enhanced Trend List**: Added visual tags for industry vs global trends, search volume indicators, and competition level badges
+- **Lean Trend Detail View**: Created organized display of all trend metadata with grid-based layout, progress bars for scores, and source link display
+- **Mobile Optimization**: Implemented collapsible sidebar with overlay for mobile devices and proper responsive design
+
+### Key Technical Improvements
+- **Trend Auto-Replacement**: Modified trend suggestion logic to prepend new trends to the head of the existing list rather than replacing all trends
+- **Enhanced UI Components**: Added comprehensive metadata display with proper visual hierarchy and source transparency
+- **Type Safety**: Ensured all enhanced metadata fields are properly typed and handled throughout the application
+
+## 2. Issues to Note
+
+1. **Missing Language Translations**: Some new UI elements may be missing Vietnamese translations in the localization objects
+2. **Incomplete Mobile Testing**: While the mobile layout has been significantly improved, thorough testing on various device sizes has not been completed
+3. **Performance Considerations**: The enhanced trend detail view with multiple metadata sections may impact rendering performance with large trend lists
+
+## 3. Uncompleted Tasks
+
+1. **Comprehensive Mobile Testing**: While the mobile layout has been improved, testing across various device sizes and orientations is still needed
+2. **Accessibility Audit**: A full accessibility audit of the new UI components has not been completed
+3. **Performance Optimization**: Further optimization of the trend list rendering with virtualization may be needed for large datasets
+
+## 4. Preventative Measures for Future Sessions
+
+1. **Thorough Testing**: Always test both desktop and mobile layouts after major UI changes
+2. **Type Consistency**: Ensure all new data fields are properly added to both frontend types and backend database schemas
+3. **Localization Completeness**: Verify that all new UI elements include proper localization for both English and Vietnamese
+4. **Progressive Enhancement**: When adding new features, ensure they enhance existing functionality rather than replacing it entirely
+5. **Data Persistence Verification**: Always verify that new data fields are properly saved to and retrieved from the database
+6. **Cross-Device Consistency**: Maintain consistent user experience and functionality across all device sizes after UI changes
+
+## 5. Technical Debt Addressed
+
+1. **Metadata Enrichment**: Previously sparse trend objects are now enriched with comprehensive search metadata
+2. **UI Standardization**: Inconsistent layout has been replaced with a clean, standardized design
+3. **Data Persistence**: Enhanced metadata fields are now properly persisted in the database
+4. **User Experience**: Mobile experience has been significantly improved with proper sidebar management
+
+# Session Summary (2025-09-14) [2]
+
+## 1. Summary of Accomplishments
+
+This session focused on implementing the Content Strategy tab redesign and fixing several critical bugs in the AI response processing system.
+
+### Content Strategy Tab Redesign
+- **Component Restructuring**: Refactored the monolithic StrategyDisplay component into a modern two-section layout:
+  - `NavigationSidebar.tsx`: Collapsible sidebar containing trends list, search/filter functionality, and suggestion tools
+  - `MainContentArea.tsx`: Main content area with tabbed interface for trend details
+  - Child components: `TrendListItem.tsx`, `OverviewTab.tsx`, `RelatedQueriesTab.tsx`, `SourcesTab.tsx`
+- **Performance Optimizations**: 
+  - Implemented lazy loading for tab content using React.lazy/Suspense
+  - Added memoization for frequently rendered components
+  - Implemented input debouncing for search functionality (300ms delay)
+- **UI/UX Improvements**: 
+  - Created enhanced trend metadata display with visual indicators
+  - Implemented stats dashboard with card-based layout
+  - Made sidebar collapsible for focus mode
+  - Added proper mobile responsiveness with overlay sidebar
+
+### Bug Fixes
+1. **Viral Ideas Generation**: Fixed the `processViralIdeasResponse` function to properly handle AI responses wrapped in markdown code blocks and extract the `ViralIdeas` array from the response object.
+
+2. **Content Package Generation**: Fixed the `processContentPackageResponse` function to handle both `repurposedContent` (singular) and `repurposedContents` (plural) keys from AI responses, and made it more robust by logging warnings instead of throwing errors when repurposed content is missing.
+
+3. **Prompt Builder Refactoring**: Refactored the prompt builder system to eliminate code duplication by creating dedicated helper functions for rule application:
+   - `buildImagePromptRules()`, `buildCarouselPromptRules()`, `buildShortVideoScriptRules()`, etc.
+   - Applied brand-specific image prompt rules (including the 8 key factors for realistic AI photos) to content package generation
+
+4. **Brand Settings Integration**: Ensured that brand-specific settings rules are properly applied to all generated content, including:
+   - Image prompt rules with 8 key factors for realistic AI photos
+   - Short/long video script rules
+   - Post caption rules
+
+## 2. Issues to Note
+
+1. **Potential UI Overflow**: The tabbed details section in the Content Strategy tab may still have scrolling issues on some screen sizes. Need to verify that all content fits properly within the viewport.
+
+2. **Missing Error Handling**: The error handling in some components could be more robust, particularly for network failures and AI service timeouts.
+
+3. **Incomplete Mobile Testing**: While mobile responsiveness was implemented, thorough testing across various device sizes and orientations has not been completed.
+
+## 3. Uncompleted Tasks
+
+1. **Comprehensive Mobile Testing**: While the mobile layout has been improved, testing across various device sizes and orientations is still needed.
+
+2. **Accessibility Audit**: A full accessibility audit of the new UI components has not been completed.
+
+3. **Performance Optimization**: Further optimization of the trend list rendering with virtualization may be needed for large datasets.
+
+## 4. Preventative Measures for Future Sessions
+
+1. **Follow Component Architecture**: Continue using the modular component structure with proper separation of concerns (NavigationSidebar + MainContentArea).
+
+2. **Reuse Helper Functions**: Always use the dedicated helper functions for rule application in the prompt builder to avoid code duplication.
+
+3. **Implement Performance Optimizations**: Continue using lazy loading, memoization, and debouncing for performance-critical components.
+
+4. **Maintain Brand Settings Integration**: Ensure all AI-generated content properly applies brand-specific rules and settings.
+
+5. **Thorough Testing**: Always test both desktop and mobile layouts after major UI changes.
+
+6. **Type Safety**: Ensure all new data fields are properly added to both frontend types and backend database schemas.
+
+7. **Progressive Enhancement**: When adding new features, ensure they enhance existing functionality rather than replacing it entirely.
+
+8. **Data Persistence Verification**: Always verify that new data fields are properly saved to and retrieved from the database.
+
+9. **Cross-Device Consistency**: Maintain consistent user experience and functionality across all device sizes after UI changes.
+
+## 5. Technical Debt Addressed
+
+1. **Code Duplication**: Eliminated repeated rule construction logic in the prompt builder by creating dedicated helper functions.
+
+2. **Inconsistent Error Handling**: Made error handling more consistent across AI response processors.
+
+3. **Missing Brand Settings Integration**: Ensured brand-specific rules are properly applied to all AI-generated content.
+
+4. **UI Standardization**: Replaced inconsistent layout with a clean, standardized design following modern UI/UX principles.

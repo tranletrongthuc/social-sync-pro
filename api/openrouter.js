@@ -4,6 +4,39 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 async function handler(request, response) {
   const { action } = request.query;
 
+  // Helper function for robust response handling
+  const handleOpenRouterResponse = async (openrouterResponse) => {
+    const responseText = await openrouterResponse.text();
+
+    if (!openrouterResponse.ok) {
+      let errorMessage = `OpenRouter API error: ${openrouterResponse.status} ${openrouterResponse.statusText}`;
+      if (responseText) {
+        try {
+          const errorData = JSON.parse(responseText);
+          if (errorData.error?.message) {
+            errorMessage = errorData.error.message;
+          }
+        } catch (e) {
+          errorMessage = responseText.substring(0, 500); // Use raw text if not JSON
+        }
+      }
+      throw new Error(errorMessage);
+    }
+
+    if (!responseText) {
+        console.warn("OpenRouter returned an empty but successful response.");
+        return null; // Return null to indicate empty response
+    }
+
+    try {
+        return JSON.parse(responseText);
+    } catch (e) {
+        console.error("Failed to parse JSON from OpenRouter response, returning raw text object.");
+        // If parsing fails, but it was a 200 OK, return as text
+        return { raw_text: responseText };
+    }
+  };
+
   switch (action) {
     case 'generate': {
       if (request.method !== 'POST') {
@@ -45,19 +78,29 @@ async function handler(request, response) {
           body: JSON.stringify(body)
         });
 
-        if (!openrouterResponse.ok) {
-          const errorData = await openrouterResponse.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `OpenRouter API error: ${openrouterResponse.status} ${openrouterResponse.statusText}`);
+        const responseData = await handleOpenRouterResponse(openrouterResponse);
+
+        if (!responseData) {
+            return response.status(200).json([]); // Handle empty but successful response
         }
 
-        const responseData = await openrouterResponse.json();
+        if (responseData.raw_text) {
+            return response.status(200).json({ text: responseData.raw_text });
+        }
         
-        let responseText = '';
         if (responseData.choices && responseData.choices.length > 0 && responseData.choices[0].message?.content) {
-          responseText = responseData.choices[0].message.content;
+          const responseText = responseData.choices[0].message.content;
+          try {
+            const parsedData = JSON.parse(responseText);
+            const finalData = parsedData.ViralIdeas || parsedData.ideas || parsedData;
+            response.status(200).json(finalData);
+          } catch (e) {
+            response.status(200).json({ text: responseText });
+          }
+        } else {
+           response.status(200).json([]); // Return empty array if no content
         }
 
-        response.status(200).json({ text: responseText });
         console.log('--- OpenRouter response sent to client ---');
 
       } catch (error) {
@@ -107,13 +150,12 @@ async function handler(request, response) {
           body: JSON.stringify(body)
         });
 
-        if (!openrouterResponse.ok) {
-          const errorData = await openrouterResponse.json().catch(() => ({}));
-          throw new Error(errorData.error?.message || `OpenRouter API error: ${openrouterResponse.status} ${openrouterResponse.statusText}`);
+        const responseData = await handleOpenRouterResponse(openrouterResponse);
+
+        if (!responseData) {
+            return response.status(200).json({ image: '' }); // Handle empty but successful response
         }
 
-        const responseData = await openrouterResponse.json();
-        
         let responseImage = '';
         if (responseData.choices && responseData.choices.length > 0 && responseData.choices[0].message?.content) {
           try {

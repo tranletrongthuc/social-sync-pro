@@ -4,7 +4,6 @@ import { Button, Input, TextArea, Select } from './ui';
 import { SettingsIcon, TrashIcon, PlusIcon } from './icons';
 import { loadSettingsDataFromDatabase as loadSettingsData } from '../services/databaseService';
 import SettingField from './SettingField';
-import PromptManager from './PromptManager';
 
 // Helper function to get models by capability from AI services
 const getModelsByCapability = (aiServices: AIService[], capability: 'text' | 'image') => {
@@ -25,7 +24,7 @@ interface SettingsModalProps {
   onSave: (newSettings: Settings) => Promise<void>;
 }
 
-type ActiveTab = 'general' | 'generation' | 'affiliate' | 'prompts';
+type ActiveTab = 'general' | 'generation' | 'affiliate' | 'rules';
 
 const TabButton: React.FC<{
     tabId: ActiveTab;
@@ -53,7 +52,7 @@ const T = {
     tab_general: 'Chung',
     tab_generation: 'Tạo nội dung',
     tab_affiliate: 'Affiliate',
-    tab_prompts: 'Prompts',
+    tab_rules: 'Prompt Rules',
     save: 'Lưu thay đổi',
     saving: 'Đang lưu...',
     cancel: 'Hủy',
@@ -70,6 +69,16 @@ const T = {
     textGenerationModel_desc: 'Mô hình AI được sử dụng cho tất cả các tính năng tạo văn bản.',
     imageGenerationModel: 'Mô hình Tạo ảnh',
     imageGenerationModel_desc: 'Mô hình AI được sử dụng cho tất cả các tính năng tạo ảnh.',
+    prompt_rules: 'Quy tắc Prompt',
+    prompt_rules_desc: 'Tùy chỉnh quy tắc cho các thành phần prompt khác nhau được sử dụng trong quá trình tạo nội dung.',
+    image_prompt_rules: 'Quy tắc Prompt Ảnh',
+    image_prompt_rules_desc: 'Các quy tắc được áp dụng khi tạo prompt cho hình ảnh.',
+    caption_rules: 'Quy tắc Caption',
+    caption_rules_desc: 'Các quy tắc được áp dụng khi tạo caption cho bài đăng.',
+    short_video_script_rules: 'Quy tắc Script Video Ngắn',
+    short_video_script_rules_desc: 'Các quy tắc được áp dụng khi tạo script cho video ngắn.',
+    long_video_script_rules: 'Quy tắc Script Video Dài',
+    long_video_script_rules_desc: 'Các quy tắc được áp dụng khi tạo script cho video dài.',
   },
   'English': {
     title: 'Settings',
@@ -77,7 +86,7 @@ const T = {
     tab_general: 'General',
     tab_generation: 'Generation',
     tab_affiliate: 'Affiliate',
-    tab_prompts: 'Prompts',
+    tab_rules: 'Prompt Rules',
     save: 'Save Changes',
     saving: 'Saving...',
     cancel: 'Cancel',
@@ -94,6 +103,16 @@ const T = {
     textGenerationModel_desc: 'The AI model to use for all text generation features.',
     imageGenerationModel: 'Image Generation Model',
     imageGenerationModel_desc: 'The AI model to use for all image generation features.',
+    prompt_rules: 'Prompt Rules',
+    prompt_rules_desc: 'Customize rules for different prompt components used in content generation.',
+    image_prompt_rules: 'Image Prompt Rules',
+    image_prompt_rules_desc: 'Rules applied when generating prompts for images.',
+    caption_rules: 'Caption Rules',
+    caption_rules_desc: 'Rules applied when generating captions for posts.',
+    short_video_script_rules: 'Short Video Script Rules',
+    short_video_script_rules_desc: 'Rules applied when generating scripts for short videos.',
+    long_video_script_rules: 'Long Video Script Rules',
+    long_video_script_rules_desc: 'Rules applied when generating scripts for long videos.',
   }
 };
 
@@ -213,7 +232,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                 <TabButton tabId="general" text={texts.tab_general} activeTab={activeTab} onClick={setActiveTab} />
                 <TabButton tabId="generation" text={texts.tab_generation} activeTab={activeTab} onClick={setActiveTab} />
                 <TabButton tabId="affiliate" text={texts.tab_affiliate} activeTab={activeTab} onClick={setActiveTab} />
-                <TabButton tabId="prompts" text={texts.tab_prompts} activeTab={activeTab} onClick={setActiveTab} />
+                <TabButton tabId="rules" text={texts.tab_rules} activeTab={activeTab} onClick={setActiveTab} />
             </div>
         </div>
 
@@ -385,13 +404,109 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
                     />
                 </div>
             )}
-            {activeTab === 'prompts' && (
-              <PromptManager
-                settings={settings}
-                adminSettings={adminSettings}
-                onSave={onSave}
-                isSaving={isSaving}
-              />
+            {activeTab === 'rules' && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-800">{texts.prompt_rules}</h3>
+                  <p className="text-sm text-gray-500 mt-1 font-serif">{texts.prompt_rules_desc}</p>
+                </div>
+                
+                <div>
+                  <label className="block text-md font-medium text-gray-700 mb-2">{texts.image_prompt_rules}</label>
+                  <p className="text-sm text-gray-500 mb-2 font-serif">{texts.image_prompt_rules_desc}</p>
+                  <textarea
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    rows={4}
+                    value={settings.prompts?.rules?.imagePrompt?.join('\n') || ''}
+                    onChange={(e) => {
+                      const rules = e.target.value.split('\n').filter(rule => rule.trim() !== '');
+                      setSettings(prev => ({
+                        ...prev,
+                        prompts: {
+                          ...prev.prompts,
+                          rules: {
+                            ...prev.prompts?.rules,
+                            imagePrompt: rules
+                          }
+                        }
+                      }));
+                    }}
+                    placeholder="Enter one rule per line..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-md font-medium text-gray-700 mb-2">{texts.caption_rules}</label>
+                  <p className="text-sm text-gray-500 mb-2 font-serif">{texts.caption_rules_desc}</p>
+                  <textarea
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    rows={4}
+                    value={settings.prompts?.rules?.postCaption?.join('\n') || ''}
+                    onChange={(e) => {
+                      const rules = e.target.value.split('\n').filter(rule => rule.trim() !== '');
+                      setSettings(prev => ({
+                        ...prev,
+                        prompts: {
+                          ...prev.prompts,
+                          rules: {
+                            ...prev.prompts?.rules,
+                            postCaption: rules
+                          }
+                        }
+                      }));
+                    }}
+                    placeholder="Enter one rule per line..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-md font-medium text-gray-700 mb-2">{texts.short_video_script_rules}</label>
+                  <p className="text-sm text-gray-500 mb-2 font-serif">{texts.short_video_script_rules_desc}</p>
+                  <textarea
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    rows={4}
+                    value={settings.prompts?.rules?.shortVideoScript?.join('\n') || ''}
+                    onChange={(e) => {
+                      const rules = e.target.value.split('\n').filter(rule => rule.trim() !== '');
+                      setSettings(prev => ({
+                        ...prev,
+                        prompts: {
+                          ...prev.prompts,
+                          rules: {
+                            ...prev.prompts?.rules,
+                            shortVideoScript: rules
+                          }
+                        }
+                      }));
+                    }}
+                    placeholder="Enter one rule per line..."
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-md font-medium text-gray-700 mb-2">{texts.long_video_script_rules}</label>
+                  <p className="text-sm text-gray-500 mb-2 font-serif">{texts.long_video_script_rules_desc}</p>
+                  <textarea
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    rows={4}
+                    value={settings.prompts?.rules?.longVideoScript?.join('\n') || ''}
+                    onChange={(e) => {
+                      const rules = e.target.value.split('\n').filter(rule => rule.trim() !== '');
+                      setSettings(prev => ({
+                        ...prev,
+                        prompts: {
+                          ...prev.prompts,
+                          rules: {
+                            ...prev.prompts?.rules,
+                            longVideoScript: rules
+                          }
+                        }
+                      }));
+                    }}
+                    placeholder="Enter one rule per line..."
+                  />
+                </div>
+              </div>
             )}
         </div>
 

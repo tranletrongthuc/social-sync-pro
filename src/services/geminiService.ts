@@ -8,6 +8,7 @@ import type { Settings } from '../../types';
  */
 
 export const generateRawContentWithGemini = async (prompt: string, model: string, settings: Settings, useSearch: boolean): Promise<string> => {
+    console.log('[geminiService] Executing generateRawContentWithGemini');
     const config: any = {
         systemInstruction: settings.affiliateContentKit,
     };
@@ -27,5 +28,11 @@ export const generateImageWithBanana = async (
     promptSuffix: string
 ): Promise<string> => {
     const fullPrompt = `${prompt}${promptSuffix ? `, ${promptSuffix}` : ''}`;
-    return await generateImageWithBananaBff(model, fullPrompt);
+    try {
+        const response = await generateImageWithBananaBff(model, fullPrompt);
+        return response;
+    } catch (error) {
+        console.error('Error in generateImageWithBanana:', error);
+        throw error;
+    }
 };

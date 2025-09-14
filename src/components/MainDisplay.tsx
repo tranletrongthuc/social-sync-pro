@@ -1,4 +1,4 @@
-import React, { useState, Suspense, useCallback, useEffect, lazy } from 'react';
+import React, { useState, Suspense, useCallback, useEffect, useRef, lazy } from 'react';
 import type { 
   GeneratedAssets, 
   MediaPlanGroup, 
@@ -25,7 +25,7 @@ const AssetDisplay = React.lazy(() => import('./AssetDisplay'));
 const MediaPlanDisplay = React.lazy(() => import('./MediaPlanDisplay'));
 const AffiliateVaultDisplay = React.lazy(() => import('./AffiliateVaultDisplay'));
 const PersonasDisplay = React.lazy(() => import('./PersonasDisplay'));
-const StrategyDisplay = React.lazy(() => import('./StrategyDisplay'));
+const ContentStrategyPage = React.lazy(() => import('./ContentStrategyPage'));
 
 interface MainDisplayProps {
   assets: GeneratedAssets;
@@ -58,6 +58,9 @@ interface MainDisplayProps {
   mediaPlanGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[], personaId?: string;}[];
   onSelectPlan: (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => void;
   activePlanId: string | null;
+  plans: MediaPlanGroup[];
+  personas: Persona[];
+  affiliateLinks: AffiliateLink[];
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
   onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
@@ -115,8 +118,13 @@ interface MainDisplayProps {
   onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
   onGenerateTrendsFromSearch: (industry: string) => void;
   isGeneratingTrendsFromSearch: boolean;
-  onLoadIdeasForTrend?: (trendId: string) => void; // New prop
-  productTrendToSelect: string | null; // New prop to specify which product trend to select
+  // New props for AI-powered trend suggestion
+  onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
+  isSuggestingTrends: boolean;
+  onSelectTrend: (trend: Trend) => void;
+  selectedTrend: Trend | null;
+  ideasForSelectedTrend: Idea[];
+  productTrendToSelect: string | null;
   // New Facebook Strategy Props
   onGenerateFacebookPostIdeas: (postInfo: PostInfo) => void;
   onAddFacebookPostIdeaToPlan: (idea: FacebookPostIdea) => void;
@@ -216,9 +224,13 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onGenerateContentPackage,
     onGenerateTrendsFromSearch,
     isGeneratingTrendsFromSearch,
+    onSuggestTrends, // Add this line
+    isSuggestingTrends, // Add this line
+    onSelectTrend,
+    selectedTrend,
+    ideasForSelectedTrend,
     onPublishPost,
     onUpdatePersona,
-    onLoadIdeasForTrend,
     onCreateFunnelCampaignPlan, // New prop
     viewingPost,
     setViewingPost,
@@ -228,181 +240,56 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   const [initialWizardPrompt, setInitialWizardPrompt] = useState('');
   const [initialWizardProductId, setInitialWizardProductId] = useState<string | undefined>(undefined);
   
-  // State for Funnel Campaign Wizard
   const [isFunnelWizardOpen, setIsFunnelWizardOpen] = useState(false);
   
-  // State for tracking which tabs have been loaded
   const [loadedTabs, setLoadedTabs] = useState<Set<ActiveTab>>(new Set(['brandKit']));
-  
-  // State for tracking loading status of tabs
   const [loadingTabs, setLoadingTabs] = useState<Set<ActiveTab>>(new Set());
-  
-  // Load data on demand when switching tabs
-  useEffect(() => {
-    console.log("Tab switching useEffect triggered", { activeTab, loadedTabs, loadingTabs });
-    
-    // Load strategy hub data when switching to strategy tab
-    if (activeTab === 'strategy' && !loadedTabs.has('strategy') && props.onLoadStrategyHubData && !loadingTabs.has('strategy')) {
-      console.log("Loading strategy hub data...");
-      setLoadingTabs(prev => new Set(prev).add('strategy'));
-      props.onLoadStrategyHubData().then(() => {
-        // Success - mark tab as loaded
-        console.log("Strategy hub data loaded successfully");
-        setLoadedTabs(prev => new Set(prev).add('strategy'));
-      }).catch((error) => {
-        // Error - don't mark tab as loaded so it can retry
-        console.error("Failed to load strategy hub data:", error);
-      }).finally(() => {
-        // Always clean up loading state
-        setLoadingTabs(prev => {
-          const newSet = new Set(prev);
-          newSet.delete('strategy');
-          return newSet;
-        });
-      });
-    }
-    
-    // Load affiliate vault data when switching to affiliate vault tab
-    if (activeTab === 'affiliateVault' && !loadedTabs.has('affiliateVault') && props.onLoadAffiliateVaultData && !loadingTabs.has('affiliateVault')) {
-      console.log("Loading affiliate vault data...");
-      setLoadingTabs(prev => new Set(prev).add('affiliateVault'));
-      props.onLoadAffiliateVaultData().then(() => {
-        // Success - mark tab as loaded
-        console.log("Affiliate vault data loaded successfully");
-        setLoadedTabs(prev => new Set(prev).add('affiliateVault'));
-      }).catch((error) => {
-        // Error - don't mark tab as loaded so it can retry
-        console.error("Failed to load affiliate vault data:", error);
-      }).finally(() => {
-        // Always clean up loading state
-        setLoadingTabs(prev => {
-          const newSet = new Set(prev);
-          newSet.delete('affiliateVault');
-          return newSet;
-        });
-      });
-    }
-    
-    // Load personas data when switching to personas tab
-    if (activeTab === 'personas' && !loadedTabs.has('personas') && props.onLoadPersonasData && !loadingTabs.has('personas')) {
-      console.log("Loading personas data...");
-      setLoadingTabs(prev => new Set(prev).add('personas'));
-      props.onLoadPersonasData().then(() => {
-        // Success - mark tab as loaded
-        console.log("Personas data loaded successfully");
-        setLoadedTabs(prev => new Set(prev).add('personas'));
-      }).catch((error) => {
-        // Error - don't mark tab as loaded so it can retry
-        console.error("Failed to load personas data:", error);
-      }).finally(() => {
-        // Always clean up loading state
-        setLoadingTabs(prev => {
-          const newSet = new Set(prev);
-          newSet.delete('personas');
-          return newSet;
-        });
-      });
-    }
-  }, [activeTab, loadedTabs, loadingTabs, props.onLoadStrategyHubData, props.onLoadAffiliateVaultData, props.onLoadPersonasData]);
-  
-  // Also load data when the component mounts if we're on a tab that needs data
-  useEffect(() => {
-    console.log("Mount useEffect triggered", { activeTab, loadedTabs, loadingTabs });
-    
-    // Only run this once when the component mounts
-    if (loadedTabs.size === 1 && loadedTabs.has('brandKit')) {
-      // Load strategy hub data if we start on the strategy tab
-      if (activeTab === 'strategy' && !loadedTabs.has('strategy') && props.onLoadStrategyHubData && !loadingTabs.has('strategy')) {
-        console.log("Loading strategy hub data on mount...");
-        setLoadingTabs(prev => new Set(prev).add('strategy'));
-        props.onLoadStrategyHubData().then(() => {
-          console.log("Strategy hub data loaded successfully on mount");
-          setLoadedTabs(prev => new Set(prev).add('strategy'));
-        }).catch((error) => {
-          console.error("Failed to load strategy hub data on mount:", error);
-        }).finally(() => {
-          setLoadingTabs(prev => {
-            const newSet = new Set(prev);
-            newSet.delete('strategy');
-            return newSet;
-          });
-        });
-      }
-      
-      // Load affiliate vault data if we start on the affiliate vault tab
-      if (activeTab === 'affiliateVault' && !loadedTabs.has('affiliateVault') && props.onLoadAffiliateVaultData && !loadingTabs.has('affiliateVault')) {
-        console.log("Loading affiliate vault data on mount...");
-        setLoadingTabs(prev => new Set(prev).add('affiliateVault'));
-        props.onLoadAffiliateVaultData().then(() => {
-          console.log("Affiliate vault data loaded successfully on mount");
-          setLoadedTabs(prev => new Set(prev).add('affiliateVault'));
-        }).catch((error) => {
-          console.error("Failed to load affiliate vault data on mount:", error);
-        }).finally(() => {
-          setLoadingTabs(prev => {
-            const newSet = new Set(prev);
-            newSet.delete('affiliateVault');
-            return newSet;
-          });
-        });
-      }
-      
-      // Load personas data if we start on the personas tab
-      if (activeTab === 'personas' && !loadedTabs.has('personas') && props.onLoadPersonasData && !loadingTabs.has('personas')) {
-        console.log("Loading personas data on mount...");
-        setLoadingTabs(prev => new Set(prev).add('personas'));
-        props.onLoadPersonasData().then(() => {
-          console.log("Personas data loaded successfully on mount");
-          setLoadedTabs(prev => new Set(prev).add('personas'));
-        }).catch((error) => {
-          console.error("Failed to load personas data on mount:", error);
-        }).finally(() => {
-          setLoadingTabs(prev => {
-            const newSet = new Set(prev);
-            newSet.delete('personas');
-            return newSet;
-          });
-        });
-      }
-    }
-  }, []); // Empty dependency array to run only once on mount
-  
-  // Function to mark a tab as loaded
-  const markTabAsLoaded = (tab: ActiveTab) => {
-    setLoadedTabs(prev => new Set(prev).add(tab));
-  };
-  
-  // Function to mark a tab as loading
-  const markTabAsLoading = (tab: ActiveTab) => {
-    setLoadingTabs(prev => new Set(prev).add(tab));
-  };
-  
-  // Function to mark a tab as finished loading
-  const markTabAsFinishedLoading = (tab: ActiveTab) => {
-    setLoadingTabs(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(tab);
-      return newSet;
-    });
-  };
 
   const handleOpenWizard = (prompt = '', productId?: string) => {
     setInitialWizardPrompt(prompt);
     setInitialWizardProductId(productId);
-    // If we're opening from another tab, switch to the media plan tab
     if (activeTab !== 'mediaPlan') {
       setActiveTab('mediaPlan');
     }
     setIsWizardOpen(true);
   };
   
-  // Override setActiveTab to implement lazy loading
   const handleSetActiveTab = (tab: ActiveTab) => {
-    // Call the original setActiveTab
     setActiveTab(tab);
+
+    if (loadedTabs.has(tab) || loadingTabs.has(tab)) {
+      return;
+    }
+
+    let loadFn: (() => Promise<void>) | undefined;
+    switch (tab) {
+      case 'strategy':
+        loadFn = props.onLoadStrategyHubData;
+        break;
+      case 'affiliateVault':
+        loadFn = props.onLoadAffiliateVaultData;
+        break;
+      case 'personas':
+        loadFn = props.onLoadPersonasData;
+        break;
+    }
+
+    if (loadFn) {
+      setLoadingTabs(prev => new Set(prev).add(tab));
+      loadFn().then(() => {
+        setLoadedTabs(prev => new Set(prev).add(tab));
+      }).catch((error) => {
+        console.error(`Failed to load data for tab ${tab}:`, error);
+      }).finally(() => {
+        setLoadingTabs(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(tab);
+          return newSet;
+        });
+      });
+    }
   };
   
-  // Handler for opening the Funnel Campaign Wizard
   const handleOpenFunnelWizard = () => {
     setIsFunnelWizardOpen(true);
   };
@@ -451,7 +338,6 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onExport={onExportPlan}
               isExporting={isExportingPlan}
               onRegenerateWeekImages={onRegenerateWeekImages}
-              // New props for on-demand loading
               planGroupsList={mediaPlanGroupsList}
               onSelectPlan={onSelectPlan}
               activePlanId={activePlanId}
@@ -459,19 +345,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onRefinePost={onRefinePost}
               onGenerateInCharacterPost={onGenerateInCharacterPost}
               onAssignPersonaToPlan={onAssignPersonaToPlan}
-              // KhongMinh Props
               analyzingPostIds={analyzingPostIds}
               isAnyAnalysisRunning={isAnyAnalysisRunning}
               khongMinhSuggestions={khongMinhSuggestions}
               onAcceptSuggestion={onAcceptSuggestion}
               onRunKhongMinhForPost={onRunKhongMinhForPost}
-              // On-demand prompt generation
               generatingPromptKeys={generatingPromptKeys}
               onGeneratePrompt={onGeneratePrompt}
-              // Comment Generation
               onGenerateAffiliateComment={onGenerateAffiliateComment}
               generatingCommentPostIds={generatingCommentPostIds}
-              // Selection and Scheduling
               selectedPostIds={selectedPostIds}
               onTogglePostSelection={onTogglePostSelection}
               onSelectAllPosts={onSelectAllPosts}
@@ -479,43 +361,45 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onOpenScheduleModal={onOpenScheduleModal}
               onOpenBulkScheduleModal={onOpenBulkScheduleModal}
               onPostDrop={onPostDrop}
-              onPublishPost={onPublishPost} // Pass the new prop
-              // Bulk Actions
+              onPublishPost={onPublishPost}
               isPerformingBulkAction={isPerformingBulkAction}
               onBulkGenerateImages={onBulkGenerateImages}
               onBulkSuggestPromotions={onBulkSuggestPromotions}
               onBulkGenerateComments={onBulkGenerateComments}
               brandFoundation={brandFoundation}
-              // New prop for opening funnel wizard
               onOpenFunnelWizard={handleOpenFunnelWizard}
               viewingPost={viewingPost}
               setViewingPost={setViewingPost}
             />
           )}
           {activeTab === 'strategy' && (
-            <StrategyDisplay
-              language={settings.language}
-              trends={assets.trends || []}
-              ideas={assets.ideas || []}
-              personas={assets.personas || []}
-              affiliateLinks={assets.affiliateLinks || []}
-              generatedImages={generatedImages}
-              settings={settings}
-              onSaveTrend={onSaveTrend}
-              onDeleteTrend={onDeleteTrend}
-              onGenerateIdeas={onGenerateIdeas}
-              onCreatePlanFromIdea={handleOpenWizard}
-              onGenerateContentPackage={onGenerateContentPackage}
-              isGeneratingIdeas={isGeneratingPlan}
-              onGenerateFacebookTrends={onGenerateTrendsFromSearch}
-              isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
-              productTrendToSelect={productTrendToSelect}
-              onLoadIdeasForTrend={onLoadIdeasForTrend}
-              // Lazy loading props
-              isDataLoaded={loadedTabs.has('strategy')}
-              onLoadData={props.onLoadStrategyHubData}
-              isLoading={loadingTabs.has('strategy')}
-            />
+            <div className="h-full overflow-hidden">
+              <ContentStrategyPage
+                language={settings.language}
+                trends={assets.trends || []}
+                personas={assets.personas || []}
+                affiliateLinks={assets.affiliateLinks || []}
+                generatedImages={generatedImages}
+                settings={settings}
+                onSaveTrend={onSaveTrend}
+                onDeleteTrend={onDeleteTrend}
+                onGenerateIdeas={onGenerateIdeas}
+                onCreatePlanFromIdea={handleOpenWizard}
+                onGenerateContentPackage={onGenerateContentPackage}
+                isGeneratingIdeas={isGeneratingPlan}
+                onGenerateFacebookTrends={onGenerateTrendsFromSearch}
+                isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
+                productTrendToSelect={productTrendToSelect}
+                selectedTrend={selectedTrend}
+                ideasForSelectedTrend={ideasForSelectedTrend}
+                onSelectTrend={onSelectTrend}
+                onSuggestTrends={onSuggestTrends}
+                isSuggestingTrends={isSuggestingTrends}
+                isDataLoaded={loadedTabs.has('strategy')}
+                onLoadData={props.onLoadStrategyHubData}
+                isLoading={loadingTabs.has('strategy')}
+              />
+            </div>
           )}
           {activeTab === 'affiliateVault' && (
             <AffiliateVaultDisplay 
@@ -526,7 +410,6 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onReloadLinks={onReloadLinks}
               onGenerateIdeasFromProduct={onGenerateIdeasFromProduct}
               language={settings.language}
-              // Lazy loading props
               isDataLoaded={loadedTabs.has('affiliateVault')}
               onLoadData={props.onLoadAffiliateVaultData}
               isLoading={loadingTabs.has('affiliateVault')}

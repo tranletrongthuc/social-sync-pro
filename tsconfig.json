@@ -24,5 +24,15 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["vite/client", "react"]
-  }
+  },
+  "ts-node": {
+    "transpileOnly": true,
+    "experimentalSpecifierResolution": "node",
+    "esm": true,
+    "compilerOptions": {
+      "module": "NodeNext",
+      "moduleResolution": "NodeNext"
+    }
+  },
+  "include": ["src"]
 }

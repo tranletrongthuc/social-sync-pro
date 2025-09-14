@@ -1,4 +1,3 @@
-
 import React, { useCallback, Dispatch, SetStateAction } from 'react';
 import saveAs from 'file-saver';
 import type { BrandInfo, GeneratedAssets, Settings, MediaPlanGroup } from '../../types';
@@ -6,14 +5,14 @@ import { createDocxBlob, createMediaPlanXlsxBlob } from '../services/exportServi
 import {
     loadInitialProjectData as loadInitialData,
     loadMediaPlanGroupsList as loadMediaPlanGroups,
-    loadMediaPlanFromDatabase as loadMediaPlan
+    loadMediaPlanFromDatabase as loadMediaPlan,
+    createOrUpdateBrandRecordInDatabase
 } from '../services/databaseService';
 import { configService } from '../services/configService';
 import { ActiveTab } from '../components/Header';
 
 interface useProjectIOProps {
     dispatchAssets: Dispatch<any>;
-    setSettings: Dispatch<SetStateAction<Settings>>;
     setGeneratedImages: Dispatch<SetStateAction<Record<string, string>>>;
     setGeneratedVideos: Dispatch<SetStateAction<Record<string, string>>>;
     setMongoBrandId: Dispatch<SetStateAction<string | null>>;
@@ -32,11 +31,11 @@ interface useProjectIOProps {
     mongoBrandId: string | null;
     adminSettings: Settings | null;
     mediaPlanGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[];
+    syncLastSaved: (assets: GeneratedAssets) => void;
 }
 
 export const useProjectIO = ({
     dispatchAssets,
-    setSettings,
     setGeneratedImages,
     setGeneratedVideos,
     setMongoBrandId,
@@ -54,7 +53,8 @@ export const useProjectIO = ({
     generatedVideos,
     mongoBrandId,
     adminSettings,
-    mediaPlanGroupsList
+    mediaPlanGroupsList,
+    syncLastSaved
 }: useProjectIOProps) => {
 
     const handleSelectPlan = useCallback(async (planId: string, assetsToUse?: GeneratedAssets, plansList?: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]) => {
@@ -77,6 +77,9 @@ export const useProjectIO = ({
             if (!currentAssets) {
                 throw new Error("Assets are not initialized.");
             }
+            
+            // Update generatedImages with the loaded imageUrls
+            setGeneratedImages(prev => ({ ...prev, ...imageUrls }));
             
             const existingPlanIndex = currentAssets.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
 
@@ -103,15 +106,13 @@ export const useProjectIO = ({
                 dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: newPlanGroup });
             }
             
-            setGeneratedImages(prev => ({...prev, ...imageUrls}));
-            setGeneratedVideos(prev => ({...prev, ...videoUrls}));
             setActivePlanId(planId);
-        } catch(err) {
-            setError(err instanceof Error ? err.message : "Could not load plan details.");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : `Could not load media plan with ID: ${planId}`);
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings.language, mediaPlanGroupsList, dispatchAssets, setActivePlanId, setLoaderContent, setError, setGeneratedImages, setGeneratedVideos]);
+    }, [generatedAssets, dispatchAssets, mediaPlanGroupsList, setActivePlanId, setError, setLoaderContent, loadMediaPlan, setGeneratedImages]);
 
     const handleSaveProjectToFile = useCallback(() => {
         if (!generatedAssets) {
@@ -125,7 +126,7 @@ export const useProjectIO = ({
                 version: '2.0',
                 createdAt: new Date().toISOString(),
                 assets: generatedAssets,
-                settings: settings,
+                // settings is already in generatedAssets
                 generatedImages: generatedImages,
                 generatedVideos: generatedVideos,
                 mongoBrandId: mongoBrandId,
@@ -139,7 +140,7 @@ export const useProjectIO = ({
         } catch (err) {
             setError(err instanceof Error ? err.message : "Could not save project to file.");
         }
-    }, [generatedAssets, settings, generatedImages, generatedVideos, mongoBrandId, setError, setSuccessMessage]);
+    }, [generatedAssets, generatedImages, generatedVideos, mongoBrandId, setError, setSuccessMessage]);
 
     const handleLoadProjectFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -152,12 +153,11 @@ export const useProjectIO = ({
             const text = await file.text();
             const projectData = JSON.parse(text);
 
-            if (!projectData.assets || !projectData.settings) {
+            if (!projectData.assets) { // settings are now inside assets
                 throw new Error("Invalid project file format.");
             }
             
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: projectData.assets });
-            setSettings(projectData.settings);
             setGeneratedImages(projectData.generatedImages || {});
             setGeneratedVideos(projectData.generatedVideos || {});
             setMongoBrandId(projectData.mongoBrandId || null);
@@ -184,7 +184,7 @@ export const useProjectIO = ({
                 event.target.value = '';
             }
         }
-    }, [dispatchAssets, setSettings, setGeneratedImages, setGeneratedVideos, setMongoBrandId, setMediaPlanGroupsList, setActivePlanId, handleSelectPlan, setBrandInfo, setCurrentStep, setActiveTab, setError, setLoaderContent]);
+    }, [dispatchAssets, setGeneratedImages, setGeneratedVideos, setMongoBrandId, setMediaPlanGroupsList, setActivePlanId, handleSelectPlan, setBrandInfo, setCurrentStep, setActiveTab, setError, setLoaderContent]);
 
     const handleLoadFromDatabase = useCallback(async (brandId: string) => {
         setLoaderContent({ title: "Loading from MongoDB...", steps: ["Connecting...", "Fetching project data...", "Loading assets..."] });
@@ -192,6 +192,10 @@ export const useProjectIO = ({
         try {
             const { brandSummary, brandKitData, affiliateLinks } = await loadInitialData(brandId);
             
+            const loadedSettings = (brandKitData.settings && Object.keys(brandKitData.settings).length > 0) 
+                ? brandKitData.settings 
+                : adminSettings || configService.getAppSettings();
+
             const initialAssets: GeneratedAssets = {
                 ...generatedAssets,
                 brandFoundation: brandKitData.brandFoundation,
@@ -202,6 +206,7 @@ export const useProjectIO = ({
                 personas: [],
                 trends: [],
                 ideas: [],
+                settings: loadedSettings,
             } as GeneratedAssets;
 
             const initialGeneratedImages: Record<string, string> = {};
@@ -220,17 +225,13 @@ export const useProjectIO = ({
             dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: initialAssets });
             setGeneratedImages(initialGeneratedImages);
             setMongoBrandId(brandId);
+
+            syncLastSaved(initialAssets);
+
             setCurrentStep('assets');
             setActiveTab('brandKit');
 
-            if (brandKitData.settings && Object.keys(brandKitData.settings).length > 0) {
-                setSettings(brandKitData.settings);
-            } else {
-                setSettings(adminSettings || configService.getAppSettings());
-            }
-
             const loadedPlansList = await loadMediaPlanGroups(brandId);
-            console.log('[useProjectIO] Loaded media plan groups list:', loadedPlansList);
             setMediaPlanGroupsList(loadedPlansList);
             
             if (loadedPlansList.length > 0) {
@@ -244,12 +245,34 @@ export const useProjectIO = ({
         } finally {
             setLoaderContent(null);
         }
-    }, [adminSettings, generatedAssets, dispatchAssets, setGeneratedImages, setMongoBrandId, setCurrentStep, setActiveTab, setSettings, setMediaPlanGroupsList, setActivePlanId, setError, setLoaderContent]);
+    }, [adminSettings, generatedAssets, dispatchAssets, setGeneratedImages, setMongoBrandId, setCurrentStep, setActiveTab, setMediaPlanGroupsList, setActivePlanId, setError, setLoaderContent, syncLastSaved]);
+
+    const handleCreateNewBrand = useCallback(async (assets: GeneratedAssets): Promise<string | null> => {
+        setLoaderContent({ title: "Creating new brand...", steps: ["Saving initial data to database..."] });
+        setError(null);
+        try {
+            const newBrandId = await createOrUpdateBrandRecordInDatabase(assets, null);
+            if (!newBrandId) {
+                throw new Error("Database did not return a new brand ID.");
+            }
+            setMongoBrandId(newBrandId);
+            setSuccessMessage("Successfully created and saved new brand!");
+            return newBrandId;
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "Could not create new brand in database.";
+            setError(errorMessage);
+            console.error('[useProjectIO] handleCreateNewBrand failed:', errorMessage);
+            return null;
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [setLoaderContent, setError, setMongoBrandId, setSuccessMessage]);
 
     return {
         handleSaveProjectToFile,
         handleLoadProjectFile,
         handleLoadFromDatabase,
         handleSelectPlan,
+        handleCreateNewBrand,
     };
 };

@@ -1,4 +1,3 @@
-
 import type { Settings, AiModelConfig, AIModel } from '../../types';
 import { defaultPrompts } from '../../server_lib/defaultPrompts.js';
 
@@ -39,7 +38,7 @@ export class ConfigService {
             const model = this.aiModelConfig.allModels.find(m => m.name === modelName);
             if (!model) return 'unknown';
             if (model.provider === 'Google') return 'gemini';
-            if (model.provider === 'OpenRouter') return 'openrouter';
+            if (model.provider === 'Open Router') return 'openrouter';
             if (model.provider === 'Cloudflare') return 'cloudflare';
             return 'unknown';
         }
@@ -54,15 +53,27 @@ export class ConfigService {
         return ConfigService.instance;
     }
 
-        async initializeConfig(defaults?: Settings, models?: AIModel[]) {
+    async initializeConfig(defaults?: Settings, models?: AIModel[]) {
         try {
             if (defaults) {
                 this.appSettings = { ...this.appSettings, ...defaults };
             }
-            
-            // The model configuration is now expected to be handled by the App component
-            // and set via a separate method if needed.
-            this.aiModelConfig.allModels = models || [];
+
+            const modelsWithService = (models || []).map(model => {
+                if (model.service) {
+                    return model; // Service already exists
+                }
+                // Infer service from provider
+                let service = 'google'; // Default
+                if (model.provider === 'Open Router') {
+                    service = 'openrouter';
+                } else if (model.provider === 'Cloudflare') {
+                    service = 'cloudflare';
+                }
+                return { ...model, service };
+            });
+    
+            this.aiModelConfig.allModels = modelsWithService;
             this.aiModelConfig.textModels = this.aiModelConfig.allModels.filter(m => m.capabilities.includes('text')).map(m => m.name);
             this.aiModelConfig.imageModels = this.aiModelConfig.allModels.filter(m => m.capabilities.includes('image')).map(m => m.name);
             this.aiModelConfig.visionModels = this.aiModelConfig.allModels.filter(m => m.capabilities.includes('vision')).map(m => m.name);

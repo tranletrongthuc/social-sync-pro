@@ -1,11 +1,10 @@
 /// <reference types="react" />
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import type { MediaPlanPost, AffiliateLink, SchedulingPost, PostInfo, Settings } from '../../types';
-import { Button, Input, TextArea, HoverCopyWrapper, Select } from './ui';
-import TagInput from './TagInput'; // Assuming TagInput component exists
-import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon } from './icons';
+import { Button, Input, TextArea, HoverCopyWrapper, Select, Carousel } from './ui';
+import TagInput from './TagInput';
+import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon, DocumentTextIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
-
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
@@ -23,40 +22,268 @@ const renderPostContent = (content: string | string[] | any): string => {
         return content.join('\n\n');
     }
     if (typeof content === 'object' && content !== null) {
-        // This handles cases where the AI returns a structured object instead of a string.
-        // We'll format it nicely into a readable string.
         return Object.entries(content)
             .map(([key, value]) => `**${key.charAt(0).toUpperCase() + key.slice(1)}:**\n${value}`)
             .join('\n\n');
     }
-    return ''; // Return empty string for other types like null, undefined, etc.
+    return '';
 };
 
 
-const GenerateIdeaHandler: React.FC <{
-    onGeneratePrompt: () => void;
-    isGenerating: boolean;
-    texts: any;
-}> = ({ onGeneratePrompt, isGenerating, texts }) => {
+
+// --- NEW DYNAMIC MEDIA HANDLERS ---
+
+const TextPostHandler: React.FC<PostDetailModalProps> = ({ settings }) => {
+    const texts = getLocaleTexts(settings.language);
     return (
-        <div className="bg-white border border-gray-200 p-6 rounded-lg h-full flex flex-col items-center justify-center text-center">
-            <SparklesIcon className="h-12 w-12 text-gray-400" />
-            <h5 className="mt-4 font-semibold font-sans text-gray-800 text-lg">{texts.generateIdeaTitle}</h5>
-            <p className="mt-1 text-gray-500 text-sm font-serif">{texts.generateIdeaDesc}</p>
-            <Button
-                onClick={onGeneratePrompt}
-                disabled={isGenerating}
-                className="mt-4 w-full flex items-center justify-center gap-2"
+        <div className="bg-white border border-gray-200 p-4 rounded-lg flex flex-col items-center justify-center text-center">
+            <DocumentTextIcon className="h-10 w-10 text-gray-400" />
+            <h5 className="mt-3 font-semibold font-sans text-gray-700">{texts.textPostTitle}</h5>
+            <p className="mt-1 text-sm text-gray-500 font-serif">{texts.textPostDescription}</p>
+        </div>
+    );
+};
+
+const ImagePostHandler: React.FC<PostDetailModalProps> = (props) => {
+    const { postInfo, onGenerateImage, generatedImages, isGeneratingImage, settings, onSetImage } = props;
+    const texts = getLocaleTexts(settings.language);
+    const imageKey = postInfo.post.imageKey || postInfo.post.id;
+    const generatedImage = generatedImages[imageKey];
+
+    const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>) => {
+        const items = event.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile();
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        if (e.target?.result) {
+                            onSetImage(e.target.result as string, imageKey, postInfo);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+                event.preventDefault();
+                break;
+            }
+        }
+    };
+
+    return (
+        <div className="bg-white border border-gray-200 p-4 rounded-lg flex flex-col">
+            {generatedImage ? (
+                <img src={generatedImage} alt="Generated visual" className="w-full object-cover rounded-md mb-4" />
+            ) : (
+                <div 
+                    onPaste={handlePaste}
+                    className="flex-grow border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-center p-4 mb-4"
+                >
+                    <UploadIcon className="h-8 w-8 text-gray-400" />
+                    <p className="mt-2 text-sm text-gray-600">{texts.pasteInstructions || 'Paste image here'}</p>
+                </div>
+            )}
+            
+            <div className="flex-grow overflow-y-auto pr-2">
+                <h5 className="font-semibold font-sans text-gray-700 text-sm mb-2">{texts.prompt}</h5>
+                <div className="text-gray-500 text-xs font-mono bg-gray-50 p-2 rounded-md whitespace-pre-wrap break-words">
+                    {Array.isArray(postInfo.post.mediaPrompt) ? (
+                        <div className="space-y-2">
+                            {postInfo.post.mediaPrompt.map((prompt, index) => (
+                                <HoverCopyWrapper key={index} textToCopy={prompt}>
+                                    <div className="p-1 rounded hover:bg-gray-200 cursor-pointer">
+                                        {prompt}
+                                    </div>
+                                </HoverCopyWrapper>
+                            ))}
+                        </div>
+                    ) : (
+                        <HoverCopyWrapper textToCopy={postInfo.post.mediaPrompt as string}>
+                            <div>{postInfo.post.mediaPrompt as string}</div>
+                        </HoverCopyWrapper>
+                    )}
+                </div>
+            </div>
+
+            <Button 
+                onClick={() => onGenerateImage(Array.isArray(postInfo.post.mediaPrompt) ? postInfo.post.mediaPrompt.join('\n\n') : postInfo.post.mediaPrompt || '', imageKey, undefined, postInfo)}
+                disabled={isGeneratingImage(imageKey)}
+                className="w-full flex items-center justify-center gap-2 mt-4"
             >
-                {isGenerating ? (
+                {isGeneratingImage(imageKey) ? <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div> : <SparklesIcon />}
+                {generatedImage ? texts.regenerate : texts.generate}
+            </Button>
+        </div>
+    );
+};
+
+const VideoPostHandler: React.FC<PostDetailModalProps> = (props) => {
+    const { postInfo, settings } = props;
+    const texts = getLocaleTexts(settings.language);
+
+    return (
+        <div className="bg-white border border-gray-200 p-4 rounded-lg flex flex-col">
+            <h5 className="font-semibold font-sans text-gray-700 text-sm mb-2">{texts.scriptPrompt}</h5>
+            <div className="text-gray-500 text-xs font-mono bg-gray-50 p-2 rounded-md whitespace-pre-wrap break-words mb-4 flex-grow">
+                {Array.isArray(postInfo.post.mediaPrompt) ? (
+                    <div className="space-y-2">
+                        {postInfo.post.mediaPrompt.map((prompt, index) => (
+                            <HoverCopyWrapper key={index} textToCopy={prompt}>
+                                <div className="p-1 rounded hover:bg-gray-200 cursor-pointer">
+                                    {prompt}
+                                </div>
+                            </HoverCopyWrapper>
+                        ))}
+                    </div>
+                ) : (
+                    <HoverCopyWrapper textToCopy={postInfo.post.mediaPrompt as string}>
+                        <div>{postInfo.post.mediaPrompt as string}</div>
+                    </HoverCopyWrapper>
+                )}
+            </div>
+            <Button disabled className="w-full flex items-center justify-center gap-2 mt-auto cursor-not-allowed">
+                <VideoCameraIcon /> {texts.generateVideo}
+            </Button>
+        </div>
+    );
+};
+
+const CarouselPostHandler: React.FC<PostDetailModalProps> = (props) => {
+    const { postInfo, onGenerateImage, generatedImages, isGeneratingImage, settings, onSetImage } = props;
+    const texts = getLocaleTexts(settings.language);
+    const mediaPrompts = Array.isArray(postInfo.post.mediaPrompt) ? postInfo.post.mediaPrompt : [];
+    const imageKeys = postInfo.post.imageKeys || [];
+    const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+    const [newlyGeneratedImages, setNewlyGeneratedImages] = useState<Record<string, string>>({});
+
+    // Update newlyGeneratedImages when generatedImages change
+    useEffect(() => {
+        setNewlyGeneratedImages(generatedImages);
+    }, [generatedImages]);
+
+    const handlePaste = (event: React.ClipboardEvent<HTMLDivElement>, imageKey: string, index: number) => {
+        const items = event.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile();
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        if (e.target?.result) {
+                            onSetImage(e.target.result as string, imageKey, postInfo, index);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+                event.preventDefault();
+                break;
+            }
+        }
+    };
+
+    const handleGenerateAll = useCallback(async () => {
+        setIsGeneratingAll(true);
+        
+        // Generate images sequentially to avoid race conditions
+        for (let index = 0; index < mediaPrompts.length; index++) {
+            const prompt = mediaPrompts[index];
+            // Generate a unique image key for each carousel image
+            const imageKey = `media_plan_post_${postInfo.post.id}_${index}_${Math.random().toString(36).substring(2, 10)}`;
+            
+            try {
+                // Wait for each image to be generated before moving to the next
+                await onGenerateImage(prompt, imageKey, undefined, postInfo, index);
+            } catch (error) {
+                console.error(`Failed to generate image ${index}:`, error);
+                // Continue with other images even if one fails
+            }
+        }
+        
+        setIsGeneratingAll(false);
+    }, [mediaPrompts, onGenerateImage, postInfo]);
+
+    // Calculate the current image URLs for the carousel
+    const carouselImageUrls = useMemo(() => {
+        const urls = [...(postInfo.post.imageUrlsArray || [])];
+        
+        // Update with any newly generated images
+        mediaPrompts.forEach((_, index) => {
+            const imageKey = imageKeys[index];
+            if (imageKey && newlyGeneratedImages[imageKey]) {
+                urls[index] = newlyGeneratedImages[imageKey];
+            }
+        });
+        
+        return urls.filter(url => url); // Remove any falsy values
+    }, [postInfo.post.imageUrlsArray, imageKeys, newlyGeneratedImages, mediaPrompts]);
+
+    return (
+        <div className="bg-white border border-gray-200 p-4 rounded-lg flex flex-col">
+            <h5 className="font-semibold font-sans text-gray-700 text-sm mb-2">{texts.carouselPrompts}</h5>
+            
+            {/* Carousel Section */}
+            <div className="mb-4">
+                <Carousel images={carouselImageUrls} className="rounded-lg" />
+            </div>
+            
+            {/* Prompts Section */}
+            <div className="space-y-3 mb-4 overflow-y-auto pr-2 flex-grow">
+                {mediaPrompts.map((prompt, index) => {
+                    // Ensure we have a proper image key for each prompt
+                    const imageKey = imageKeys[index] || `media_plan_post_${postInfo.post.id}_${index}_${Math.random().toString(36).substring(2, 10)}`;
+                    const generatedImage = newlyGeneratedImages[imageKey] || (postInfo.post.imageUrlsArray?.[index]);
+                    return (
+                        <div key={index} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            {/* Paste Area */}
+                            <div 
+                                onPaste={(e) => handlePaste(e, imageKey, index)}
+                                className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-center p-3 hover:bg-gray-100 cursor-pointer transition-colors mb-2"
+                            >
+                                <UploadIcon className="h-5 w-5 text-gray-400" />
+                                <p className="ml-2 text-sm text-gray-500">{texts.pasteInstructions || 'Dán ảnh vào đây'}</p>
+                            </div>
+
+                            {/* Prompt Display */}
+                            <div className="text-gray-700 text-sm font-mono bg-white p-2 rounded border border-gray-200 whitespace-pre-wrap break-words">
+                                <span className="font-semibold">{index + 1}: </span>
+                                {prompt}
+                            </div>
+                            
+                            {/* Generate Button */}
+                            <Button 
+                                variant="secondary"
+                                onClick={() => onGenerateImage(prompt, imageKey, undefined, postInfo, index)}
+                                disabled={isGeneratingImage(imageKey) || isGeneratingAll}
+                                className="w-full text-xs mt-2 py-1.5 h-auto"
+                            >
+                                {isGeneratingImage(imageKey) ? (
+                                    <>
+                                        <div className="w-3 h-3 border-2 border-t-transparent border-gray-500 rounded-full animate-spin mr-1"></div>
+                                        <span>{texts.generating}</span>
+                                    </>
+                                ) : (
+                                    generatedImage ? texts.regenerate : texts.generate
+                                )}
+                            </Button>
+                        </div>
+                    );
+                })}
+            </div>
+            
+            {/* Generate All Button */}
+            <Button 
+                onClick={handleGenerateAll} 
+                disabled={isGeneratingAll}
+                className="w-full flex items-center justify-center gap-2 mt-auto"
+            >
+                {isGeneratingAll ? (
                     <>
-                        <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
-                        <span>{texts.generatingIdea}</span>
+                        <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+                        <span>{texts.generating}</span>
                     </>
                 ) : (
                     <>
-                        <SparklesIcon className="h-5 w-5" />
-                        {texts.generateIdea}
+                        <SparklesIcon /> {texts.generateAll}
                     </>
                 )}
             </Button>
@@ -64,201 +291,7 @@ const GenerateIdeaHandler: React.FC <{
     );
 };
 
-interface MediaHandlerProps {
-    postInfo: PostInfo;
-    aspectRatio: "1:1" | "16:9";
-    onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9") => void;
-    onSetImage: (dataUrl: string, key: string) => void;
-    onSetVideo: (dataUrl: string, key: string) => void;
-    generatedImages: Record<string, string>;
-    generatedVideos: Record<string, string>;
-    isGenerating: boolean;
-    texts: any;
-};
-
-const MediaHandler: React.FC<MediaHandlerProps> = ({ postInfo, aspectRatio, onGenerateImage, onSetImage, onSetVideo, generatedImages, generatedVideos, isGenerating, texts }) => {
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const { post } = postInfo;
-
-    const handleFile = (file: File | null) => {
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const dataUrl = e.target?.result as string;
-            if (dataUrl) {
-                if (file.type.startsWith('video/')) {
-                    onSetVideo(dataUrl, post.id); // Use post id as base key
-                } else if (file.type.startsWith('image/')) {
-                    onSetImage(dataUrl, post.imageKey || post.id);
-                }
-            }
-        };
-        reader.readAsDataURL(file);
-    };
-
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        handleFile(e.target.files?.[0] || null);
-    };
-    
-    const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.clipboardData.files.length > 0) {
-            handleFile(e.clipboardData.files[0]);
-        }
-    };
-    
-    const generatedImage = post.imageKey ? generatedImages[post.imageKey] : undefined;
-    const generatedVideo = post.videoKey ? generatedVideos[post.videoKey] : undefined;
-
-    const renderImageComponent = () => {
-        if (!generatedImage) return null;
-        return (
-             <div className="relative group rounded-lg overflow-hidden" tabIndex={0}>
-                <img src={generatedImage} alt={Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join(', ') : post.mediaPrompt || ''} className="w-full object-cover" style={{ aspectRatio }}/>
-                <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                     <div className="flex flex-col gap-2 items-center p-2">
-                        <Button onClick={() => onGenerateImage(Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join(', ') : post.mediaPrompt || '', post.imageKey!, aspectRatio)} disabled={isGenerating} variant="primary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
-                            <SparklesIcon className="h-4 w-4" /> {texts.regenerate}
-                        </Button>
-                        <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="w-full flex items-center justify-center gap-2 text-xs py-1 px-2">
-                           <UploadIcon className="h-4 w-4" /> {texts.changeImage}
-                        </Button>
-                    </div>
-                    <a href={generatedImage} download={`${post.imageKey}.jpg`} className="absolute bottom-2 right-2 bg-gray-800 text-white p-2 rounded-full hover:bg-black transition-colors">
-                       <DownloadIcon className="h-4 w-4"/>
-                    </a>
-                </div>
-            </div>
-        );
-    };
-    
-    const renderVideoComponent = () => {
-        if (!generatedVideo) return null;
-        return (
-            <div className="relative group rounded-lg overflow-hidden bg-black" tabIndex={0}>
-                <video src={generatedVideo} controls className="w-full h-full object-cover" style={{ aspectRatio }} />
-                <div className="absolute top-2 right-2 flex flex-col items-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="flex items-center justify-center gap-2 text-xs py-1 px-2 bg-white/80 hover:bg-white backdrop-blur-sm">
-                       <UploadIcon className="h-4 w-4" /> {texts.changeVideo}
-                    </Button>
-                    <a href={generatedVideo} download={`${post.videoKey || 'video'}.mp4`} className="bg-gray-800/80 text-white p-2 rounded-full hover:bg-black transition-colors backdrop-blur-sm">
-                       <DownloadIcon className="h-4 w-4"/>
-                    </a>
-                </div>
-            </div>
-        );
-    };
-    
-    const renderImagePromptUploader = () => {
-        if (!post.mediaPrompt) return null;
-
-        const renderMediaPrompt = () => {
-            if (Array.isArray(post.mediaPrompt)) {
-                return (
-                    <div className="space-y-2">
-                        {post.mediaPrompt.map((prompt, index) => (
-                            <HoverCopyWrapper key={index} textToCopy={prompt}>
-                                <p className="text-gray-500 italic text-sm font-serif">{index + 1}: "{prompt}"</p>
-                            </HoverCopyWrapper>
-                        ))}
-                    </div>
-                )
-            }
-            return (
-                <HoverCopyWrapper textToCopy={post.mediaPrompt as string}>
-                    <pre className="text-gray-500 text-xs font-mono bg-gray-50 p-2 rounded-md whitespace-pre-wrap break-words">{post.mediaPrompt}</pre>
-                </HoverCopyWrapper>
-            )
-        }
-
-        return (
-            <div className="bg-white border border-gray-200 p-4 rounded-lg h-full flex flex-col">
-                <h5 className="font-semibold font-sans text-gray-700 text-sm">{texts.prompt}</h5>
-                {renderMediaPrompt()}
-                {post.script && (
-                    <>
-                        <h5 className="font-semibold font-sans text-gray-700 text-sm mt-4">{texts.script}</h5>
-                        <p className="text-gray-500 italic mb-3 text-sm font-serif flex-grow">{post.script}</p>
-                    </>
-                )}
-                <div className="space-y-2 mt-auto">
-                    <Button onClick={() => onGenerateImage(Array.isArray(post.mediaPrompt) ? post.mediaPrompt.join(', ') : post.mediaPrompt || '', post.imageKey || post.id, aspectRatio)} disabled={isGenerating} className="w-full flex items-center justify-center gap-2">
-                        <SparklesIcon /> {texts.generate}
-                    </Button>
-                    <div 
-                        className="relative w-full text-center border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-brand-green transition-colors cursor-pointer"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <UploadIcon className="mx-auto h-8 w-8 text-gray-400" />
-                        <p className="text-xs text-gray-500 mt-1">{texts.uploadOrPaste}</p>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    const renderGenericUploader = () => (
-        <div 
-            className="w-full h-full min-h-[200px] bg-gray-50 flex flex-col justify-center items-center text-center p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-brand-green transition-colors cursor-pointer"
-            onClick={() => fileInputRef.current?.click()}
-            onPaste={handlePaste}
-            tabIndex={0}
-        >
-            <div className="flex items-center gap-4 text-gray-400">
-                <VideoCameraIcon className="h-10 w-10"/>
-                <span className="text-2xl font-thin">/</span>
-                <SparklesIcon className="h-10 w-10"/>
-            </div>
-            <p className="mt-4 text-sm font-semibold text-gray-600">{texts.uploadMedia}</p>
-            <p className="text-xs text-gray-500 mt-1">{texts.uploadOrPaste}</p>
-        </div>
-    );
-    
-    if (isGenerating) {
-        return (
-            <div className="w-full bg-gray-100 flex flex-col items-center justify-center rounded-lg border border-gray-200" style={{ aspectRatio, minHeight: '150px' }}>
-                <div className="w-8 h-8 border-2 border-t-transparent border-brand-green rounded-full animate-spin"></div>
-                <span className="text-sm mt-2 text-gray-500">{texts.generating}</span>
-            </div>
-        );
-    }
-
-    const imageContent = generatedImage ? renderImageComponent() : renderImagePromptUploader();
-    const videoContent = renderVideoComponent();
-    
-    const mediaMap = { image: imageContent, video: videoContent };
-    let orderedComponents: (React.ReactElement | null)[] = [];
-    const order = post.mediaOrder || [];
-    const addedTypes = new Set<'image' | 'video'>();
-
-    for (const type of order) {
-        if (mediaMap[type]) {
-            orderedComponents.push(mediaMap[type]);
-            addedTypes.add(type);
-        }
-    }
-    for (const type of ['image', 'video'] as const) {
-        if (!addedTypes.has(type) && mediaMap[type]) {
-            orderedComponents.push(mediaMap[type]);
-        }
-    }
-    
-    if (orderedComponents.length === 0) {
-        orderedComponents.push(renderGenericUploader());
-    }
-
-    return (
-        <div onPaste={handlePaste} tabIndex={-1} className="focus:outline-none">
-            <div className={`grid ${orderedComponents.filter(Boolean).length > 1 ? 'grid-cols-1 md:grid-cols-2 gap-4' : 'grid-cols-1'}`}>
-                {orderedComponents.map((comp, index) => comp ? <div key={index}>{comp}</div> : null)}
-            </div>
-            <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
-        </div>
-    );
-};
-
+// --- END NEW DYNAMIC MEDIA HANDLERS ---
 
 interface PostDetailModalProps {
   isOpen: boolean;
@@ -268,11 +301,10 @@ interface PostDetailModalProps {
   language: string;
   weekTheme?: string;
   onUpdatePost: (postInfo: PostInfo) => void;
-  onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo) => void;
-  onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo) => void;
+  onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo, carouselImageIndex?: number) => void;
+  onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo, carouselImageIndex?: number) => void;
   onSetVideo: (dataUrl: string, key: string, postInfo: PostInfo) => void;
   onGeneratePrompt: (postInfo: PostInfo) => void;
-  // NEW: In-character post generation
   onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
   onRefinePost: (text: string) => Promise<string>;
   isRefining: boolean;
@@ -286,7 +318,7 @@ interface PostDetailModalProps {
   isAnalyzing: boolean;
   khongMinhSuggestions: Record<string, AffiliateLink[]>;
   affiliateLinks: AffiliateLink[];
-  isGenerating: boolean; // Add this line
+  isGenerating: boolean; 
   onGenerateComment: (postInfo: PostInfo) => void;
   isGeneratingComment: boolean;
   onOpenScheduleModal: (post: SchedulingPost) => void;
@@ -295,44 +327,12 @@ interface PostDetailModalProps {
   publishedAt?: string;
 }
 
-
-
-const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
-    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onSetVideo, onPublishPost, publishedAt, publishedUrl, onGenerateInCharacterPost, isRefining } = props;
-    const [isEditing, setIsEditing] = useState(false);
-    const [postObjective, setPostObjective] = useState('');
-    const [postPlatform, setPostPlatform] = useState(postInfo.post.platform);
-    const [postKeywords, setPostKeywords] = useState<string[]>([]);
-    const [selectedPillar, setSelectedPillar] = useState<string>('');
-    const [isPublishing, setIsPublishing] = useState(false);
-    const [editedPost, setEditedPost] = useState<MediaPlanPost | null>(postInfo.post);
-    
-    useEffect(() => {
-        if (postInfo) {
-            setEditedPost(postInfo.post);
-            setPostObjective(''); // Reset objective when post changes
-            setPostPlatform(postInfo.post.platform);
-            setPostKeywords([]);
-            setSelectedPillar(postInfo.post.pillar || '');
-        }
-        if (isOpen) {
-            setIsEditing(false); 
-        }
-    }, [postInfo, isOpen]);
-
-    if (!isOpen || !postInfo || !editedPost) return null;
-    const { post } = postInfo;
-    const Icon = platformIcons[post.platform] || SparklesIcon;
-
+const getLocaleTexts = (language: string) => {
     const T = {
         'Việt Nam': {
             edit: "Chỉnh sửa",
             schedule: "Lên lịch",
             draft: "Bản nháp",
-            generateIdea: "Tạo ý tưởng ảnh",
-            generateIdeaTitle: "Tạo một ý tưởng hình ảnh",
-            generateIdeaDesc: "Để AI tạo một khái niệm hình ảnh cho bài đăng này dựa trên nội dung của nó.",
-            generatingIdea: "Đang tạo...",
             save: "Lưu",
             cancel: "Hủy",
             refine_with_ai: "Viết lại với Persona",
@@ -348,13 +348,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             cta_title: "Kêu gọi hành động",
             sources: "Nguồn",
             scheduled_for: "Lên lịch cho",
-            generating: 'Đang tạo...',
-            generate: 'Tạo ảnh',
-            prompt: 'Prompt ảnh:',
-            changeImage: 'Đổi ảnh',
-            changeVideo: 'Đổi video',
-            uploadOrPaste: 'Bấm để tải lên hoặc dán phương tiện',
-            uploadMedia: 'Tải lên Ảnh hoặc Video',
+            generating: 'Đang tạo...', 
+            generate: 'Tạo Ảnh',
+            prompt: 'Prompt Ảnh',
+            scriptPrompt: 'Prompt Kịch bản Video',
+            generateVideo: 'Tạo Video (sắp có)',
+            carouselPrompts: 'Carousel Prompts',
+            generateAll: 'Tạo tất cả ảnh',
+            textPostTitle: 'Bài đăng dạng văn bản',
+            textPostDescription: 'Bài đăng này không yêu cầu phương tiện trực quan.',
+            pasteInstructions: 'Dán ảnh vào đây',
             youtube_description: "Mô tả YouTube",
             youtube_script: "Kịch bản YouTube",
             script: "Kịch bản",
@@ -368,10 +371,6 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             edit: "Edit",
             schedule: "Schedule",
             draft: "Draft",
-            generateIdea: "Generate Image Idea",
-            generateIdeaTitle: "Generate an Image Idea",
-            generateIdeaDesc: "Let AI create a visual concept for this post based on its content.",
-            generatingIdea: "Generating...",
             save: "Save",
             cancel: "Cancel",
             refine_with_ai: "Rewrite with Persona",
@@ -387,13 +386,16 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             cta_title: "Call to Action",
             sources: "Sources",
             scheduled_for: "Scheduled for",
-            generating: 'Generating...',
+            generating: 'Generating...', 
             generate: 'Generate Image',
-            prompt: 'Image Prompt:',
-            changeImage: 'Change Image',
-            changeVideo: 'Change Video',
-            uploadOrPaste: 'Click to upload or paste media',
-            uploadMedia: 'Upload Image or Video',
+            prompt: 'Image Prompt',
+            scriptPrompt: 'Video Script Prompt',
+            generateVideo: 'Generate Video (soon)',
+            carouselPrompts: 'Carousel Prompts',
+            generateAll: 'Generate All Images',
+            textPostTitle: 'Text-Only Post',
+            textPostDescription: 'This post does not require visual media.',
+            pasteInstructions: 'Paste image here',
             youtube_description: "YouTube Description",
             youtube_script: "YouTube Script",
             script: "Script",
@@ -404,7 +406,43 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             postIsPublished: "This post has been published and cannot be edited.",
         }
     };
-    const texts = (T as any)[language] || T['English'];
+    return (T as any)[language] || T['English'];
+};
+
+const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
+    const { isOpen, onClose, postInfo, language, onUpdatePost, onGenerateComment, isGeneratingComment, onOpenScheduleModal, onPublishPost, publishedAt, publishedUrl, onGenerateInCharacterPost, isRefining } = props;
+    const [isEditing, setIsEditing] = useState(false);
+    const [postObjective, setPostObjective] = useState('');
+    const [postPlatform, setPostPlatform] = useState(postInfo.post.platform);
+    const [postKeywords, setPostKeywords] = useState<string[]>([]);
+    const [selectedPillar, setSelectedPillar] = useState<string>('');
+    const [isPublishing, setIsPublishing] = useState(false);
+    const [editedPost, setEditedPost] = useState<MediaPlanPost | null>(postInfo.post);
+    
+    useEffect(() => {
+        if (postInfo) {
+            setEditedPost(postInfo.post);
+            setPostObjective('');
+            setPostPlatform(postInfo.post.platform);
+            setPostKeywords([]);
+            setSelectedPillar(postInfo.post.pillar || '');
+        }
+        if (isOpen) {
+            setIsEditing(false); 
+        }
+    }, [postInfo, isOpen]);
+
+    // Update editedPost when generatedImages change for carousel posts
+    useEffect(() => {
+        if (postInfo && postInfo.post.contentType === 'Carousel') {
+            setEditedPost(postInfo.post);
+        }
+    }, [props.generatedImages, postInfo]);
+
+    if (!isOpen || !postInfo || !editedPost) return null;
+    const { post } = postInfo;
+    const Icon = platformIcons[post.platform] || SparklesIcon;
+    const texts = getLocaleTexts(language);
     const locale = language === 'Việt Nam' ? 'vi-VN' : 'en-US';
 
     const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -414,23 +452,13 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
             if (name === 'hashtags') {
                 return { ...prev, hashtags: value.split(',').map(h => h.trim()) };
             }
-            if (name === 'script') {
-                return { ...prev, script: value };
-            }
             return { ...prev, [name]: value };
         });
     };
 
     const handleSaveEdit = () => {
         if (editedPost) {
-            const postToSave = { ...editedPost };
-            if (typeof postToSave.content !== 'string') {
-                postToSave.content = JSON.stringify(postToSave.content, null, 2);
-            }
-            if (postToSave.description && typeof postToSave.description !== 'string') {
-                postToSave.description = JSON.stringify(postToSave.description, null, 2);
-            }
-            onUpdatePost({ ...postInfo, post: postToSave });
+            onUpdatePost({ ...postInfo, post: editedPost });
         }
         setIsEditing(false);
     };
@@ -458,36 +486,44 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
         setIsPublishing(true);
         try {
             await onPublishPost(postInfo);
-            // Optionally close modal on success, or show a success message
             onClose(); 
         } catch (error) {
             console.error("Failed to publish post:", error);
-            // Optionally show an error message to the user
         } finally {
             setIsPublishing(false);
         }
     };
     
-    // Match promoted products with affiliate links
-    
     const acceptedProducts = props.affiliateLinks.filter(link => 
-        (editedPost.promotedProductIds || []).some(id => {
-            // Check if id and link.id are defined before calling trim
-            if (id && link.id && id.trim() === link.id.trim()) {
-                return true;
-            }
-            // If the promoted ID looks like a MongoDB record ID, we might need to handle it differently
-            // But since we've fixed the saving logic, this should be rare
-            return false;
-        })
+        (editedPost.promotedProductIds || []).some(id => id && link.id && id.trim() === link.id.trim())
     );
     const suggestedProducts = (props.khongMinhSuggestions[post.id] || []).filter(s => !(editedPost.promotedProductIds || []).includes(s.id));
     const hasPromotedProducts = (editedPost.promotedProductIds || []).length > 0;
-    
-    const hasMediaPath = editedPost.mediaPrompt || editedPost.script || (editedPost.imageKey && props.generatedImages[editedPost.imageKey]) || (editedPost.videoKey && props.generatedVideos[editedPost.videoKey]);
-
-    const isYouTubePillar = post.isPillar && post.platform === 'YouTube';
     const isPublished = !!publishedUrl;
+    const isYouTubePillar = post.isPillar && post.platform === 'YouTube';
+
+    const renderMediaManager = () => {
+        const contentType = editedPost.contentType || '';
+        console.log('[renderMediaManager] Rendering for contentType:', contentType);
+
+        switch (contentType) {
+            case 'Carousel':
+                return <CarouselPostHandler {...props} />;
+            case 'Image':
+                return <ImagePostHandler {...props} />;
+            case 'Video':
+            case 'Reel':
+            case 'Shorts':
+            case 'Story':
+                return <VideoPostHandler {...props} />;
+            default:
+                if (editedPost.mediaPrompt && Array.isArray(editedPost.mediaPrompt) && editedPost.mediaPrompt.length > 0) {
+                    console.warn(`No specific media handler for contentType: "${contentType}", falling back to ImagePostHandler due to presence of mediaPrompt.`);
+                    return <ImagePostHandler {...props} />;
+                }
+                return <TextPostHandler {...props} />;
+        }
+    };
 
     return (
         <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-40 backdrop-blur-sm" onClick={onClose}>
@@ -505,7 +541,7 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                         </div>
                         <div className="ml-auto pl-4 flex-shrink-0">
                             <Select 
-                                value={editedPost.status || 'draft'} 
+                                value={editedPost.status || 'draft'}
                                 onChange={(e) => handleStatusChange(e.target.value as any)}
                                 className={`text-sm font-bold rounded-full px-3 py-1 border-2 ${ 
                                     {
@@ -514,7 +550,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                         approved: 'bg-green-100 border-green-200 text-green-800',
                                         scheduled: 'bg-blue-100 border-blue-200 text-blue-800',
                                     }[editedPost.status || 'draft']
-                                }`}
+                                }
+                                `}
                                 disabled={isPublished}
                             >
                                 <option value="draft">Draft</option>
@@ -536,7 +573,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                 </header>
 
                 <main className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 p-6">
-                    {/* Left Column (Content) */}
+                    {
+/* Left Column (Content) */}
                     <div className="lg:col-span-3 flex flex-col">
                         {isPublished && (
                              <div className="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-r-lg mb-4">
@@ -604,7 +642,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                 </div>
 
                                 <div className="mt-auto pt-4 space-y-5">
-                                    {/* Promoted Products Section */}
+                                    {
+/* Promoted Products Section */}
                                     {acceptedProducts.length > 0 && (
                                         <div>
                                             <h5 className="text-sm font-bold text-gray-600 mb-1.5 font-sans uppercase tracking-wider">{texts.promoted_products}</h5>
@@ -619,7 +658,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                         </div>
                                     )}
 
-                                    {/* Sources section */}
+                                    {
+/* Sources section */}
                                     {editedPost.sources && editedPost.sources.length > 0 && (
                                         <div>
                                             <h5 className="text-sm font-bold text-gray-600 mb-1.5 font-sans uppercase tracking-wider">{texts.sources}</h5>
@@ -634,7 +674,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                         </div>
                                     )}
 
-                                    {/* Hashtags Section */}
+                                    {
+/* Hashtags Section */}
                                     {editedPost.hashtags && editedPost.hashtags.length > 0 && (
                                         <div>
                                             <h5 className="text-sm font-bold text-gray-600 mb-2 font-sans uppercase tracking-wider">{texts.hashtags_title}</h5>
@@ -644,7 +685,8 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                         </div>
                                     )}
 
-                                    {/* New CTA design */}
+                                    {
+/* New CTA design */}
                                     <div>
                                         <h5 className="text-sm font-bold text-gray-600 mb-1.5 font-sans uppercase tracking-wider">{texts.cta_title}</h5>
                                         <div className="bg-brand-green/10 p-4 rounded-lg flex items-start gap-3 border border-brand-green/20">
@@ -670,14 +712,9 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                                             <Button variant="secondary" onClick={() => onOpenScheduleModal({ id: postInfo.post.id, title: postInfo.post.title, platform: postInfo.post.platform, scheduledAt: postInfo.post.scheduledAt || null, status: postInfo.post.status, post: postInfo.post })} className="flex items-center gap-2"><CalendarIcon className="h-4 w-4"/> {texts.schedule}</Button>
                                             <Button variant="secondary" onClick={handlePublish} disabled={isPublishing} className="flex items-center gap-2">
                                                 {isPublishing ? (
-                                                    <>
-                                                        <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                                        <span>{texts.publishing}</span>
-                                                    </>
+                                                    <><div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div><span>{texts.publishing}</span></>
                                                 ) : (
-                                                    <>
-                                                        <LinkIcon className="h-4 w-4"/> {texts.publishNow}
-                                                    </>
+                                                    <><LinkIcon className="h-4 w-4"/> {texts.publishNow}</>
                                                 )}
                                             </Button>
                                         </>
@@ -687,27 +724,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             )}
                         </div>
                     </div>
-                    {/* Right Column (Tools) */}
+                    {
+/* Right Column (Tools) */}
                     <div className="lg:col-span-2 space-y-4">
-                       { hasMediaPath ? (
-                            <MediaHandler
-                                postInfo={postInfo}
-                                aspectRatio={editedPost.platform === 'YouTube' ? '16:9' : '1:1'}
-                                onGenerateImage={(prompt, key, aspectRatio) => props.onGenerateImage(prompt, key, aspectRatio, postInfo)}
-                                onSetImage={(dataUrl, key) => props.onSetImage(dataUrl, key, postInfo)}
-                                onSetVideo={(dataUrl, key) => onSetVideo(dataUrl, key, postInfo)}
-                                generatedImages={props.generatedImages}
-                                generatedVideos={props.generatedVideos}
-                                isGenerating={props.isGenerating}
-                                texts={texts}
-                            />
-                        ) : (
-                            <GenerateIdeaHandler
-                                onGeneratePrompt={() => props.onGeneratePrompt(postInfo)}
-                                isGenerating={props.isGeneratingPrompt}
-                                texts={texts}
-                            />
-                        )}
+                       {renderMediaManager()}
 
                         <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">
                             <h5 className="font-bold text-sm text-gray-800 mb-2">{texts.refine_with_ai}</h5>

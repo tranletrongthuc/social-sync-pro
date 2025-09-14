@@ -60,7 +60,7 @@ export const MediaPlanWizardModal: React.FC<MediaPlanWizardModalProps> = ({ isOp
     const [pillar, setPillar] = useState<string>('');
 
     const { language } = settings;
-    const isGeminiModel = settings.textGenerationModel.startsWith('gemini-');
+    const isGeminiModel = (settings.textGenerationModel || '').startsWith('gemini-');
     const strategyTemplates = getStrategyTemplates(language);
     const totalSteps = 5;
 

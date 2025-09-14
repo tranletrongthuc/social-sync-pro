@@ -62,7 +62,9 @@ export type MediaPlanPost = {
     cta: string;
     mediaPrompt?: string | string[];
     imageKey?: string;
+    imageKeys?: string[]; // For carousel posts
     imageUrl?: string;
+    imageUrlsArray?: string[]; // Added for carousel posts
     videoKey?: string;
     videoUrl?: string;
     mediaOrder?: ('image' | 'video')[];
@@ -107,6 +109,7 @@ export type GeneratedAssets = {
     facebookPostIdeas?: FacebookPostIdea[];
     facebookTrends?: FacebookTrend[];
     selectedPlatforms?: string[];
+    settings: Settings; // Ensure settings is part of GeneratedAssets
 };
 
 export type SchedulingPost = {
@@ -198,6 +201,17 @@ export type Trend = {
     notes: string;
     analysis: string;
     createdAt: string;
+    // Enhanced search metadata
+    searchVolume?: number;
+    competitionLevel?: 'Low' | 'Medium' | 'High';
+    peakTimeFrame?: string;
+    geographicDistribution?: Record<string, number>; // Country: percentage
+    relatedQueries?: string[];
+    trendingScore?: number; // 0-100 score of how trending this is
+    sourceUrls?: string[]; // Actual URLs where this trend was found
+    category?: string; // Category/classification of the trend
+    sentiment?: 'Positive' | 'Negative' | 'Neutral';
+    predictedLifespan?: string; // Estimated how long this trend will last
 };
 
 export type Idea = {
@@ -263,6 +277,11 @@ export type SimplePrompts = {
     generateFacebookTrends: string;
     generateFacebookPostsForTrend: string;
     generateIdeasFromProduct: string;
+    suggestTrends?: string; // Adding this for trend suggestion
+    suggestGlobalTrends?: string; // Adding this for global trend suggestion
+    generateCaption?: string; // Adding this for post caption generation
+    generateShortVideoScript?: string; // Adding this for short video script generation
+    generateLongVideoScript?: string; // Adding this for long video script generation
 };
 
 export type ContentPackagePrompts = {
@@ -274,11 +293,17 @@ export type ContentPackagePrompts = {
 };
 
 export type Prompts = {
-    autoGeneratePersona: AutoGeneratePersonaPrompts;
-    generateInCharacterPost: GenerateInCharacterPostPrompts;
-    mediaPlanGeneration: MediaPlanGenerationPrompts;
-    simple: SimplePrompts;
-    contentPackage: ContentPackagePrompts;
+    autoGeneratePersona?: AutoGeneratePersonaPrompts;
+    generateInCharacterPost?: GenerateInCharacterPostPrompts;
+    mediaPlanGeneration?: MediaPlanGenerationPrompts;
+    simple?: SimplePrompts;
+    contentPackage?: ContentPackagePrompts;
+    rules?: {
+        imagePrompt?: string[];
+        postCaption?: string[];
+        shortVideoScript?: string[];
+        longVideoScript?: string[];
+    };
 };
 
 export type Settings = {

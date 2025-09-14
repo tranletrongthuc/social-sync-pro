@@ -5,9 +5,9 @@ import TagInput from './TagInput';
 
 interface PersonaEditorModalProps {
   isOpen: boolean;
-  persona: Persona | null;
+  persona: Partial<Persona> | null;
   onClose: () => void;
-  onSave: (persona: Persona) => void;
+  onSave: (persona: Partial<Persona>) => void;
   language: string;
 }
 
@@ -32,7 +32,7 @@ const TextAreaField: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement> 
 };
 
 const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona, onClose, onSave, language }) => {
-  const [editedPersona, setEditedPersona] = useState<Persona | null>(persona);
+  const [editedPersona, setEditedPersona] = useState<Partial<Persona> | null>(persona);
   const [activeTab, setActiveTab] = useState('identity');
 
   useEffect(() => {
@@ -98,9 +98,9 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
     const [section, field] = name.split('.');
 
     if (section && field) {
-        setEditedPersona(prev => prev ? { ...prev, [section]: { ...prev[section as keyof Persona] as object, [field]: value } } as Persona : null);
+        setEditedPersona(prev => prev ? { ...prev, [section]: { ...(prev[section as keyof Persona] as object | undefined), [field]: value } } : null);
     } else {
-        setEditedPersona(prev => prev ? { ...prev, [name]: value } as Persona : null);
+        setEditedPersona(prev => prev ? { ...prev, [name]: value } : null);
     }
   };
 
@@ -108,14 +108,14 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
     const { name, value } = e.target;
     const [section, field] = name.split('.');
     if (section && field) {
-        setEditedPersona(prev => prev ? { ...prev, [section]: { ...prev[section as keyof Persona] as object, [field]: parseInt(value, 10) || 0 } } as Persona : null);
+        setEditedPersona(prev => prev ? { ...prev, [section]: { ...(prev[section as keyof Persona] as object | undefined), [field]: parseInt(value, 10) || 0 } } : null);
     }
   };
 
   const handleTagsChange = (name: string, tags: string[]) => {
     const [section, field] = name.split('.');
     if (section && field) {
-        setEditedPersona(prev => prev ? { ...prev, [section]: { ...prev[section as keyof Persona] as object, [field]: tags } } as Persona : null);
+        setEditedPersona(prev => prev ? { ...prev, [section]: { ...(prev[section as keyof Persona] as object | undefined), [field]: tags } } : null);
     }
   };
 
@@ -124,7 +124,7 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
       case 'identity':
         return (
           <div>
-            <InputField label={texts.nickName} name="nickName" value={editedPersona.nickName} onChange={handleChange} />
+            <InputField label={texts.nickName} name="nickName" value={editedPersona.nickName || ''} onChange={handleChange} />
             <InputField label={texts.age} name="demographics.age" type="number" value={editedPersona.demographics?.age || ''} onChange={handleNestedNumberChange} />
             <InputField label={texts.location} name="demographics.location" value={editedPersona.demographics?.location || ''} onChange={handleChange} />
             <InputField label={texts.occupation} name="demographics.occupation" value={editedPersona.demographics?.occupation || ''} onChange={handleChange} />

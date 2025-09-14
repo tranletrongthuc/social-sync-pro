@@ -712,12 +712,21 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                       <>
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                           {displayedPosts.map(postInfo => {
+                            // CORRECTED LOGIC:
+                            // Use the imageUrl and imageUrlsArray directly from the post object,
+                            // which is the source of truth from the database.
+                            const singleImageUrl = postInfo.post.imageUrl;
+                            const carouselImageUrls = postInfo.post.contentType === 'Carousel' 
+                                ? postInfo.post.imageUrlsArray
+                                : undefined;
+
                             return (
                               <PostCard
                                 key={postInfo.post.id}
                                 postInfo={postInfo}
                                 language={language}
-                                imageUrl={postInfo.post.imageKey ? props.generatedImages[postInfo.post.imageKey] : undefined}
+                                imageUrl={singleImageUrl}
+                                imageUrls={carouselImageUrls}
                                 videoUrl={postInfo.post.videoKey ? props.generatedVideos[postInfo.post.videoKey] : undefined}
                                 isSelected={props.selectedPostIds && props.selectedPostIds.has(postInfo.post.id)}
                                 onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}

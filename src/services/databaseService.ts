@@ -15,6 +15,7 @@ import type {
   AIService,
   AIModel,
 } from '../../types';
+import { initialGeneratedAssets } from '../reducers/assetsReducer';
 
 // Cache for loaded data to prevent unnecessary reloads
 export const dataCache: Record<string, any> = {};
@@ -178,44 +179,8 @@ const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
     brandId: string;
   }>('load-complete-project', { brandId });
 
-  // Provide a proper default value that matches the GeneratedAssets structure
-  const defaultAssets: GeneratedAssets = {
-    brandFoundation: {
-      brandName: '',
-      mission: '',
-      usp: '',
-      targetAudience: '',
-      values: [],
-      personality: ''
-    },
-    coreMediaAssets: {
-      logoConcepts: [],
-      colorPalette: [],
-      fontRecommendations: []
-    },
-    unifiedProfileAssets: {
-      accountName: '',
-      username: '',
-      profilePicturePrompt: '',
-      profilePictureId: '',
-      profilePictureImageKey: null,
-      profilePictureImageUrl: '',
-      coverPhotoPrompt: '',
-      coverPhotoId: '',
-      coverPhotoImageKey: null,
-      coverPhotoImageUrl: '',
-      coverPhoto: undefined
-    },
-    mediaPlans: [],
-    personas: [],
-    trends: [],
-    ideas: [],
-    affiliateLinks: [],
-    selectedPlatforms: []
-  };
-
   return result || { 
-    assets: defaultAssets, 
+    assets: initialGeneratedAssets, 
     generatedImages: {}, 
     generatedVideos: {}, 
     brandId: '' 
@@ -226,8 +191,9 @@ const syncAssetMediaWithDatabase = async (brandId: string, assets: GeneratedAsse
   await callDatabaseService('sync-asset-media', { brandId, assets, settings }, { invalidatesCacheForBrand: brandId });
 };
 
-const saveAffiliateLinksToDatabase = async (links: AffiliateLink[], brandId: string): Promise<void> => {
-  await callDatabaseService('save-affiliate-links', { links, brandId }, { invalidatesCacheForBrand: brandId });
+const saveAffiliateLinksToDatabase = async (links: AffiliateLink[], brandId: string): Promise<AffiliateLink[]> => {
+  const result = await callDatabaseService<{ links: AffiliateLink[] }>('save-affiliate-links', { links, brandId }, { invalidatesCacheForBrand: brandId });
+  return result.links || [];
 };
 
 const fetchAffiliateLinksForBrandFromDatabase = async (brandId: string): Promise<AffiliateLink[]> => {
@@ -239,7 +205,7 @@ const deleteAffiliateLinkFromDatabase = async (linkId: string, brandId: string):
   await callDatabaseService('delete-affiliate-link', { linkId, brandId }, { invalidatesCacheForBrand: brandId });
 };
 
-const savePersonaToDatabase = async (persona: Persona, brandId: string, settings: Settings): Promise<string> => {
+const savePersonaToDatabase = async (persona: Partial<Persona>, brandId: string, settings: Settings): Promise<string> => {
   const result = await callDatabaseService<{ id: string }>('save-persona', { persona, brandId, settings }, { invalidatesCacheForBrand: brandId });
   return result.id;
 };
@@ -262,9 +228,10 @@ const updateMediaPlanPostInDatabase = async (
   brandId: string,
   settings: Settings,
   imageUrl?: string,
-  videoUrl?: string
+  videoUrl?: string,
+  imageUrlsArray?: string[]
 ): Promise<void> => {
-  await callDatabaseService('update-media-plan-post', { post, brandId, settings, imageUrl, videoUrl }, { invalidatesCacheForBrand: brandId });
+  await callDatabaseService('update-media-plan-post', { post, brandId, settings, imageUrl, videoUrl, imageUrlsArray }, { invalidatesCacheForBrand: brandId });
 };
 
 const saveMediaPlanGroupToDatabase = async (
@@ -288,11 +255,19 @@ const deleteTrendFromDatabase = async (trendId: string, brandId: string): Promis
   await callDatabaseService('delete-trend', { trendId, brandId }, { invalidatesCacheForBrand: brandId });
 };
 
-const saveIdeasToDatabase = async (ideas: Idea[], brandId: string): Promise<Idea[]> => {
+const saveIdeasToDatabase = async (ideas: Partial<Idea>[], brandId: string): Promise<Idea[]> => {
   console.log('saveIdeas called with ideas:', ideas);
   const result = await callDatabaseService<{ ideas: Idea[] }>('save-ideas', { ideas, brandId }, { invalidatesCacheForBrand: brandId });
   console.log('Ideas saved successfully');
   return result.ideas;
+};
+
+// Add bulk save function for trends
+const saveTrendsToDatabase = async (trends: (Omit<Trend, 'id'> & { id?: string })[], brandId: string): Promise<Trend[]> => {
+  console.log('saveTrendsToDatabase called with trends:', trends, 'brandId:', brandId);
+  const result = await callDatabaseService<{ trends: Trend[] }>('save-trends', { trends, brandId }, { invalidatesCacheForBrand: brandId });
+  console.log('Trends saved successfully');
+  return result.trends;
 };
 
 const saveAIModelToDatabase = async (model: {
@@ -358,44 +333,8 @@ const loadProjectFromDatabase = async (brandId: string): Promise<{
   }>('load-complete-project', { brandId });
   console.log(`Loaded complete project for brand ID: ${brandId}`);
   
-  // Provide a proper default value that matches the expected structure
-  const defaultAssets: GeneratedAssets = {
-    brandFoundation: {
-      brandName: '',
-      mission: '',
-      usp: '',
-      targetAudience: '',
-      values: [],
-      personality: ''
-    },
-    coreMediaAssets: {
-      logoConcepts: [],
-      colorPalette: [],
-      fontRecommendations: []
-    },
-    unifiedProfileAssets: {
-      accountName: '',
-      username: '',
-      profilePicturePrompt: '',
-      profilePictureId: '',
-      profilePictureImageKey: null,
-      profilePictureImageUrl: '',
-      coverPhotoPrompt: '',
-      coverPhotoId: '',
-      coverPhotoImageKey: null,
-      coverPhotoImageUrl: '',
-      coverPhoto: undefined
-    },
-    mediaPlans: [],
-    personas: [],
-    trends: [],
-    ideas: [],
-    affiliateLinks: [],
-    selectedPlatforms: []
-  };
-
   return result || { 
-    assets: defaultAssets, 
+    assets: initialGeneratedAssets, 
     generatedImages: {}, 
     generatedVideos: {}, 
     brandId: '' 
@@ -427,17 +366,9 @@ const initializeApp = async (): Promise<{
   }
 };
 
-const loadIdeasForTrend = async (trendId: string, brandId: string): Promise<Idea[]> => {
-  console.log('loadIdeasForTrend called with trendId:', trendId, 'brandId:', brandId);
-  const cacheKey = `ideas-${trendId}-${brandId}`;
-  if (dataCache[cacheKey]) {
-    console.log('Returning cached ideas data');
-    return dataCache[cacheKey];
-  }
+const loadIdeasForTrendFromDatabase = async (trendId: string, brandId: string): Promise<Idea[]> => {
   const result = await callDatabaseService<{ ideas: Idea[] }>('load-ideas-for-trend', { trendId, brandId });
-  dataCache[cacheKey] = result.ideas;
-  console.log('Ideas data received from API:', result.ideas);
-  return result.ideas;
+  return result.ideas || [];
 };
 
 const loadInitialProjectData = async (brandId: string): Promise<{
@@ -537,6 +468,7 @@ export {
   saveTrendToDatabase,
   deleteTrendFromDatabase,
   saveIdeasToDatabase,
+  saveTrendsToDatabase, // Add the new function
   saveAIModelToDatabase,
   deleteAIModelFromDatabase,
   loadSettingsDataFromDatabase,
@@ -546,7 +478,7 @@ export {
   bulkUpdatePostSchedulesInDatabase,
   loadProjectFromDatabase,
   checkIfProductExistsInDatabase,
-  loadIdeasForTrend,
+  loadIdeasForTrendFromDatabase, // Correctly named and now exported
   loadInitialProjectData,
   loadMediaPlanGroupsList,
   loadStrategyHubData,

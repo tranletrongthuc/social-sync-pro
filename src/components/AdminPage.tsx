@@ -200,7 +200,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ onLogout }) => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm`}
             >
-              Prompt Management
+              Prompt Templates
             </button>
           </nav>
         </div>
@@ -356,12 +356,18 @@ const AdminPage: React.FC<AdminPageProps> = ({ onLogout }) => {
           )}
 
           {activeTab === 'prompts' && appSettings && (
-            <PromptManager 
-              settings={appSettings}
-              adminSettings={appSettings}
-              onSave={handleSavePrompts}
-              isSaving={isSaving}
-            />
+            <div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Prompt Templates</h2>
+                <p className="text-gray-600 mt-2">Manage global prompt templates used across all brands</p>
+              </div>
+              <PromptManager 
+                settings={appSettings}
+                adminSettings={appSettings}
+                onSave={handleSavePrompts}
+                isSaving={isSaving}
+              />
+            </div>
           )}
         </div>
       </div>

@@ -13,7 +13,8 @@
     "test:mongodb": "node scripts/test-mongodb-connection.js",
     "test:mongodb:impl": "node scripts/test-mongodb-implementation.js",
     "init:mongodb": "node scripts/init-mongodb-database.js",
-    "check:migration": "node scripts/check-migration-status.js"
+    "check:migration": "node scripts/check-migration-status.js",
+    "test": "ts-node --esm scripts/test-sanitizer.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.614.0",
@@ -40,11 +41,13 @@
     "@babel/preset-env": "^7.28.0",
     "@babel/preset-react": "^7.27.1",
     "@babel/preset-typescript": "^7.27.1",
+    "@types/node": "^24.3.1",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
     "@types/uuid": "^10.0.0",
     "babel-plugin-transform-import-meta": "^2.3.3",
     "babel-plugin-transform-vite-meta-env": "^1.0.3",
+    "ts-node": "^10.9.2",
     "typescript": "~5.8.2",
     "vite": "^5.2.0",
     "vite-plugin-environment": "^1.1.3"

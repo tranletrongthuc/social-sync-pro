@@ -2,7 +2,6 @@ import { getClientAndDb } from '../server_lib/mongodb.js';
 import { allowCors } from '../server_lib/cors.js';
 import { ObjectId } from 'mongodb';
 import { defaultPrompts } from '../server_lib/defaultPrompts.js';
-import { initialSettings } from '../server_lib/defaultSettings.js';
 
 // Helper function for deep merging settings objects
 const isObject = (obj) => obj && typeof obj === 'object' && !Array.isArray(obj);
@@ -24,6 +23,20 @@ function deepMerge(target, source) {
   }
   return output;
 }
+
+// Define initial settings directly in this file
+const initialSettings = {
+    language: "English",
+    totalPostsPerMonth: 30,
+    mediaPromptSuffix: "",
+    affiliateContentKit: "",
+    textGenerationModel: "gemini-1.5-pro-latest",
+    imageGenerationModel: "dall-e-3",
+    textModelFallbackOrder: [],
+    visionModels: [],
+    contentPillars: [],
+    prompts: defaultPrompts,
+};
 
 // Helper function to create a filter based on ID validity
 function createIdFilter(id, fieldName = '_id') {
@@ -165,7 +178,7 @@ async function handler(request, response) {
             console.log('No admin prompts found in DB, initializing from defaultSettings.js...');
             await adminSettingsCollection.updateOne(
                   {},
-                  { $set: initialSettings },
+                  { $set: { ...initialSettings, updatedAt: new Date() } },
                   { upsert: true }
               );
             adminDefaults = await adminSettingsCollection.findOne({});
@@ -207,35 +220,17 @@ async function handler(request, response) {
             try {
               const { assets, brandId } = request.body;
   
-              // Ensure coreMediaAssets is properly structured
-              const coreMediaAssets = {
-                logoConcepts: (assets.coreMediaAssets?.logoConcepts || []).map(logo => ({...logo})),
-                colorPalette: assets.coreMediaAssets?.colorPalette || {},
-                fontRecommendations: assets.coreMediaAssets?.fontRecommendations || {}
-              };
-
               const brandDocument = {
                 name: assets.brandFoundation?.brandName || '',
                 mission: assets.brandFoundation?.mission || '',
                 usp: assets.brandFoundation?.usp || '',
                 targetAudience: assets.brandFoundation?.targetAudience || '',
                 personality: assets.brandFoundation?.personality || '',
-                
                 values: assets.brandFoundation?.values || [],
                 keyMessaging: assets.brandFoundation?.keyMessaging || [],
-                
-                // Removed top-level logoConcepts field
-                
-                coreMediaAssets: coreMediaAssets,
-                
-                unifiedProfileAssets: {
-                    ...assets.unifiedProfileAssets,
-                    profilePictureImageUrl: '', // These will be populated later via sync-asset-media
-                    coverPhotoImageUrl: ''
-                },
-                
-                settings: assets.settings || {}, // New consolidated settings
-  
+                coreMediaAssets: assets.coreMediaAssets || { logoConcepts: [], colorPalette: [], fontRecommendations: [] },
+                unifiedProfileAssets: assets.unifiedProfileAssets || {},
+                settings: assets.settings || {}, 
                 updatedAt: new Date(),
               };
   
@@ -244,24 +239,42 @@ async function handler(request, response) {
                 await brandsCollection.updateOne(
                   { _id: new ObjectId(brandId) },
                   { $set: brandDocument },
-                  { upsert: true } // Use upsert to be safe, though a brandId should always exist here.
+                  { upsert: true }
                 );
                 response.status(200).json({ brandId: brandId });
               } else {
-                // This is a new brand. Fetch admin defaults and copy them.
+                // This is a new brand. Fetch admin defaults and clone only the allowed fields.
                 const adminSettingsCollection = db.collection('adminSettings');
                 const adminSettings = await adminSettingsCollection.findOne({});
-                
-                // The app-init logic now guarantees that adminSettings from the DB is the complete source of truth for defaults.
-                // We just copy it directly.
-                brandDocument.settings = adminSettings;
+
+                const newBrandSettings = {};
+                if (adminSettings) {
+                    newBrandSettings.language = adminSettings.language;
+                    newBrandSettings.totalPostsPerMonth = adminSettings.totalPostsPerMonth;
+                    newBrandSettings.mediaPromptSuffix = adminSettings.mediaPromptSuffix;
+                    newBrandSettings.affiliateContentKit = adminSettings.affiliateContentKit;
+                    newBrandSettings.textGenerationModel = adminSettings.textGenerationModel;
+                    newBrandSettings.imageGenerationModel = adminSettings.imageGenerationModel;
+                    newBrandSettings.contentPillars = adminSettings.contentPillars || [];
+                }
+
+                newBrandSettings.prompts = {
+                    rules: {
+                        imagePrompt: [],
+                        postCaption: [],
+                        shortVideoScript: [],
+                        longVideoScript: []
+                    }
+                };
+
+                brandDocument.settings = newBrandSettings;
 
                 const newBrandObjectId = new ObjectId();
                 const newBrandId = newBrandObjectId.toString();
                 const fullDocument = {
                     ...brandDocument,
                     _id: newBrandObjectId,
-                    brandId: newBrandId, // for backward compatibility, can be removed later
+                    id: newBrandId,
                     createdAt: new Date()
                 };
                 await brandsCollection.insertOne(fullDocument);
@@ -555,6 +568,16 @@ async function handler(request, response) {
           postRecords.forEach(record => {
             // Collect image and video URLs
             if (record.imageKey && record.imageUrl) imageUrls[record.imageKey] = record.imageUrl;
+            
+            // NEW: Pre-populate cache for carousel images
+            if (record.imageKeys && record.imageUrlsArray && Array.isArray(record.imageKeys) && Array.isArray(record.imageUrlsArray)) {
+              for (let i = 0; i < record.imageKeys.length; i++) {
+                if (record.imageKeys[i] && record.imageUrlsArray[i]) {
+                  imageUrls[record.imageKeys[i]] = record.imageUrlsArray[i];
+                }
+              }
+            }
+
             if (record.videoKey && record.videoUrl) videoUrls[record.videoKey] = record.videoUrl;
             
             // Group posts by week
@@ -576,6 +599,9 @@ async function handler(request, response) {
               mediaPrompt: record.mediaPrompt,
               script: record.script,
               imageKey: record.imageKey,
+              imageKeys: record.imageKeys, // For carousel
+              imageUrl: record.imageUrl,
+              imageUrlsArray: record.imageUrlsArray, // For carousel
               videoKey: record.videoKey,
               mediaOrder: record.mediaOrder || [],
               sources: record.sources || [],
@@ -674,6 +700,7 @@ async function handler(request, response) {
               const affiliateProductsCollection = db.collection('affiliateProducts');
               const bulkOperations = [];
     
+              const newLinks = [];
               for (const link of links) {
                 const linkDocument = {
                     productId: link.productId,
@@ -704,6 +731,7 @@ async function handler(request, response) {
                         _id: newLinkObjectId,
                         id: newLinkId,
                     };
+                    newLinks.push(newLinkDocument);
                     bulkOperations.push({
                         insertOne: {
                             document: newLinkDocument
@@ -716,7 +744,7 @@ async function handler(request, response) {
                 await affiliateProductsCollection.bulkWrite(bulkOperations);
               }
               
-              response.status(200).json({ success: true });
+              response.status(200).json({ success: true, links: newLinks });
               console.log('--- Affiliate links saved ---');
             } catch (error) {
               console.error('--- CRASH in /api/mongodb/save-affiliate-links ---');
@@ -866,7 +894,9 @@ async function handler(request, response) {
                         week: week.week,
                         theme: week.theme,
                         brandId: brandId,
-                        imageUrl: post.imageKey ? imageUrls[post.imageKey] : null,
+                        imageUrl: post.imageKey && !Array.isArray(post.imageKey) ? imageUrls[post.imageKey] : null,
+                        imageKeys: post.imageKeys, // Save the array of keys
+                        imageUrlsArray: post.imageUrlsArray, // Save the array of URLs
                         videoUrl: post.videoKey ? imageUrls[post.videoKey] : null,
                         postOrder: postIndex,
                         updatedAt: new Date(),
@@ -975,13 +1005,32 @@ async function handler(request, response) {
                 try {
                   const { settings, brandId } = request.body;
                   
+                  // Create a "slim" settings object that ONLY contains what a brand is allowed to override.
+                  const slimSettings = {
+                      // Copy all top-level settings EXCEPT for prompts
+                      language: settings.language,
+                      totalPostsPerMonth: settings.totalPostsPerMonth,
+                      mediaPromptSuffix: settings.mediaPromptSuffix,
+                      affiliateContentKit: settings.affiliateContentKit,
+                      textGenerationModel: settings.textGenerationModel,
+                      imageGenerationModel: settings.imageGenerationModel,
+                      textModelFallbackOrder: settings.textModelFallbackOrder,
+                      visionModels: settings.visionModels,
+                      contentPillars: settings.contentPillars,
+                      // For prompts, only save the 'rules' object.
+                      prompts: {
+                          rules: settings.prompts?.rules || {}
+                      }
+                  };
+                  
                   const result = await brandsCollection.updateOne(
                     { _id: new ObjectId(brandId) },
-                    { $set: { settings: settings, updatedAt: new Date() } }
+                    // Save the slimmed-down settings object, not the one from the client.
+                    { $set: { settings: slimSettings, updatedAt: new Date() } }
                   );
                   
                   response.status(200).json({ success: true });
-                  console.log('--- Settings saved ---');
+                  console.log('--- Settings saved (slimmed) ---');
                 } catch (error) {
                   console.error('--- CRASH in /api/mongodb/save-settings ---');
                   throw error;
@@ -995,16 +1044,28 @@ async function handler(request, response) {
               
               const trendsCollection = db.collection('trends');
               
-              // Prepare trend document
+              // Prepare trend document with ALL fields including enhanced metadata
               const trendDocument = {
                 industry: trend.industry,
                 topic: trend.topic,
                 keywords: trend.keywords || [],
                 links: trend.links || [],
                 notes: trend.notes,
+                analysis: trend.analysis,
                 brandId: brandId,
                 createdAt: trend.createdAt,
-                updatedAt: new Date()
+                updatedAt: new Date(),
+                // Enhanced metadata fields
+                searchVolume: trend.searchVolume,
+                competitionLevel: trend.competitionLevel,
+                peakTimeFrame: trend.peakTimeFrame,
+                geographicDistribution: trend.geographicDistribution,
+                relatedQueries: trend.relatedQueries,
+                trendingScore: trend.trendingScore,
+                sourceUrls: trend.sourceUrls,
+                category: trend.category,
+                sentiment: trend.sentiment,
+                predictedLifespan: trend.predictedLifespan
               };
               
               // If trend.id exists and is a valid ObjectId, it's an update.
@@ -1034,7 +1095,83 @@ async function handler(request, response) {
             }
             break;
     
-            case 'sync-asset-media':
+          case 'save-trends':
+            console.log('--- Received request for /api/mongodb/save-trends ---');
+            try {
+              const { trends, brandId } = request.body;
+              
+              const trendsCollection = db.collection('trends');
+              
+              // Prepare bulk operations
+              const bulkOperations = [];
+              const savedTrends = [];
+              
+              for (const trend of trends) {
+                // Prepare trend document with ALL fields including enhanced metadata
+                const trendDocument = {
+                  industry: trend.industry,
+                  topic: trend.topic,
+                  keywords: trend.keywords || [],
+                  links: trend.links || [],
+                  notes: trend.notes,
+                  analysis: trend.analysis,
+                  brandId: brandId,
+                  createdAt: trend.createdAt,
+                  updatedAt: new Date(),
+                  // Enhanced metadata fields
+                  searchVolume: trend.searchVolume,
+                  competitionLevel: trend.competitionLevel,
+                  peakTimeFrame: trend.peakTimeFrame,
+                  geographicDistribution: trend.geographicDistribution,
+                  relatedQueries: trend.relatedQueries,
+                  trendingScore: trend.trendingScore,
+                  sourceUrls: trend.sourceUrls,
+                  category: trend.category,
+                  sentiment: trend.sentiment,
+                  predictedLifespan: trend.predictedLifespan
+                };
+                
+                // If trend.id exists and is a valid ObjectId, it's an update.
+                if (trend.id && ObjectId.isValid(trend.id)) {
+                  bulkOperations.push({
+                    updateOne: {
+                      filter: { _id: new ObjectId(trend.id) },
+                      update: { $set: trendDocument },
+                      upsert: true
+                    }
+                  });
+                  savedTrends.push({ ...trendDocument, id: trend.id, _id: new ObjectId(trend.id) });
+                } else {
+                  const newTrendObjectId = new ObjectId();
+                  const newTrendId = newTrendObjectId.toString();
+                  const fullTrendDocument = {
+                      ...trendDocument,
+                      _id: newTrendObjectId,
+                      id: newTrendId
+                  };
+                  bulkOperations.push({
+                    insertOne: {
+                      document: fullTrendDocument
+                    }
+                  });
+                  savedTrends.push(fullTrendDocument);
+                }
+              }
+              
+              // Execute bulk operations
+              if (bulkOperations.length > 0) {
+                await trendsCollection.bulkWrite(bulkOperations);
+              }
+              
+              response.status(200).json({ trends: savedTrends });
+              console.log('--- Trends saved ---');
+            } catch (error) {
+              console.error('--- CRASH in /api/mongodb/save-trends ---');
+              throw error;
+            }
+            break;
+    
+          case 'sync-asset-media':
                 console.log('--- Received request for /api/mongodb/sync-asset-media ---');
                 try {
                   const { brandId, assets } = request.body;
@@ -1070,7 +1207,7 @@ async function handler(request, response) {
           case 'update-media-plan-post':
             console.log('--- Received request for /api/mongodb/update-media-plan-post ---');
             try {
-              const { post, brandId, imageUrl, videoUrl } = request.body;
+              const { post, brandId, imageUrl, videoUrl, imageUrlsArray } = request.body;
               
               const postsCollection = db.collection('mediaPlanPosts');
               
@@ -1088,6 +1225,7 @@ async function handler(request, response) {
                 mediaPrompt: post.mediaPrompt,
                 script: post.script,
                 imageKey: post.imageKey,
+                imageKeys: post.imageKeys, // For carousel
                 imageUrl: imageUrl, // Comes from request body separately
                 videoKey: post.videoKey,
                 videoUrl: videoUrl, // Comes from request body separately
@@ -1112,10 +1250,35 @@ async function handler(request, response) {
                 postDocument[key] === undefined && delete postDocument[key]
               );
               
+              // Handle carousel-specific imageUrlsArray update
+              // To prevent race conditions, we'll update individual array elements
+              let updateOperation = { $set: postDocument };
+              
+              if (imageUrlsArray && Array.isArray(imageUrlsArray)) {
+                // For carousel posts, update specific indices without affecting others
+                // This prevents race conditions where concurrent updates overwrite each other
+                const arrayUpdates = {};
+                imageUrlsArray.forEach((url, index) => {
+                  if (url !== undefined && url !== null) {
+                    // Update only the specific array element, preserving other elements
+                    arrayUpdates[`imageUrlsArray.${index}`] = url;
+                  }
+                });
+                
+                // Only set individual elements, not the entire array
+                // This avoids conflicts with MongoDB's update operation
+                updateOperation = {
+                  $set: {
+                    ...postDocument,
+                    ...arrayUpdates
+                  }
+                };
+              }
+              
               // Update the post. Do NOT upsert. If the post doesn't exist, it's a client-side data issue.
               const result = await postsCollection.updateOne(
                 createIdFilter(post.id),
-                { $set: postDocument }
+                updateOperation
               );
 
               if (result.matchedCount === 0) {
@@ -1521,28 +1684,9 @@ async function handler(request, response) {
                     ...record // Include any other fields that might be in the record
                 }));
     
-                // Fetch ideas data (only for existing trends)
-                const trendIds = trendRecords.map(r => r._id.toString());
-                let ideas = [];
-                
-                if (trendIds.length > 0) {
-                    const ideasCollection = db.collection('ideas');
-                    const ideaRecords = await ideasCollection.find({ trendId: { $in: trendIds } }).toArray();
-                    
-                    // Transform MongoDB records to match the expected API response format
-                    ideas = ideaRecords.map((record) => ({
-                        id: record._id.toString(),
-                        trendId: record.trendId,
-                        title: record.title,
-                        description: record.description,
-                        targetAudience: record.targetAudience,
-                        productId: record.productId,
-                        ...record // Include any other fields that might be in the record
-                    }));
-                }
-    
-                response.status(200).json({ trends, ideas });
-                console.log('--- Strategy hub data sent to client ---');
+                // Return only the trends
+                response.status(200).json({ trends });
+                console.log('--- Strategy hub data (trends only) sent to client ---');
     
             } catch (error) {
                 console.error('--- CRASH in /api/mongodb/load-strategy-hub ---');

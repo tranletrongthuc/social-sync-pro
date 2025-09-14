@@ -7,6 +7,7 @@ import type { Settings } from '../../types';
  */
 
 export const generateRawContentWithOpenRouter = async (prompt: string, model: string, settings: Settings, useSearch: boolean): Promise<string> => {
+    console.log('[openrouterService] Executing generateRawContentWithOpenRouter');
     // Note: useSearch is ignored for OpenRouter as it doesn't support it directly.
     const messages = [
         { role: 'system', content: settings.affiliateContentKit || 'You are a helpful assistant.' },
@@ -19,7 +20,9 @@ export const generateRawContentWithOpenRouter = async (prompt: string, model: st
         { "type": "json_object" } // Assume JSON object for structured data, can be adapted
     );
     
-    return response;
+    // CRITICAL FIX: The service contract requires a STRING return. The BFF returns a parsed JSON object/array.
+    // We must stringify it here to honor the contract.
+    return JSON.stringify(response);
 };
 
 export const generateImageWithOpenRouter = async (

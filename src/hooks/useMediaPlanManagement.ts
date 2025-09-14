@@ -15,6 +15,7 @@ import { uploadMediaToCloudinary } from '../services/cloudinaryService';
 interface useMediaPlanManagementProps {
     generatedAssets: GeneratedAssets | null;
     settings: Settings;
+    adminSettings: Settings | null;
     aiModelConfig: AiModelConfig | null;
     generatedImages: Record<string, string>;
     mongoBrandId: string | null;
@@ -34,6 +35,7 @@ interface useMediaPlanManagementProps {
 export const useMediaPlanManagement = ({
     generatedAssets,
     settings,
+    adminSettings,
     aiModelConfig,
     generatedImages,
     mongoBrandId,
@@ -61,8 +63,8 @@ export const useMediaPlanManagement = ({
         pillar: string
     ) => {
         (async () => {
-            if (!generatedAssets?.brandFoundation) {
-                setError("Cannot generate plan without a Brand Foundation.");
+            if (!generatedAssets?.brandFoundation || !adminSettings) {
+                setError("Cannot generate plan without a Brand Foundation or Admin Settings.");
                 return;
             }
 
@@ -102,7 +104,8 @@ export const useMediaPlanManagement = ({
                         useSearch: useSearch,
                         selectedPlatforms: selectedPlatforms,
                         options: options,
-                        settings: settings,
+                        brandSettings: settings,
+                        adminSettings: adminSettings,
                         persona: persona,
                         selectedProduct: selectedProduct,
                         pillar: pillar
@@ -182,11 +185,11 @@ export const useMediaPlanManagement = ({
                 setLoaderContent(null); 
             }
         })();  
-    }, [generatedAssets, settings, ensureMongoProject, generatedImages, updateAutoSaveStatus, aiModelConfig, dispatchAssets, setLoaderContent, setError, setMediaPlanGroupsList, setActivePlanId, setKhongMinhSuggestions, setGeneratedImages]);
+    }, [generatedAssets, settings, adminSettings, ensureMongoProject, generatedImages, updateAutoSaveStatus, aiModelConfig, dispatchAssets, setLoaderContent, setError, setMediaPlanGroupsList, setActivePlanId, setKhongMinhSuggestions, setGeneratedImages]);
 
     const handleCreateFunnelCampaignPlan = useCallback(async (planShell: MediaPlanGroup & { wizardData?: any }) => {
-        if (!generatedAssets?.brandFoundation) {
-            setError("Cannot generate plan without a Brand Foundation.");
+        if (!generatedAssets?.brandFoundation || !adminSettings) {
+            setError("Cannot generate plan without a Brand Foundation or Admin Settings.");
             return;
         }
 
@@ -246,7 +249,8 @@ export const useMediaPlanManagement = ({
                     useSearch: true,
                     selectedPlatforms: ['Facebook', 'Instagram', 'TikTok', 'YouTube'],
                     options: { tone: 'persuasive', style: 'storytelling', length: 'medium', includeEmojis: true },
-                    settings: settings,
+                    brandSettings: settings,
+                    adminSettings: adminSettings,
                     persona: persona,
                     selectedProduct: selectedProduct,
                     pillar: 'funnel'
@@ -298,7 +302,7 @@ export const useMediaPlanManagement = ({
         } finally {
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, ensureMongoProject, generatedImages, updateAutoSaveStatus, aiModelConfig, dispatchAssets, setLoaderContent, setError, setMediaPlanGroupsList, setActivePlanId, setSuccessMessage]);
+    }, [generatedAssets, settings, adminSettings, ensureMongoProject, generatedImages, updateAutoSaveStatus, aiModelConfig, dispatchAssets, setLoaderContent, setError, setMediaPlanGroupsList, setActivePlanId, setSuccessMessage]);
 
     const handleGenerateContentPackage = useCallback(async ( 
         idea: Idea,

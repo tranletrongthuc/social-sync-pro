@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CopyIcon, CheckCircleIcon, CheckIcon } from './icons';
+import { CopyIcon, CheckCircleIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'tertiary';
@@ -161,4 +161,52 @@ export const Checkbox: React.FC<{
       </div>
     </button>
   );
+};
+
+export const Carousel: React.FC<{ images: string[], className?: string }> = ({ images, className }) => {
+    const [currentIndex, setCurrentIndex] = useState(0);
+
+    const goToPrevious = () => {
+        const isFirstSlide = currentIndex === 0;
+        const newIndex = isFirstSlide ? images.length - 1 : currentIndex - 1;
+        setCurrentIndex(newIndex);
+    };
+
+    const goToNext = () => {
+        const isLastSlide = currentIndex === images.length - 1;
+        const newIndex = isLastSlide ? 0 : currentIndex + 1;
+        setCurrentIndex(newIndex);
+    };
+
+    if (!images || images.length === 0) {
+        return <div className="aspect-video bg-gray-200 rounded-lg flex items-center justify-center text-gray-500">No images to display</div>;
+    }
+
+    return (
+        <div className={`relative w-full aspect-video group ${className || ''}`}>
+            <div
+                style={{ backgroundImage: `url(${images[currentIndex]})` }}
+                className="w-full h-full rounded-lg bg-center bg-cover duration-500"
+            ></div>
+            {/* Left Arrow */}
+            <div onClick={goToPrevious} className="hidden group-hover:block absolute top-[50%] -translate-y-[-50%] left-2 text-2xl rounded-full p-1 bg-black/20 text-white cursor-pointer">
+                <ChevronLeftIcon className="w-6 h-6" />
+            </div>
+            {/* Right Arrow */}
+            <div onClick={goToNext} className="hidden group-hover:block absolute top-[50%] -translate-y-[-50%] right-2 text-2xl rounded-full p-1 bg-black/20 text-white cursor-pointer">
+                <ChevronRightIcon className="w-6 h-6" />
+            </div>
+            <div className="absolute bottom-2 right-0 left-0">
+                <div className="flex items-center justify-center gap-2">
+                    {images.map((_, slideIndex) => (
+                        <div
+                            key={slideIndex}
+                            onClick={() => setCurrentIndex(slideIndex)}
+                            className={`transition-all cursor-pointer w-2 h-2 bg-white rounded-full ${currentIndex === slideIndex ? 'p-1.5' : 'bg-opacity-50'}`}
+                        />
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
 };

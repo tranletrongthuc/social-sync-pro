@@ -1,7 +1,7 @@
 # Feature: Advanced Settings Management
 
-**Version:** 2.1
-**Date:** 2025-09-06
+**Version:** 2.2
+**Date:** 2025-09-12
 **Status:** Implemented
 
 ---
@@ -10,33 +10,29 @@
 
 This document describes the hierarchical settings system in SocialSync Pro. The system is designed to provide a powerful and flexible way to manage application configurations, allowing a global administrator to set default values while giving individual brands the autonomy to customize their own experience. This includes not only simple values like language and AI models, but also the complex, multi-line AI prompts that power all content generation features.
 
-The core principle is **inheritance with overrides**. A brand inherits all its settings from a global default configuration. However, any setting a brand explicitly customizes is saved as a specific override, which will not be affected by future changes to the global defaults.
+The core principle is a **two-tiered, non-duplicative architecture**: a global set of default templates and a brand-specific set of overrides. A brand's settings only store what is different from the global defaults, ensuring a clean, efficient, and maintainable system.
 
 ## 2. Key Concepts & Data Flow
 
-The settings flow is designed to be intuitive and robust, ensuring consistency for new brands while providing flexibility for existing ones.
+The settings flow is designed to be robust and prevent data duplication.
 
 **1. Global Admin Configuration:**
 -   **Source of Truth:** An administrator uses the **Admin Page** (`/admin`) to define the application's global default settings.
--   **Database:** These settings are stored as a single document in the `adminSettings` MongoDB collection. This includes default language, default AI models, visual style templates, and the master prompts for all AI features.
+-   **Database:** These settings are stored as a single document in the `adminSettings` MongoDB collection. This includes default language, default AI models, and the master **prompt templates** for all AI features.
 -   **AI Model Management:** The admin also manages a unified list of all available AI models in the `aiModels` collection. This list populates the dropdowns available to all users.
 
-**2. Brand Initialization & Inheritance:**
--   **New Brands:** When a new brand is created, the backend automatically performs a one-time **copy** of the current global `adminSettings`. This copied set becomes the brand's own initial settings.
--   **Runtime Behavior:** When the application needs a setting for a brand, it reads the value from the brand's own saved `settings` object.
+**2. Brand Initialization & Overrides:**
+-   **New Brands:** When a new brand is created, it does **not** copy the admin settings. Instead, the backend creates a new, minimal `settings` object for the brand. This object is initialized with only a `prompts.rules` structure, ready for customization.
+-   **Runtime Behavior:** When the application needs settings for a brand, the client-side fetches **both** the global `adminSettings` and the brand's specific `settings` (which only contains overrides). These two objects are **merged in memory** on the client to produce the final, complete settings object used by the UI and generation services.
 
 **3. Brand-Specific Customization:**
 -   **The Settings Modal:** A user opens the `SettingsModal` to customize their brand's configuration.
--   **Loading Data:** The modal fetches two sets of data in a single, efficient API call (`load-settings-data`):
-    1.  The brand's specific, currently saved `settings` object.
-    2.  The complete global `adminSettings` object.
--   **Display Logic:** The modal displays the brand's specific setting. The `SettingField` and `PromptManager` components compare this to the global default to determine if the value is "Customized".
--   **Saving Changes:** When a user saves a change, that value is written to the brand's specific `settings` object in the `brands` collection, overwriting its previous value.
+-   **Display Logic:** The modal's UI components (like `SettingField` and `PromptManager`) receive the merged settings object. They compare the brand's specific value against the global default value to determine if a setting has been "Customized".
+-   **Saving Changes:** When a user saves a change, the client sends the full, merged settings object to the backend. The backend `save-settings` API then intelligently **"slims down"** this object, saving only the allowed overrides (like `language` or `prompts.rules`) to the brand's specific `settings` document. The prompt templates are always discarded and never saved at the brand level.
 
 **4. The "Opt-In" Update Flow:**
--   **Impact of Admin Changes:** When an admin updates a global default (e.g., changes the recommended `imageGenerationModel`), existing brands are **not** affected because they have their own copy of the settings.
--   **Dynamic Dropdowns:** However, the *new* global default value immediately becomes visible inside the `SettingsModal` for all brands. The `SettingField` component will show a "Default" option in the dropdown reflecting the new global value.
--   **User Action:** This allows a user to see that a new global default is available and consciously "opt-in" to it by selecting it from the dropdown, which then saves it as their new brand-specific setting.
+-   **Impact of Admin Changes:** When an admin updates a global default (e.g., changes the recommended `imageGenerationModel`), this change is immediately available to all brands at runtime because they fetch the admin settings directly.
+-   **User Experience:** If a brand has not customized that specific setting, it will automatically start using the new global default. If they *have* customized it, their override remains in place, but they can see the new global default in the `SettingsModal` and choose to adopt it.
 
 ---
 
@@ -44,27 +40,24 @@ The settings flow is designed to be intuitive and robust, ensuring consistency f
 
 ### 3.1. Database Schema (MongoDB)
 
--   `adminSettings` **(Collection):** A single-document collection storing the global default `Settings` object. This object now includes a nested `prompts` object.
--   `aiModels` **(Collection):** A unified collection of all available AI models. Each document contains the model name, provider, capabilities, and the service it belongs to (e.g., "Google", "Cloudflare"). This replaced the previous, less efficient two-collection schema (`aiServices` and `aiModels`).
--   `brands` **(Collection):** Each brand document contains an embedded `settings: {}` object. This object stores the brand's complete set of settings, initially copied from the global defaults.
+-   `adminSettings` **(Collection):** A single-document collection storing the global default `Settings` object, including the full `prompts` object with all templates.
+-   `aiModels` **(Collection):** A unified collection of all available AI models.
+-   `brands` **(Collection):** Each brand document contains an embedded `settings: {}` object. This object **only stores overrides**. For a new brand, it will only contain `{ prompts: { rules: { ... } } }`. Other fields are added only when the user customizes them.
 
 ### 3.2. Backend API (`api/mongodb.js`)
 
--   `create-or-update-brand`: When this action is called for a new brand (i.e., no `brandId` is provided), the backend now automatically fetches the document from `adminSettings` and saves it as the initial `settings` object for the new brand.
--   `load-settings-data`: A consolidated action that efficiently fetches both the `adminSettings` and the full list of `aiModels` in parallel for populating the settings modal.
--   `save-admin-defaults`: The action used by the Admin Page to update the global `adminSettings` document. It now performs a deep merge with the hardcoded `defaultPrompts` to ensure no prompt fields are ever missing.
--   `save-settings`: The action used to save a brand's custom overrides into the `settings` object within that brand's document.
+-   `create-or-update-brand`: When this action is called for a new brand, the backend creates a minimal `settings` object containing only an empty `prompts.rules` structure. It **does not** copy from `adminSettings`.
+-   `save-settings`: This action has been refactored. It now accepts the full settings object from the client, but creates a `slimSettings` object containing only the fields a brand is allowed to override. It explicitly saves only the `prompts.rules` object and discards all other prompt templates before updating the database. This enforces the architectural separation.
+-   `load-settings-data`: A consolidated action that efficiently fetches both the `adminSettings` and the full list of `aiModels`.
+-   `save-admin-defaults`: The action used by the Admin Page to update the global `adminSettings` document.
 
 ### 3.3. Frontend Components
 
--   `App.tsx`: The main component orchestrates the settings logic. It loads the brand-specific settings into its state and passes them to the modal. The logic has been corrected to ensure brand settings are correctly loaded and not overwritten by global settings.
--   `SettingsModal.tsx`: The primary UI for settings. It dynamically fetches all required data when opened and uses the `SettingField` component to render each setting. It now includes a "Prompts" tab that renders the `PromptManager`.
--   `SettingField.tsx`: A reusable component that:
-    -   Displays the brand's current setting value.
-    -   Shows a "Customized" badge if the brand's value differs from the global default.
-    -   Dynamically populates dropdowns with available options, including an option to select the current global "Default" value.
--   `AdminPage.tsx`: The UI for managing global `adminSettings` and the unified `aiModels` list. It now includes a "Prompt Management" tab that renders the `PromptManager`.
--   `PromptManager.tsx`: A new component that provides a dedicated UI for editing the complex, multi-line AI prompts. It allows for direct comparison between the brand's custom prompt and the global admin default.
+-   `App.tsx`: The main component orchestrates the settings logic. It fetches both `adminSettings` and the specific brand's `settings` and holds them in state. It is responsible for passing the merged settings object to child components.
+-   `SettingsModal.tsx`: The primary UI for settings. It receives both the brand's settings and the admin settings to allow for comparison and customization.
+-   `SettingField.tsx`: A reusable component that displays the brand's current setting value and compares it against the admin default to show a "Customized" badge or allow opting-in to the default.
+-   `AdminPage.tsx`: The UI for managing global `adminSettings`.
+-   `PromptManager.tsx`: A UI for editing prompts. When used for a brand, it only modifies the `prompts.rules` object.
 
 ---
 
@@ -73,11 +66,9 @@ The settings flow is designed to be intuitive and robust, ensuring consistency f
 The current advanced settings system was achieved through several key refactoring steps:
 
 1.  **API Consolidation:** The initial, inefficient `load-ai-services` endpoint was replaced with the comprehensive `load-settings-data` endpoint to improve performance.
-2.  **Database Migration:** The database schema was simplified by merging the `aiServices` and `aiModels` collections into a single, more maintainable `aiModels` collection. A migration script (`scripts/migrate-ai-models.js`) was created and executed to handle this data transition.
-3.  **Prompt Externalization:** All hardcoded AI prompts were removed from the service layer and centralized into a `prompts` object within the `Settings` type, with default values established in `api/lib/defaultPrompts.js`.
-4.  **Bug Fixes & Logic Correction:**
-    -   A critical bug was resolved where the `SettingsModal` would incorrectly display global settings instead of brand-specific settings. This was fixed by correcting the data flow logic in `App.tsx`.
-    -   The brand creation logic was corrected in the backend to ensure that every new brand receives a copy of the current global settings upon creation, fulfilling the specified requirement.
+2.  **Database Migration:** The database schema was simplified by merging the `aiServices` and `aiModels` collections into a single, more maintainable `aiModels` collection.
+3.  **Prompt Externalization:** All hardcoded AI prompts were removed from the service layer and centralized into a `prompts` object within the `Settings` type.
+4.  **Two-Tiered Architecture:** The data model was refactored to separate global **prompt templates** (managed by admins) from brand-specific **prompt rules** (managed by users). The backend logic (`create-or-update-brand` and `save-settings`) was updated to enforce this separation, preventing data duplication and ensuring a clean inheritance model.
 
 ---
 
@@ -87,19 +78,18 @@ A major enhancement to the settings system is the ability to configure, override
 
 ### 5.1. Data Model & Defaults
 
--   **`types.ts`:** The main `Settings` interface was updated to include a new `prompts` property. This is a large, nested object containing every prompt template used by the application, from generating a brand kit to refining a single post.
--   **`api/lib/defaultPrompts.js`:** A new file was created to act as the ultimate source of truth for the default prompt structures. This file exports a complete `prompts` object.
--   **Backend Merging:** When the administrator saves their global settings, the backend performs a **deep merge** of their saved settings against this `defaultPrompts.js` file. This ensures that even if new prompts are added to the codebase in the future, the `adminSettings` document in the database will always be complete and never have missing fields.
+-   **`types.ts`:** The main `Settings` interface contains a `prompts` property. In the context of `adminSettings`, this is a large, nested object with all prompt templates. In the context of a brand's `settings`, this object should only contain the `rules`.
+-   **`api/lib/defaultPrompts.js`:** A file that acts as the source of truth for the default prompt structures.
+-   **Backend Merging:** When the administrator saves their global settings, the backend performs a **deep merge** of their saved settings against this `defaultPrompts.js` file. This ensures that the `adminSettings` document in the database is always complete.
 
 ### 5.2. Backend AI Service Refactoring
 
--   All AI service functions in `api/gemini.js` (e.g., `auto-generate-persona`, `generate-in-character-post`) were refactored.
--   They no longer contain hardcoded prompt templates. Instead, they receive the `settings` object in the request body and dynamically construct the final prompt using the templates from `settings.prompts`.
+-   All AI service functions in `api/gemini.js` (e.g., `auto-generate-persona`) were refactored to accept the `settings` object in the request body and dynamically construct the final prompt using the templates from `settings.prompts`.
 
 ### 5.3. Frontend Implementation
 
--   **Service Layer (`geminiService.ts`, `textGenerationService.ts`):** All functions that initiate an AI generation task were refactored. Their signatures were updated to accept the `settings: Settings` object, which is then passed down through the `bffService` to the backend.
--   **`PromptManager.tsx` Component:** A new, sophisticated component was created to handle the complexity of editing large text areas. It provides a tabbed interface to navigate the nested `prompts` object and shows a side-by-side comparison of the brand's custom prompt against the inherited global default, allowing for easy reference and reversion.
+-   **Service Layer (`geminiService.ts`, `textGenerationService.ts`):** All functions that initiate an AI generation task were refactored to accept both `brandSettings` and `adminSettings`. They pass this information down to the prompt builder, which is responsible for combining them.
+-   **`PromptManager.tsx` Component:** A sophisticated component for editing prompts. It can show a side-by-side comparison of a brand's custom rules against the inherited global default templates.
 -   **UI Integration:** The `PromptManager` is rendered in two places:
     1.  **`AdminPage.tsx`:** Under a "Prompt Management" tab, allowing the administrator to edit the global default prompts for all users.
-    2.  **`SettingsModal.tsx`:** Under a "Prompts" tab, allowing an individual brand to view the global defaults and create their own specific overrides.
+    2.  **`SettingsModal.tsx`:** Under a "Prompts" tab, allowing an individual brand to view the global defaults and edit their own specific `rules`.

@@ -122,3 +122,25 @@ This document provides a detailed breakdown of the core features and functions w
 *   **Where:** This is accessed via a "Settings" button in the main UI, which opens the `SettingsModal`.
 *   **Why:** To provide flexibility and personalization at the brand level. It allows users to tailor the tool to their specific needs and preferences without affecting the global configuration for all other users.
 *   **How:** The user opens the Settings modal, which loads their brand's currently saved settings. They can modify values, such as selecting a different AI service or model from the dropdown lists (which are populated by the Admin). When they click "Save," these new settings are stored and applied only to their brand.
+
+---
+
+## 12. AI-Powered Trend Suggestion
+
+*   **What:** An AI-powered feature that automatically searches the internet to discover and save up to 10 relevant trends. It can find both **niche industry trends** based on the brand profile and **broader global hot trends** for trendjacking opportunities.
+*   **Who:** The end-user (e.g., social media manager, marketer).
+*   **When:** When a user wants to find current, relevant topics for content ideation, typically after their brand profile has been established.
+*   **Where:** This is initiated from the "Content Strategy" tab. A new "Auto-Suggest Trends" section provides dropdowns to select the trend type ("Industry Specific" or "Global Hot Trends") and a time period, along with a button to trigger the search.
+*   **Why:** To save users significant time and effort by eliminating manual research. It provides an immediate, strategic, and data-driven starting point for content creation, offering both brand-aligned topics and wider cultural moments to engage with.
+*   **How:**
+    1.  The user selects a "Trend Type" (e.g., "Global Hot Trends") and a "Time Period" (e.g., "Last Month") from the dropdowns in the "Auto-Suggest Trends" section.
+    2.  The user clicks the "Suggest Trends" button, which triggers a handler in the `useStrategyManagement` hook.
+    3.  The handler determines which function to call based on the selected trend type.
+        *   If "Industry Specific", it calls `textGenerationService.suggestTrends()`, passing the brand profile, time period, and model.
+        *   If "Global Hot Trends", it calls a new `textGenerationService.suggestGlobalTrends()`, passing only the time period and model.
+    4.  The appropriate service function constructs a prompt using either the `suggestTrends` or the new `suggestGlobalTrends` template from settings. For compatible models, it enables internet search. The `textGenerationService`  determines the correct provider (e.g., Google, OpenRouter) for the selected model and calls the appropriate provider-specific service
+    5.  The service calls the generic backend text generation endpoint (e.g., `/api/gemini?action=generate`).
+    6.  The backend executes the request and returns the AI's response as a JSON string.
+    7.  The frontend service parses the JSON response into a list of trend objects.
+    8.  The frontend then calls the `/api/mongodb?action=save-trend` endpoint for each suggested trend, persisting them to the `trends` collection.
+    9.  The UI automatically refreshes the trend list, making the new AI-suggested trends immediately available.

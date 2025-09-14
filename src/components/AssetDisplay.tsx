@@ -340,8 +340,8 @@ const UnifiedProfileAssetsSection: React.FC<{ assets: UnifiedProfileAssets } & I
                 </div>
                 <div>
                     <h4 className="text-lg font-bold font-sans text-gray-900 mb-1">{currentTexts.cover}</h4>
-                    <HoverCopyWrapper textToCopy={assets.coverPhoto?.designConcept}><p className="font-sans text-sm text-gray-500 mb-2">{assets.coverPhoto?.designConcept}</p></HoverCopyWrapper>
-                    <ImageGenerator mediaPrompt={assets.coverPhoto?.prompt} imageKey={coverImageKey} aspectRatio="16:9" {...imgProps} isGenerating={imgProps.isGeneratingImage(coverImageKey)} />
+                    <HoverCopyWrapper textToCopy={assets.coverPhoto?.designConcept || ''}><p className="font-sans text-sm text-gray-500 mb-2">{assets.coverPhoto?.designConcept}</p></HoverCopyWrapper>
+                    <ImageGenerator mediaPrompt={assets.coverPhotoPrompt || assets.coverPhoto?.prompt || ''} imageKey={coverImageKey} aspectRatio="16:9" {...imgProps} isGenerating={imgProps.isGeneratingImage(coverImageKey)} />
                 </div>
             </div>
         </Section>

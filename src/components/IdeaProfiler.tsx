@@ -39,8 +39,12 @@ const IdeaProfiler: React.FC<IdeaProfilerProps> = ({
   
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("IdeaProfiler handleSubmit called with idea:", idea);
     if (idea.trim()) {
+      console.log("Calling onGenerateProfile with idea:", idea);
       onGenerateProfile(idea);
+    } else {
+      console.log("Idea is empty, not calling onGenerateProfile");
     }
   };
 

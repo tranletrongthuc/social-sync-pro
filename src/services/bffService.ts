@@ -87,9 +87,24 @@ export const generateImageWithBananaBff = async (
       body: JSON.stringify({ model, prompt, settings }),
     });
     
-    return response.image;
-  } catch (error) {
+    // Handle both image and text responses from the backend
+    if (response.image) {
+      return response.image;
+    } else if (response.text) {
+      // If we receive text instead of an image, we might want to handle this differently
+      // For now, we'll throw an error as the caller expects an image
+      throw new Error(`Received text response instead of image: ${response.text}`);
+    } else {
+      throw new Error('Unexpected response format from image generation API');
+    }
+  } catch (error: any) {
     console.error(`Error calling BFF endpoint /api/gemini/generate-banana-image:`, error);
+    
+    // Handle rate limit errors specifically
+    if (error.message && error.message.includes('429')) {
+      throw new Error('Rate limit exceeded for image generation. Please try again later or use a different model.');
+    }
+    
     throw error;
   }
 };
@@ -142,14 +157,14 @@ export const generateContentWithOpenRouterBff = async (
   messages: any[],
   responseFormat?: any,
   settings?: any
-): Promise<string> => {
+): Promise<any> => {
   try {
     const response = await bffFetch('/api/openrouter?action=generate', {
       method: 'POST',
       body: JSON.stringify({ model, messages, responseFormat, settings }),
     });
     
-    return response.text;
+    return response;
   } catch (error) {
     console.error(`Error calling BFF endpoint /api/openrouter/generate:`, error);
     throw error;

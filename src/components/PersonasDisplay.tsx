@@ -117,14 +117,13 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
     const texts = (T as any)[language] || T['English'];
 
     const createEmptyPersona = (): Persona => {
-        const id = crypto.randomUUID();
         return {
-            id,
+            id: crypto.randomUUID(), // Add temporary unique ID
             nickName: '',
             fullName: '',
             background: '',
             outfitDescription: '',
-            brandId: '',
+            brandId: '', // Will be populated on save
             demographics: { age: 30, gender: 'Non-binary', location: '', occupation: '', incomeLevel: '' },
             backstory: '',
             personalityTraits: [],
@@ -134,6 +133,20 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
             interestsAndHobbies: [],
             knowledgeBase: [],
             brandRelationship: { awareness: '', perception: '', engagement: '' },
+            photos: [],
+            // Setting other optional fields to undefined for clarity
+            imageKey: undefined,
+            imageUrl: undefined,
+            avatarImageKey: undefined,
+            avatarImageUrl: undefined,
+            mainStyle: undefined,
+            activityField: undefined,
+            voice: undefined,
+            contentTone: undefined,
+            visualCharacteristics: undefined,
+            coreCharacteristics: undefined,
+            keyMessages: undefined,
+            gender: 'Non-binary',
         };
     };
     

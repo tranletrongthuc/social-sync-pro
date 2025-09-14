@@ -19,8 +19,9 @@ import type { BrandInfo, GeneratedAssets, Settings, PostInfo, MediaPlanGroup, Af
 import { ActiveTab } from './components/Header';
 
 // Services
-import { initializeApp } from './services/databaseService';
+import { initializeApp, createOrUpdateBrandRecordInDatabase, saveSettingsToDatabase } from './services/databaseService';
 import { configService, AiModelConfig } from './services/configService';
+import { textGenerationService } from './services/textGenerationService';
 
 // Hooks
 import { usePersonaManagement } from './hooks/usePersonaManagement';
@@ -29,6 +30,7 @@ import { useAssetManagement } from './hooks/useAssetManagement';
 import { useStrategyManagement } from './hooks/useStrategyManagement';
 import { useSchedulingManagement } from './hooks/useSchedulingManagement';
 import { useProjectIO } from './hooks/useProjectIO';
+import { useAutoSave } from './hooks/useAutoSave';
 
 // Reducer
 import { assetsReducer, initialGeneratedAssets } from './reducers/assetsReducer';
@@ -41,18 +43,21 @@ const App: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [loaderContent, setLoaderContent] = useState<{ title: string; steps: string[]; } | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('brandKit');
+    const [productTrendToSelect, setProductTrendToSelect] = useState<string | null>(null); // Add this line
 
     // Brand & Project State
     const [brandInfo, setBrandInfo] = useState<BrandInfo | null>(null);
-    const [generatedAssets, dispatchAssets] = useReducer(assetsReducer, null);
+    const [generatedAssets, dispatchAssets] = useReducer(assetsReducer, initialGeneratedAssets);
     const [mongoBrandId, setMongoBrandId] = useState<string | null>(null);
     const [brands, setBrands] = useState<{ id: string, name: string }[]>([]);
 
     // Settings & Config State
-    const [settings, setSettings] = useState<Settings>(configService.getAppSettings());
     const [adminSettings, setAdminSettings] = useState<Settings | null>(null);
     const [aiModelConfig, setAiModelConfig] = useState<AiModelConfig | null>(null);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+
+    // DERIVED STATE: Get settings from the main assets reducer
+    const settings = generatedAssets?.settings || initialGeneratedAssets.settings;
 
     // Asset State
     const [generatedImages, setGeneratedImages] = useState<Record<string, string>>({});
@@ -67,6 +72,8 @@ const App: React.FC = () => {
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
     const [areCredentialsSet, setAreCredentialsSet] = useState(false);
     const [integrationsVersion, setIntegrationsVersion] = useState(0);
+    // New state for trend suggestion
+    const [isSuggestingTrends, setIsSuggestingTrends] = useState(false);
 
     // Admin Auth State
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => checkAdminAuthenticated());
@@ -86,8 +93,56 @@ const App: React.FC = () => {
     }, []);
 
     const ensureMongoProject = useCallback(async (assetsToSave?: GeneratedAssets): Promise<string | null> => {
-        return null; // Placeholder
-    }, []);
+        if (mongoBrandId) {
+            return mongoBrandId;
+        }
+
+        if (!areCredentialsSet) {
+            console.warn('[ensureMongoProject] MongoDB credentials not configured.');
+            return null;
+        }
+
+        const assetsForCreation = assetsToSave || generatedAssets;
+        if (!assetsForCreation) {
+             setError("Cannot create a new brand without assets.");
+             return null;
+        }
+        
+        setLoaderContent({ title: "Creating new brand...", steps: ["Saving initial data to database..."] });
+        setError(null);
+        try {
+            const newBrandId = await createOrUpdateBrandRecordInDatabase(assetsForCreation, null);
+            if (!newBrandId) {
+                throw new Error("Database did not return a new brand ID.");
+            }
+            setMongoBrandId(newBrandId);
+            setSuccessMessage("Successfully created and saved new brand!");
+            return newBrandId;
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "Could not create new brand in database.";
+            setError(errorMessage);
+            console.error('[ensureMongoProject] failed:', errorMessage);
+            return null;
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [
+        mongoBrandId, 
+        areCredentialsSet, 
+        generatedAssets, 
+        setLoaderContent, 
+        setError, 
+        setMongoBrandId, 
+        setSuccessMessage
+    ]);
+
+    // Auto-save hook initialization
+    const { forceSave, syncLastSaved } = useAutoSave({
+        generatedAssets,
+        mongoBrandId,
+        updateAutoSaveStatus,
+        autoSaveInterval: 2000
+    });
 
     const personaManager = usePersonaManagement({
         mongoBrandId, settings, aiModelConfig, dispatchAssets, updateAutoSaveStatus,
@@ -100,14 +155,14 @@ const App: React.FC = () => {
     });
 
     const mediaPlanManager = useMediaPlanManagement({
-        generatedAssets, settings, aiModelConfig, generatedImages, mongoBrandId, ensureMongoProject, dispatchAssets,
+        generatedAssets, settings, adminSettings, aiModelConfig, generatedImages, mongoBrandId, ensureMongoProject, dispatchAssets,
         setLoaderContent, setError, updateAutoSaveStatus, setMediaPlanGroupsList, setActivePlanId,
         setKhongMinhSuggestions: () => {}, setGeneratedImages, setSuccessMessage, setActiveTab
     });
 
     const strategyManager = useStrategyManagement({
         mongoBrandId, dispatchAssets, setError, setLoaderContent, updateAutoSaveStatus, settings, aiModelConfig,
-        generatedAssets, setActiveTab, setProductTrendToSelect: () => {}, setSuccessMessage
+        generatedAssets, setActiveTab, setProductTrendToSelect, setSuccessMessage
     });
 
     const schedulingManager = useSchedulingManagement({
@@ -115,16 +170,14 @@ const App: React.FC = () => {
     });
 
     const projectIO = useProjectIO({
-        dispatchAssets, setSettings, setGeneratedImages, setGeneratedVideos, setMongoBrandId, setCurrentStep, setActiveTab,
+        dispatchAssets, setGeneratedImages, setGeneratedVideos, setMongoBrandId, setCurrentStep, setActiveTab,
         setLoaderContent, setError, setSuccessMessage, setMediaPlanGroupsList, setActivePlanId,
         setBrandInfo, generatedAssets, settings, generatedImages, generatedVideos, mongoBrandId, adminSettings,
-        mediaPlanGroupsList
+        mediaPlanGroupsList,
+        syncLastSaved,
     });
 
-    // LOGGING EFFECT
-    useEffect(() => {
-        console.log('[App.tsx] mediaPlanGroupsList state changed:', mediaPlanGroupsList);
-    }, [mediaPlanGroupsList]);
+    const [isScheduling, setIsScheduling] = useState<boolean>(false);
 
     // App Initialization
     useEffect(() => {
@@ -136,10 +189,10 @@ const App: React.FC = () => {
         const loadInitialData = async () => {
             try {
                 setIsFetchingBrands(true);
-                const { credentialsSet, brands, adminDefaults } = await initializeApp();
-                await configService.initializeConfig(adminDefaults);
+                const { credentialsSet, brands, adminDefaults, aiModels } = await initializeApp();
+                await configService.initializeConfig(adminDefaults, aiModels);
                 setAdminSettings(configService.getAdminDefaults());
-                setSettings(configService.getAppSettings());
+                dispatchAssets({ type: 'UPDATE_SETTINGS', payload: configService.getAppSettings() });
                 setAiModelConfig(configService.getAiModelConfig());
                 setIsAdminAuthenticated(checkAdminAuthenticated());
                 setAreCredentialsSet(credentialsSet);
@@ -161,10 +214,85 @@ const App: React.FC = () => {
     }, []);
 
     const handleGenerateProfile = useCallback(async (idea: string) => {
-    }, []);
+        if (!aiModelConfig) {
+            setError("AI model configuration not loaded. Please try again.");
+            return;
+        }
+
+        setLoaderContent({
+            title: settings.language === 'Việt Nam' ? "Đang tạo hồ sơ thương hiệu..." : "Generating brand profile...",
+            steps: [
+                settings.language === 'Việt Nam' ? "Phân tích ý tưởng..." : "Analyzing idea...",
+                settings.language === 'Việt Nam' ? "Xác định sứ mệnh & tầm nhìn..." : "Defining mission & vision...",
+                settings.language === 'Việt Nam' ? "Tạo giá trị cốt lõi..." : "Creating core values...",
+                settings.language === 'Việt Nam' ? "Xác định đối tượng mục tiêu..." : "Identifying target audience...",
+            ]
+        });
+
+        try {
+            const brandProfile = await textGenerationService.generateBrandProfile(
+                { idea, language: settings.language, brandSettings: settings, adminSettings: adminSettings! },
+                aiModelConfig!
+            );
+            setBrandInfo(brandProfile);
+            setCurrentStep('profile');
+        } catch (error: any) {
+            setError(settings.language === 'Việt Nam' 
+                ? `Lỗi khi tạo hồ sơ thương hiệu: ${error.message || 'Vui lòng thử lại sau.'}` 
+                : `Error generating brand profile: ${error.message || 'Please try again later.'}`);
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [aiModelConfig, settings, adminSettings, setBrandInfo, setCurrentStep, setError, setLoaderContent]);
 
     const handleGenerateKit = useCallback(async (info: BrandInfo) => {
-    }, []);
+        if (!aiModelConfig) {
+            setError("AI model configuration not loaded. Please try again.");
+            return;
+        }
+        
+        setLoaderContent({
+            title: settings.language === 'Việt Nam' ? "Đang tạo tài sản thương hiệu..." : "Generating brand assets...",
+            steps: [
+                settings.language === 'Việt Nam' ? "Tạo hồ sơ thương hiệu chi tiết..." : "Generating detailed brand profile...",
+                settings.language === 'Việt Nam' ? "Tạo khái niệm logo..." : "Generating logo concepts...",
+                settings.language === 'Việt Nam' ? "Tạo bảng màu & phông chữ..." : "Generating color palette & fonts...",
+            ]
+        });
+
+        try {
+            const partialAssets = await textGenerationService.generateBrandKit(
+                { brandInfo: info, language: settings.language, brandSettings: settings, adminSettings: adminSettings! },
+                aiModelConfig!
+            );
+
+            const fullAssets: GeneratedAssets = {
+                ...initialGeneratedAssets,
+                ...partialAssets,
+                settings: settings, // Carry over current settings
+            };
+
+            const newBrandId = await projectIO.handleCreateNewBrand(fullAssets);
+
+            if (newBrandId) {
+                syncLastSaved(fullAssets);
+                setMongoBrandId(newBrandId);
+                dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: fullAssets });
+                setMediaPlanGroupsList([]);
+                setActivePlanId(null);
+                setBrandInfo(info);
+                setCurrentStep('assets');
+            } else {
+                console.error("Brand creation failed. Not proceeding.");
+            }
+        } catch (error: any) {
+            setError(settings.language === 'Việt Nam' 
+                ? `Lỗi khi tạo tài sản thương hiệu: ${error.message || 'Vui lòng thử lại sau.'}` 
+                : `Error generating brand assets: ${error.message || 'Please try again later.'}`);
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [aiModelConfig, settings, adminSettings, dispatchAssets, setBrandInfo, setCurrentStep, setError, setLoaderContent, projectIO, syncLastSaved]);
 
     const handleBackToIdea = useCallback(() => {
         setCurrentStep('idea');
@@ -178,12 +306,36 @@ const App: React.FC = () => {
     }, []);
 
     const handleSaveSettings = useCallback(async (newSettings: Settings) => {
-    }, [mongoBrandId]);
+        if (!mongoBrandId) {
+            setError('Cannot save settings: No brand ID is currently loaded.');
+            return;
+        }
+        try {
+            dispatchAssets({ type: 'UPDATE_SETTINGS', payload: newSettings });
+            await saveSettingsToDatabase(newSettings, mongoBrandId);
+            setSuccessMessage('Settings saved successfully!');
+        } catch (err) {
+            setError(`Failed to save settings: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+    }, [mongoBrandId, dispatchAssets]);
+
+    // New handler for trend suggestion
+    const handleSuggestTrends = useCallback(async (trendType: 'industry' | 'global', timePeriod: string) => {
+        setIsSuggestingTrends(true);
+        try {
+            await strategyManager.handleSuggestTrends(trendType, timePeriod);
+        } catch (err) {
+            setError(`Failed to suggest trends: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        } finally {
+            setIsSuggestingTrends(false);
+        }
+    }, [strategyManager]);
 
     const setLanguage = useCallback(async (lang: string) => {
-        await configService.updateAppSettings({ ...settings, language: lang });
-        setSettings(configService.getAppSettings());
-    }, [settings]);
+        const newSettings = { ...settings, language: lang };
+        dispatchAssets({ type: 'UPDATE_SETTINGS', payload: newSettings });
+        await configService.updateAppSettings(newSettings); // For persistence across sessions if needed
+    }, [settings, dispatchAssets]);
 
     // Render Logic
     if (!isConfigLoaded) return <Loader title="Loading application configuration..." steps={[]} />;
@@ -265,22 +417,21 @@ const App: React.FC = () => {
                             onOpenIntegrations={() => {}}
                             mediaPlanGroupsList={mediaPlanGroupsList}
                             activePlanId={activePlanId}
-                            // Project I/O
+                            plans={generatedAssets?.mediaPlans || []}
+                            personas={generatedAssets?.personas || []}
+                            affiliateLinks={generatedAssets?.affiliateLinks || []}
                             onSaveProject={projectIO.handleSaveProjectToFile}
                             isSavingProject={false}
                             onSelectPlan={projectIO.handleSelectPlan}
-                            // Asset Management
                             onGenerateImage={assetManager.handleGenerateImage}
                             onSetImage={assetManager.handleSetImage}
                             onSetVideo={assetManager.handleSetVideo}
-                            // Persona Management
                             onSavePersona={personaManager.handleSavePersona}
                             onDeletePersona={personaManager.handleDeletePersona}
                             onUpdatePersona={personaManager.handleUpdatePersona}
                             onSetPersonaImage={personaManager.handleSetPersonaImage}
                             onAutoGeneratePersona={personaManager.handleAutoGeneratePersona}
                             onLoadPersonasData={personaManager.handleLoadPersonasData}
-                            // Media Plan Management
                             onGeneratePlan={mediaPlanManager.handleGenerateMediaPlanGroup}
                             onCreateFunnelCampaignPlan={mediaPlanManager.handleCreateFunnelCampaignPlan}
                             onGenerateContentPackage={mediaPlanManager.handleGenerateContentPackage}
@@ -292,7 +443,6 @@ const App: React.FC = () => {
                             isExportingBrandKit={false}
                             onExportPlan={() => {}}
                             isExportingPlan={false}
-                            // Strategy Management
                             onLoadStrategyHubData={strategyManager.handleLoadStrategyHubData}
                             onLoadAffiliateVaultData={strategyManager.handleLoadAffiliateVaultData}
                             onSaveTrend={strategyManager.handleSaveTrend}
@@ -302,14 +452,18 @@ const App: React.FC = () => {
                             onSaveAffiliateLink={(link) => strategyManager.handleSaveAffiliateLink([link])}
                             onDeleteAffiliateLink={(linkId) => strategyManager.handleDeleteAffiliateLink(linkId)}
                             onImportAffiliateLinks={(links) => strategyManager.handleImportAffiliateLinks(links as AffiliateLink[])}
+                            onSelectTrend={strategyManager.handleSelectTrend}
+                            selectedTrend={strategyManager.selectedTrend}
+                            ideasForSelectedTrend={strategyManager.ideasForSelectedTrend}
                             onReloadLinks={() => {}}
                             onGenerateTrendsFromSearch={() => {}}
                             isGeneratingTrendsFromSearch={false}
+                            onSuggestTrends={handleSuggestTrends} // Add the new prop
+                            isSuggestingTrends={isSuggestingTrends} // Add the new prop
                             productTrendToSelect={null}
                             onAddFacebookPostIdeaToPlan={() => {}}
                             isGeneratingFacebookPostIdeas={false}
                             onGenerateFacebookPostIdeas={() => {}}
-                            // Scheduling Management
                             selectedPostIds={schedulingManager.selectedPostIds}
                             schedulingPost={schedulingManager.schedulingPost ? { 
                               id: schedulingManager.schedulingPost.post.id,
@@ -328,23 +482,18 @@ const App: React.FC = () => {
                               if (post === null) {
                                 schedulingManager.setSchedulingPost(null);
                               } else {
-                                // Convert SchedulingPost to PostInfo if needed
-                                // This is a placeholder - you'll need to implement the proper conversion
                                 console.warn("onOpenScheduleModal received SchedulingPost, but schedulingManager expects PostInfo");
                                 schedulingManager.setSchedulingPost(null);
                               }
                             }}
                             onPublishPost={(postInfo) => schedulingManager.handlePublishPost(postInfo)}
                             onSchedulePost={(schedulingPost, scheduledAt) => {
-                              // Convert SchedulingPost to PostInfo if needed
-                              // For now, we'll just log a warning as this needs proper implementation
                               console.warn("onSchedulePost received SchedulingPost, but schedulingManager expects PostInfo");
                             }}
                             onPostDrop={schedulingManager.handlePostDrop}
                             onOpenBulkScheduleModal={() => schedulingManager.setIsBulkScheduleModalOpen(true)}
                             onCloseBulkScheduleModal={() => schedulingManager.setIsBulkScheduleModalOpen(false)}
                             onBulkSchedule={(startDate, intervalDays, intervalHours, intervalMinutes) => {
-                              // Convert string to Date and call with correct parameters
                               const date = new Date(startDate);
                               schedulingManager.handleBulkSchedule(date, intervalDays);
                             }}
@@ -352,10 +501,8 @@ const App: React.FC = () => {
                             onBulkGenerateImages={() => {}}
                             onBulkSuggestPromotions={() => {}}
                             onBulkGenerateComments={() => {}}
-                            // Other Props
                             viewingPost={viewingPost}
                             setViewingPost={setViewingPost}
-                            // Additional required props that were missing
                             isAnyAnalysisRunning={false}
                             analyzingPostIds={new Set<string>()}
                             khongMinhSuggestions={{}}

@@ -8,39 +8,24 @@ export const sanitizeAndParseJson = (jsonText: string): any => {
 
     let sanitized = jsonText.trim();
 
-    // First, try to parse as-is
-    try {
-        return JSON.parse(sanitized);
-    } catch (e) {
-        // Proceed to sanitize
-    }
-
-    // Improved: Extract content from markdown code block (```json ... ``` or ``` ... ```)
+    // ALWAYS check for markdown block first and extract content.
     const markdownRegex = /```(?:json)?\s*\n?([\s\S]*?)(?:\n?\s*```|$)/i;
     const markdownMatch = sanitized.match(markdownRegex);
     if (markdownMatch && markdownMatch[1]) {
-        sanitized = markdownMatch[1].trim(); // Use the captured group
+        sanitized = markdownMatch[1].trim();
     }
-    // Else, if no code block, keep the original sanitized string
+    // Now, 'sanitized' is either the content of the markdown block or the original trimmed string.
 
-    // Try parsing again after extracting code block
+    // Try to parse this potentially clean JSON.
     try {
         return JSON.parse(sanitized);
     } catch (e) {
-        // Continue with fixes
+        // If it fails, it might have other issues, so proceed to more specific fixes.
+        console.warn("Initial parse failed, attempting further sanitization.");
     }
 
-    // Fix: `,"=value"` → `,"value"`
-    sanitized = sanitized.replace(/([,[\]]\s*)\"=([^\"]*)\"/g, '$1\"$2\"');
-
-    // Fix: "infographicContent" → "content"
-    sanitized = sanitized.replace(/\"infographicContent\":/g, '\"content\":');
-
-    // Fix: hashtags missing opening quote: `#tag"` → `"#tag"`
-    sanitized = sanitized.replace(/([,[\]\s])#([^\"\]\s]+)(\")/g, '$1\"#$2$3');
-
     // Fix: trailing commas in objects and arrays
-    sanitized = sanitized.replace(/,(\s*[}\]])/g, '$1');
+    sanitized = sanitized.replace(/,(\s*[\}\]])/g, '$1');
 
     // Try final parse
     try {

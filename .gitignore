@@ -17,6 +17,7 @@ hybrid_ai_team
 *.local
 *.env
 
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -29,3 +30,5 @@ hybrid_ai_team
 *.sw?
 .vercel
 .env*.local
+.gemini
+QWEN.md

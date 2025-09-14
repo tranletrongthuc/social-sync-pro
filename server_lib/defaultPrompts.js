@@ -43,4 +43,10 @@ export const defaultPrompts = {
     mediaPromptInstruction: "",
     jsonOutputInstruction: "",
   },
+  rules: {
+  imagePrompt: "",
+  postCaption: "",
+  shortVideoScript: "",
+  longVideoScript: ""
+}
 };
