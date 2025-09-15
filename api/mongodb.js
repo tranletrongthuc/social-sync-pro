@@ -3,7 +3,8 @@ import { allowCors } from '../server_lib/cors.js';
 import { ObjectId } from 'mongodb';
 import { defaultPrompts } from '../server_lib/defaultPrompts.js';
 
-// Helper function for deep merging settings objects
+// ========== UTILITY FUNCTIONS ==========
+
 const isObject = (obj) => obj && typeof obj === 'object' && !Array.isArray(obj);
 
 function deepMerge(target, source) {
@@ -24,29 +25,967 @@ function deepMerge(target, source) {
   return output;
 }
 
-// Define initial settings directly in this file
-const initialSettings = {
-    language: "English",
-    totalPostsPerMonth: 30,
-    mediaPromptSuffix: "",
-    affiliateContentKit: "",
-    textGenerationModel: "gemini-1.5-pro-latest",
-    imageGenerationModel: "dall-e-3",
-    textModelFallbackOrder: [],
-    visionModels: [],
-    contentPillars: [],
-    prompts: defaultPrompts,
-};
-
-// Helper function to create a filter based on ID validity
 function createIdFilter(id, fieldName = '_id') {
   if (ObjectId.isValid(id)) {
     return { [fieldName]: new ObjectId(id) };
   } else {
-    // If not a valid ObjectId, use the id as a string field
     return { [fieldName === '_id' ? 'id' : fieldName]: id };
   }
 }
+
+// ========== TEMPLATE FUNCTIONS ==========
+
+/**
+ * Template for basic CRUD operations
+ */
+class CRUDTemplate {
+  constructor(collectionName, transformFn = null) {
+    this.collectionName = collectionName;
+    this.transformFn = transformFn || ((record) => ({ ...record, id: record._id.toString() }));
+  }
+
+  async create(db, document, generateId = true) {
+    const collection = db.collection(this.collectionName);
+    
+    if (generateId) {
+      const objectId = new ObjectId();
+      const fullDocument = {
+        ...document,
+        _id: objectId,
+        id: objectId.toString(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await collection.insertOne(fullDocument);
+      return { id: objectId.toString(), document: fullDocument };
+    } else {
+      await collection.insertOne({ ...document, createdAt: new Date(), updatedAt: new Date() });
+      return { id: document._id?.toString(), document };
+    }
+  }
+
+  async update(db, id, document) {
+    const collection = db.collection(this.collectionName);
+    const result = await collection.updateOne(
+      createIdFilter(id),
+      { $set: { ...document, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return result;
+  }
+
+  async delete(db, id, additionalFilter = {}) {
+    const collection = db.collection(this.collectionName);
+    const filter = { ...createIdFilter(id), ...additionalFilter };
+    const result = await collection.deleteOne(filter);
+    return result.deletedCount > 0;
+  }
+
+  async findByBrand(db, brandId) {
+    const collection = db.collection(this.collectionName);
+    const records = await collection.find({ brandId }).toArray();
+    return records.map(this.transformFn);
+  }
+
+  async findOne(db, filter) {
+    const collection = db.collection(this.collectionName);
+    const record = await collection.findOne(filter);
+    return record ? this.transformFn(record) : null;
+  }
+
+  async findAll(db, filter = {}) {
+    const collection = db.collection(this.collectionName);
+    const records = await collection.find(filter).toArray();
+    return records.map(this.transformFn);
+  }
+
+  async bulkWrite(db, operations) {
+    const collection = db.collection(this.collectionName);
+    return await collection.bulkWrite(operations);
+  }
+
+  getCollection(db) {
+    return db.collection(this.collectionName);
+  }
+}
+
+/**
+ * Template for save operations (create or update)
+ */
+async function saveEntityTemplate(db, collectionName, entity, brandId = null, additionalFields = {}) {
+  const collection = db.collection(collectionName);
+  
+  const document = {
+    ...entity,
+    ...additionalFields,
+    ...(brandId && { brandId }),
+    updatedAt: new Date()
+  };
+
+  if (entity.id && ObjectId.isValid(entity.id)) {
+    // Update existing
+    await collection.updateOne(
+      createIdFilter(entity.id),
+      { $set: document },
+      { upsert: true }
+    );
+    return entity.id;
+  } else {
+    // Create new
+    const objectId = new ObjectId();
+    const fullDocument = {
+      ...document,
+      _id: objectId,
+      id: objectId.toString(),
+      createdAt: new Date()
+    };
+    await collection.insertOne(fullDocument);
+    return objectId.toString();
+  }
+}
+
+/**
+ * Template for bulk save operations
+ */
+async function bulkSaveTemplate(db, collectionName, entities, brandId, transformFn = null) {
+  const collection = db.collection(collectionName);
+  const operations = [];
+  const newEntities = [];
+
+  for (const entity of entities) {
+    let document = {
+      ...entity,
+      brandId,
+      updatedAt: new Date()
+    };
+
+    // Apply custom transformation if provided
+    if (transformFn) {
+      document = transformFn(document);
+    }
+
+    if (entity.id && ObjectId.isValid(entity.id)) {
+      // Update operation
+      operations.push({
+        updateOne: {
+          filter: createIdFilter(entity.id),
+          update: { $set: document }
+        }
+      });
+    } else {
+      // Insert operation
+      const objectId = new ObjectId();
+      const fullDocument = {
+        ...document,
+        _id: objectId,
+        id: objectId.toString(),
+        createdAt: new Date()
+      };
+      newEntities.push(fullDocument);
+      operations.push({
+        insertOne: { document: fullDocument }
+      });
+    }
+  }
+
+  if (operations.length > 0) {
+    await collection.bulkWrite(operations);
+  }
+
+  return newEntities;
+}
+
+/**
+ * Template for request handlers with error handling
+ */
+function createHandler(action, handlerFn) {
+  return async (request, response, db) => {
+    console.log(`--- Received request for /api/mongodb/${action} ---`);
+    try {
+      const result = await handlerFn(request.body, db);
+      response.status(200).json(result);
+      console.log(`--- ${action} completed ---`);
+    } catch (error) {
+      console.error(`--- CRASH in /api/mongodb/${action} ---`);
+      console.error('Error object:', error);
+      throw error;
+    }
+  };
+}
+
+/**
+ * Template for pagination
+ */
+function paginateArray(array, page = 1, limit = 30) {
+  const offset = (page - 1) * limit;
+  const paginatedItems = array.slice(offset, offset + limit);
+  
+  return {
+    items: paginatedItems,
+    pagination: {
+      currentPage: page,
+      totalPages: Math.ceil(array.length / limit),
+      totalItems: array.length,
+      hasNextPage: offset + limit < array.length,
+      hasPrevPage: page > 1
+    }
+  };
+}
+
+// ========== COLLECTION TEMPLATES ==========
+
+const affiliateProductsTemplate = new CRUDTemplate('affiliateProducts', (record) => ({
+  id: record._id.toString(),
+  productId: record.productId,
+  productName: record.productName,
+  price: record.price,
+  salesVolume: record.salesVolume,
+  providerName: record.providerName,
+  commissionRate: record.commissionRate,
+  commissionValue: record.commissionValue,
+  productLink: record.productLink,
+  promotionLink: record.promotionLink,
+  product_description: record.productDescription,
+  features: record.features || [],
+  use_cases: record.useCases || [],
+  customer_reviews: record.customerReviews,
+  product_rating: record.productRating,
+  product_avatar: record.productAvatar,
+  product_image_links: record.productImageLinks || []
+}));
+
+const personasTemplate = new CRUDTemplate('personas');
+const trendsTemplate = new CRUDTemplate('trends');
+const ideasTemplate = new CRUDTemplate('ideas');
+const aiModelsTemplate = new CRUDTemplate('aiModels');
+const brandsTemplate = new CRUDTemplate('brands');
+const mediaPlanGroupsTemplate = new CRUDTemplate('mediaPlanGroups');
+const mediaPlanPostsTemplate = new CRUDTemplate('mediaPlanPosts');
+const adminSettingsTemplate = new CRUDTemplate('adminSettings');
+
+// ========== INITIAL SETTINGS ==========
+
+const initialSettings = {
+  language: "English",
+  totalPostsPerMonth: 30,
+  mediaPromptSuffix: "",
+  affiliateContentKit: "",
+  textGenerationModel: "gemini-1.5-pro-latest",
+  imageGenerationModel: "dall-e-3",
+  textModelFallbackOrder: [],
+  visionModels: [],
+  contentPillars: [],
+  prompts: defaultPrompts,
+};
+
+// ========== ALL HANDLER DEFINITIONS ==========
+
+const handlers = {
+  // ===== SIMPLE DELETE OPERATIONS =====
+  'delete-affiliate-link': createHandler('delete-affiliate-link', async ({ linkId }) => {
+    const { db } = await getClientAndDb();
+    const success = await affiliateProductsTemplate.delete(db, linkId);
+    return { success };
+  }),
+
+  'delete-ai-model': createHandler('delete-ai-model', async ({ modelId }) => {
+    const { db } = await getClientAndDb();
+    const success = await aiModelsTemplate.delete(db, modelId);
+    return { success };
+  }),
+
+  'delete-persona': createHandler('delete-persona', async ({ personaId, brandId }) => {
+    const { db } = await getClientAndDb();
+    const success = await personasTemplate.delete(db, personaId, { brandId });
+    return { success };
+  }),
+
+  'delete-trend': createHandler('delete-trend', async ({ trendId, brandId }) => {
+    const { db } = await getClientAndDb();
+    
+    const success = await trendsTemplate.delete(db, trendId, { brandId });
+    await ideasTemplate.getCollection(db).deleteMany({ trendId });
+
+    return { success };
+  }),
+
+  // ===== FETCH OPERATIONS =====
+  'fetch-affiliate-links': createHandler('fetch-affiliate-links', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    const affiliateLinks = await affiliateProductsTemplate.findByBrand(db, brandId);
+    return { affiliateLinks };
+  }),
+
+  'fetch-settings': createHandler('fetch-settings', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    const brand = await brandsTemplate.findOne(db, { _id: new ObjectId(brandId) });
+    return brand?.settings || {};
+  }),
+
+  'load-personas': createHandler('load-personas', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    const personas = await personasTemplate.findByBrand(db, brandId);
+    return { personas };
+  }),
+
+  'load-strategy-hub': createHandler('load-strategy-hub', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    const trends = await trendsTemplate.findByBrand(db, brandId);
+    return { trends };
+  }),
+
+  'load-ideas-for-trend': createHandler('load-ideas-for-trend', async ({ trendId }) => {
+    const { db } = await getClientAndDb();
+    const ideas = await ideasTemplate.findAll(db, { trendId });
+    return { ideas };
+  }),
+
+  'load-trend': createHandler('load-trend', async ({ trendId, brandId }) => {
+    const { db } = await getClientAndDb();
+    const trend = await trendsTemplate.findOne(db, { _id: new ObjectId(trendId), brandId });
+    if (!trend) {
+      throw new Error('Trend not found');
+    }
+    return { trend };
+  }),
+
+  'load-affiliate-vault': createHandler('load-affiliate-vault', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    const affiliateLinks = await affiliateProductsTemplate.findByBrand(db, brandId);
+    return { affiliateLinks };
+  }),
+
+  // ===== SAVE OPERATIONS =====
+  'save-affiliate-links': createHandler('save-affiliate-links', async ({ links, brandId }) => {
+    const { db } = await getClientAndDb();
+    const newLinks = await bulkSaveTemplate(db, 'affiliateProducts', links, brandId);
+    return { success: true, links: newLinks };
+  }),
+
+  'save-persona': createHandler('save-persona', async ({ persona, brandId }) => {
+    const { db } = await getClientAndDb();
+    const personaDocument = {
+      nickName: persona.nickName,
+      demographics: persona.demographics || { age: 0, location: '', occupation: '' },
+      backstory: persona.backstory || '',
+      voice: persona.voice || { personalityTraits: [], communicationStyle: { formality: 50, energy: 50 }, linguisticRules: [] },
+      knowledgeBase: persona.knowledgeBase || [],
+      brandRelationship: persona.brandRelationship || { originStory: '', coreAffinity: '', productUsage: '' },
+      visualCharacteristics: persona.visualCharacteristics || '',
+      outfitDescription: persona.outfitDescription || '',
+      mainStyle: persona.mainStyle || '',
+      activityField: persona.activityField || '',
+      avatarImageKey: persona.avatarImageKey,
+      avatarImageUrl: persona.avatarImageUrl,
+      photos: persona.photos || [],
+      socialAccounts: persona.socialAccounts || [],
+      gender: persona.gender
+    };
+    
+    const id = await saveEntityTemplate(db, 'personas', { ...personaDocument, id: persona.id }, brandId);
+    return { id };
+  }),
+
+  'save-trend': createHandler('save-trend', async ({ trend, brandId }) => {
+    const { db } = await getClientAndDb();
+    const trendDocument = {
+      industry: trend.industry,
+      topic: trend.topic,
+      keywords: trend.keywords || [],
+      links: trend.links || [],
+      notes: trend.notes,
+      analysis: trend.analysis,
+      createdAt: trend.createdAt,
+      searchVolume: trend.searchVolume,
+      competitionLevel: trend.competitionLevel,
+      peakTimeFrame: trend.peakTimeFrame,
+      geographicDistribution: trend.geographicDistribution,
+      relatedQueries: trend.relatedQueries,
+      trendingScore: trend.trendingScore,
+      sourceUrls: trend.sourceUrls,
+      category: trend.category,
+      sentiment: trend.sentiment,
+      predictedLifespan: trend.predictedLifespan
+    };
+    
+    const id = await saveEntityTemplate(db, 'trends', { ...trendDocument, id: trend.id }, brandId);
+    return { id };
+  }),
+
+  'save-trends': createHandler('save-trends', async ({ trends, brandId }) => {
+    const { db } = await getClientAndDb();
+    const savedTrends = await bulkSaveTemplate(db, 'trends', trends, brandId);
+    return { trends: savedTrends };
+  }),
+
+  'save-ideas': createHandler('save-ideas', async ({ ideas, brandId }) => {
+    const { db } = await getClientAndDb();
+    const newIdeas = await bulkSaveTemplate(db, 'ideas', ideas, brandId);
+    return { success: true, ideas: newIdeas };
+  }),
+
+  'save-ai-model': createHandler('save-ai-model', async ({ model }) => {
+    const { db } = await getClientAndDb();
+    const modelDocument = {
+      name: model.name,
+      provider: model.provider,
+      capabilities: model.capabilities || [],
+      service: model.service
+    };
+    
+    const id = await saveEntityTemplate(db, 'aiModels', { ...modelDocument, id: model.id });
+    return { id };
+  }),
+
+  'save-settings': createHandler('save-settings', async ({ settings, brandId }) => {
+    const { db } = await getClientAndDb();
+    const slimSettings = {
+      language: settings.language,
+      totalPostsPerMonth: settings.totalPostsPerMonth,
+      mediaPromptSuffix: settings.mediaPromptSuffix,
+      affiliateContentKit: settings.affiliateContentKit,
+      textGenerationModel: settings.textGenerationModel,
+      imageGenerationModel: settings.imageGenerationModel,
+      textModelFallbackOrder: settings.textModelFallbackOrder,
+      visionModels: settings.visionModels,
+      contentPillars: settings.contentPillars,
+      prompts: {
+        rules: settings.prompts?.rules || {}
+      }
+    };
+    
+    await brandsTemplate.update(db, brandId, { settings: slimSettings });
+    return { success: true };
+  }),
+
+  'save-admin-defaults': createHandler('save-admin-defaults', async (settings) => {
+    const { db } = await getClientAndDb();
+    const settingsToSave = {
+      ...settings,
+      prompts: deepMerge(defaultPrompts, settings.prompts || {})
+    };
+    
+    const collection = adminSettingsTemplate.getCollection(db);
+    await collection.updateOne(
+      {},
+      { $set: { ...settingsToSave, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    
+    return { success: true };
+  }),
+
+  // ===== BULK OPERATIONS =====
+  'bulk-patch-posts': createHandler('bulk-patch-posts', async ({ updates }) => {
+    const { db } = await getClientAndDb();
+    const bulkOperations = updates.map(update => ({
+      updateOne: {
+        filter: createIdFilter(update.postId),
+        update: { $set: update.fields }
+      }
+    }));
+    
+    const result = await mediaPlanPostsTemplate.bulkWrite(db, bulkOperations);
+    return { success: true, modifiedCount: result.modifiedCount };
+  }),
+
+  'bulk-update-post-schedules': createHandler('bulk-update-post-schedules', async ({ updates }) => {
+    const { db } = await getClientAndDb();
+    const bulkOperations = updates.map(update => ({
+      updateOne: {
+        filter: createIdFilter(update.postId),
+        update: { 
+          $set: { 
+            scheduledAt: update.scheduledAt,
+            status: update.status
+          }
+        }
+      }
+    }));
+    
+    const result = await mediaPlanPostsTemplate.bulkWrite(db, bulkOperations);
+    return { success: true, modifiedCount: result.modifiedCount };
+  }),
+
+  // ===== UTILITY OPERATIONS =====
+  'check-credentials': createHandler('check-credentials', async () => {
+    const { MONGODB_URI } = process.env;
+    if (!MONGODB_URI) {
+      throw new Error('Missing MONGODB_URI in environment variables');
+    }
+    
+    const { db } = await getClientAndDb();
+    const collections = await db.listCollections().toArray();
+    return { success: true, collections: collections.map(c => c.name) };
+  }),
+
+  'ensure-tables': createHandler('ensure-tables', async () => {
+    return { success: true };
+  }),
+
+  'check-product-exists': createHandler('check-product-exists', async ({ productId }) => {
+    const { db } = await getClientAndDb();
+    const productRecord = await affiliateProductsTemplate.findOne(db, { productId });
+    return { exists: !!productRecord };
+  }),
+
+  // ===== APP INITIALIZATION =====
+  'app-init': createHandler('app-init', async () => {
+    const { MONGODB_URI } = process.env;
+    if (!MONGODB_URI) {
+      return { credentialsSet: false, brands: [], adminDefaults: {}, aiModels: [] };
+    }
+
+    const { db } = await getClientAndDb();
+    await db.command({ ping: 1 });
+
+    const brands = await brandsTemplate.findAll(db);
+    const brandsList = brands
+      .filter(brand => brand._id && brand.name)
+      .map(brand => ({
+        id: brand._id.toString(),
+        name: brand.name
+      }));
+
+    const [settingsRecord, aiModels] = await Promise.all([
+      adminSettingsTemplate.findOne(db, {}),
+      aiModelsTemplate.findAll(db)
+    ]);
+
+    let adminDefaults = settingsRecord;
+    if (!adminDefaults || !adminDefaults.prompts) {
+      console.log('No admin prompts found in DB, initializing...');
+      const collection = adminSettingsTemplate.getCollection(db);
+      await collection.updateOne(
+        {},
+        { $set: { ...initialSettings, updatedAt: new Date() } },
+        { upsert: true }
+      );
+      adminDefaults = await adminSettingsTemplate.findOne(db, {});
+    }
+
+    return { 
+      credentialsSet: true, 
+      brands: brandsList, 
+      adminDefaults: adminDefaults || {}, 
+      aiModels 
+    };
+  }),
+
+  // ===== COMPLEX OPERATIONS =====
+  'create-or-update-brand': createHandler('create-or-update-brand', async ({ assets, brandId }) => {
+    const { db } = await getClientAndDb();
+    const brandDocument = {
+      name: assets.brandFoundation?.brandName || '',
+      mission: assets.brandFoundation?.mission || '',
+      usp: assets.brandFoundation?.usp || '',
+      targetAudience: assets.brandFoundation?.targetAudience || '',
+      personality: assets.brandFoundation?.personality || '',
+      values: assets.brandFoundation?.values || [],
+      keyMessaging: assets.brandFoundation?.keyMessaging || [],
+      coreMediaAssets: assets.coreMediaAssets || { logoConcepts: [], colorPalette: [], fontRecommendations: [] },
+      unifiedProfileAssets: assets.unifiedProfileAssets || {},
+      settings: assets.settings || {}
+    };
+
+    if (brandId) {
+      await brandsTemplate.update(db, brandId, brandDocument);
+      return { brandId };
+    } else {
+      const adminSettings = await adminSettingsTemplate.findOne(db, {});
+      const newBrandSettings = adminSettings ? {
+        language: adminSettings.language,
+        totalPostsPerMonth: adminSettings.totalPostsPerMonth,
+        mediaPromptSuffix: adminSettings.mediaPromptSuffix,
+        affiliateContentKit: adminSettings.affiliateContentKit,
+        textGenerationModel: adminSettings.textGenerationModel,
+        imageGenerationModel: adminSettings.imageGenerationModel,
+        contentPillars: adminSettings.contentPillars || [],
+        prompts: { rules: { imagePrompt: [], postCaption: [], shortVideoScript: [], longVideoScript: [] } }
+      } : {};
+
+      brandDocument.settings = newBrandSettings;
+      const { id } = await brandsTemplate.create(db, brandDocument);
+      return { brandId: id };
+    }
+  }),
+
+  'assign-persona-to-plan': createHandler('assign-persona-to-plan', async ({ planId, personaId, updatedPosts }) => {
+    const { db } = await getClientAndDb();
+    
+    await mediaPlanGroupsTemplate.update(db, planId, { personaId });
+    
+    if (updatedPosts && updatedPosts.length > 0) {
+      const bulkOperations = updatedPosts.map(post => ({
+        updateOne: {
+          filter: createIdFilter(post.id),
+          update: { $set: { mediaPrompt: post.mediaPrompt } }
+        }
+      }));
+      await mediaPlanPostsTemplate.bulkWrite(db, bulkOperations);
+    }
+    
+    return { success: true };
+  }),
+
+  'list-media-plan-groups': createHandler('list-media-plan-groups', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    const planRecords = await mediaPlanGroupsTemplate.findByBrand(db, brandId);
+    const groups = planRecords.map(record => ({
+      id: record.id || record._id.toString(),
+      name: record.name,
+      prompt: record.prompt,
+      source: record.source,
+      productImages: record.productImages || [],
+      personaId: record.personaId
+    }));
+    return { groups };
+  }),
+
+  'load-settings-data': createHandler('load-settings-data', async () => {
+    const { db } = await getClientAndDb();
+    
+    const [modelRecords, adminSettingsRecord] = await Promise.all([
+      aiModelsTemplate.findAll(db),
+      adminSettingsTemplate.findOne(db, {})
+    ]);
+    
+    const servicesMap = new Map();
+    modelRecords.forEach(model => {
+      if (!servicesMap.has(model.service)) {
+        servicesMap.set(model.service, {
+          id: model.service,
+          name: model.service,
+          models: []
+        });
+      }
+      servicesMap.get(model.service).models.push({
+        id: model._id.toString(),
+        name: model.name,
+        provider: model.provider,
+        capabilities: model.capabilities || []
+      });
+    });
+
+    const services = Array.from(servicesMap.values());
+    const adminSettings = adminSettingsRecord ? {
+      ...adminSettingsRecord,
+      prompts: { ...defaultPrompts, ...(adminSettingsRecord.prompts || {}) }
+    } : {
+      language: 'English',
+      totalPostsPerMonth: 30,
+      mediaPromptSuffix: '',
+      affiliateContentKit: '',
+      textGenerationModel: 'gemini-1.5-pro-latest',
+      imageGenerationModel: 'dall-e-3',
+      textModelFallbackOrder: [],
+      visionModels: [],
+      contentPillars: [],
+      prompts: defaultPrompts
+    };
+    
+    return { services, adminSettings };
+  }),
+
+  'load-media-plan': createHandler('load-media-plan', async ({ planId }) => {
+    const { db } = await getClientAndDb();
+    
+    const planRecord = await mediaPlanGroupsTemplate.findOne(db, { _id: new ObjectId(planId) });
+    if (!planRecord) {
+      throw new Error(`Plan with ID ${planId} not found.`);
+    }
+    
+    const postRecords = await mediaPlanPostsTemplate.findAll(db, { mediaPlanId: planId });
+    
+    const imageUrls = {};
+    const videoUrls = {};
+    const weeks = new Map();
+    
+    postRecords.forEach(record => {
+      if (record.imageKey && record.imageUrl) imageUrls[record.imageKey] = record.imageUrl;
+      if (record.imageKeys && record.imageUrlsArray && Array.isArray(record.imageKeys) && Array.isArray(record.imageUrlsArray)) {
+        for (let i = 0; i < record.imageKeys.length; i++) {
+          if (record.imageKeys[i] && record.imageUrlsArray[i]) {
+            imageUrls[record.imageKeys[i]] = record.imageUrlsArray[i];
+          }
+        }
+      }
+      if (record.videoKey && record.videoUrl) videoUrls[record.videoKey] = record.videoUrl;
+      
+      const weekNum = record.week;
+      if (!weeks.has(weekNum)) {
+        weeks.set(weekNum, { theme: record.theme, posts: [] });
+      }
+      
+      weeks.get(weekNum).posts.push({
+        id: record._id.toString(),
+        platform: record.platform,
+        contentType: record.contentType,
+        title: record.title,
+        content: record.content || '',
+        description: record.description,
+        hashtags: record.hashtags || [],
+        cta: record.cta,
+        mediaPrompt: record.mediaPrompt,
+        script: record.script,
+        imageKey: record.imageKey,
+        imageKeys: record.imageKeys,
+        imageUrl: record.imageUrl,
+        imageUrlsArray: record.imageUrlsArray,
+        videoKey: record.videoKey,
+        mediaOrder: record.mediaOrder || [],
+        sources: record.sources || [],
+        promotedProductIds: record.promotedProductIds || [],
+        scheduledAt: record.scheduledAt,
+        publishedAt: record.publishedAt,
+        publishedUrl: record.publishedUrl,
+        autoComment: record.autoComment,
+        status: record.status || 'draft',
+        isPillar: record.isPillar,
+        pillar: record.pillar,
+        week: record.week,
+        postOrder: record.postOrder
+      });
+    });
+    
+    const finalPlan = Array.from(weeks.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([weekNum, weekData]) => ({
+        week: weekNum,
+        theme: weekData.theme,
+        posts: weekData.posts
+      }));
+    
+    return { plan: finalPlan, imageUrls, videoUrls };
+  }),
+
+  'load-media-plan-posts': createHandler('load-media-plan-posts', async ({ planId, page = 1, limit = 30 }) => {
+    const { db } = await getClientAndDb();
+    const allPostRecords = await mediaPlanPostsTemplate.findAll(db, { mediaPlanId: planId });
+    
+    allPostRecords.sort((a, b) => {
+      const weekA = a.week || 0;
+      const weekB = b.week || 0;
+      if (weekA !== weekB) return weekA - weekB;
+      
+      const orderA = a.postOrder || new Date(a.createdTime || 0).getTime();
+      const orderB = b.postOrder || new Date(b.createdTime || 0).getTime();
+      return orderA - orderB;
+    });
+    
+    const { items: posts, pagination } = paginateArray(allPostRecords, page, limit);
+    return { posts, pagination };
+  }),
+
+  'save-media-plan-group': createHandler('save-media-plan-group', async ({ group, imageUrls, brandId }) => {
+    const { db } = await getClientAndDb();
+    
+    const { id: groupId, document: groupDocument } = await mediaPlanGroupsTemplate.create(db, {
+      name: group.name,
+      prompt: group.prompt,
+      source: group.source,
+      productImages: group.productImages || [],
+      brandId,
+      personaId: group.personaId
+    });
+
+    const allPostsWithNewIds = [];
+    if (group.plan && Array.isArray(group.plan)) {
+      group.plan.forEach(week => {
+        if (week && week.posts && Array.isArray(week.posts)) {
+          week.posts.forEach((post, postIndex) => {
+            const postObjectId = new ObjectId();
+            const postId = postObjectId.toString();
+            
+            allPostsWithNewIds.push({
+              ...post,
+              _id: postObjectId,
+              id: postId,
+              mediaPlanId: groupId,
+              week: week.week,
+              theme: week.theme,
+              brandId: brandId,
+              imageUrl: post.imageKey && !Array.isArray(post.imageKey) ? imageUrls[post.imageKey] : null,
+              imageKeys: post.imageKeys,
+              imageUrlsArray: post.imageUrlsArray,
+              videoUrl: post.videoKey ? imageUrls[post.videoKey] : null,
+              postOrder: postIndex,
+              updatedAt: new Date(),
+              createdAt: new Date(),
+            });
+          });
+        }
+      });
+    }
+    
+    if (allPostsWithNewIds.length > 0) {
+      const bulkOperations = allPostsWithNewIds.map(post => ({
+        insertOne: { document: post }
+      }));
+      await mediaPlanPostsTemplate.bulkWrite(db, bulkOperations);
+    }
+    
+    const finalPlan = {
+      ...groupDocument,
+      plan: group.plan.map(week => ({
+        ...week,
+        posts: allPostsWithNewIds
+          .filter(p => p.week === week.week)
+          .map(p => ({ ...p, _id: p.id }))
+      }))
+    };
+
+    delete finalPlan._id;
+    return { savedPlan: finalPlan };
+  }),
+
+  'update-media-plan-post': createHandler('update-media-plan-post', async (body) => {
+    const { post } = body;
+    const { db } = await getClientAndDb();
+    const mediaPlanPostsCollection = mediaPlanPostsTemplate.getCollection(db);
+    const filter = createIdFilter(post.id);
+
+    // Create the update payload directly from the post object, excluding the ID.
+    const updatePayload = { ...post };
+    delete updatePayload.id;
+
+    const updateOperation = { $set: updatePayload };
+
+    const result = await mediaPlanPostsCollection.updateOne(filter, updateOperation);
+
+    if (result.matchedCount === 0) {
+      console.warn(`--- update-media-plan-post did not find a document to update for id: ${post.id} ---`);
+    }
+    
+    return { success: true, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
+  }),
+
+  'sync-asset-media': createHandler('sync-asset-media', async ({ brandId, assets }) => {
+    const { db } = await getClientAndDb();
+    
+    const brand = await brandsTemplate.findOne(db, { _id: new ObjectId(brandId) });
+    if (!brand) {
+      throw new Error('Brand not found');
+    }
+
+    const brandUpdates = {
+      'coreMediaAssets': assets.coreMediaAssets,
+      'unifiedProfileAssets': assets.unifiedProfileAssets
+    };
+    
+    await brandsTemplate.getCollection(db).updateOne(
+      { _id: new ObjectId(brandId) },
+      { $set: brandUpdates },
+      { upsert: true }
+    );
+    
+    return { success: true };
+  }),
+
+  'initial-load': createHandler('initial-load', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    
+    const [brandRecord, affiliateLinksRecords] = await Promise.all([
+      brandsTemplate.findOne(db, { _id: new ObjectId(brandId) }),
+      affiliateProductsTemplate.findByBrand(db, brandId)
+    ]);
+    
+    if (!brandRecord) {
+      throw new Error(`Brand with ID ${brandId} not found.`);
+    }
+
+    const brandSummary = {
+      id: brandRecord._id.toString(),
+      name: brandRecord.name,
+      logoUrl: brandRecord.logoUrl
+    };
+
+    const brandKitData = {
+      brandFoundation: {
+        brandName: brandRecord.name,
+        mission: brandRecord.mission,
+        values: brandRecord.values || [],
+        targetAudience: brandRecord.targetAudience,
+        personality: brandRecord.personality,
+        keyMessaging: brandRecord.keyMessaging || [],
+        usp: brandRecord.usp,
+      },
+      coreMediaAssets: {
+        logoConcepts: brandRecord.coreMediaAssets?.logoConcepts || [],
+        colorPalette: brandRecord.coreMediaAssets?.colorPalette || {},
+        fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {},
+      },
+      unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
+      settings: brandRecord.settings || {}
+    };
+
+    return {
+      brandSummary,
+      brandKitData,
+      affiliateLinks: affiliateLinksRecords
+    };
+  }),
+
+  'load-complete-project': createHandler('load-complete-project', async ({ brandId }) => {
+    const { db } = await getClientAndDb();
+    
+    const brandRecord = await brandsTemplate.findOne(db, { _id: new ObjectId(brandId) });
+    if (!brandRecord) {
+      throw new Error(`Brand with ID ${brandId} not found.`);
+    }
+    
+    const [
+      affiliateLinks,
+      personas,
+      trends,
+      ideas,
+      mediaPlans
+    ] = await Promise.all([
+      affiliateProductsTemplate.findByBrand(db, brandId),
+      personasTemplate.findByBrand(db, brandId),
+      trendsTemplate.findByBrand(db, brandId),
+      ideasTemplate.findByBrand(db, brandId),
+      mediaPlanGroupsTemplate.findByBrand(db, brandId)
+    ]);
+    
+    const assets = {
+      brandFoundation: {
+        brandName: brandRecord.name,
+        mission: brandRecord.mission,
+        values: brandRecord.values || [],
+        targetAudience: brandRecord.targetAudience,
+        personality: brandRecord.personality,
+        keyMessaging: brandRecord.keyMessaging || [],
+        usp: brandRecord.usp
+      },
+      coreMediaAssets: {
+        logoConcepts: brandRecord.coreMediaAssets?.logoConcepts || [],
+        colorPalette: brandRecord.coreMediaAssets?.colorPalette || {},
+        fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {}
+      },
+      unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
+      mediaPlans: mediaPlans.map(plan => ({ ...plan, id: plan._id?.toString() })),
+      affiliateLinks,
+      personas,
+      trends,
+      ideas,
+      settings: brandRecord.settings || {}
+    };
+    
+    return {
+      assets,
+      generatedImages: {},
+      generatedVideos: {},
+      brandId
+    };
+  }),
+
+  'load-project': createHandler('load-project', async ({ brandId }) => {
+    return { message: 'Project loading not fully implemented' };
+  })
+};
+
+// ========== MAIN HANDLER ==========
 
 async function handler(request, response) {
   const { action } = request.query;
@@ -56,1772 +995,20 @@ async function handler(request, response) {
   }
 
   try {
-    // Get MongoDB client and database instance
     const { client, db } = await getClientAndDb();
-    const brandsCollection = db.collection('brands');
 
-    switch (action) {
-      case 'assign-persona-to-plan':
-        console.log('--- Received request for /api/mongodb/assign-persona-to-plan ---');
-        try {
-          const { planId, personaId, updatedPosts, brandId } = request.body;
-          
-          // Update the media plan with the persona
-          const mediaPlansCollection = db.collection('mediaPlanGroups');
-          const result = await mediaPlansCollection.updateOne(
-            createIdFilter(planId),
-            { $set: { personaId: personaId }}
-          );
-          
-          // Update posts if needed
-          if (updatedPosts && updatedPosts.length > 0) {
-            const postsCollection = db.collection('mediaPlanPosts');
-            for (const post of updatedPosts) {
-              await postsCollection.updateOne(
-                createIdFilter(post.id),
-                { $set: { mediaPrompt: post.mediaPrompt }, }
-              );
-            }
-          }
-          
-          response.status(200).json({ success: true });
-          console.log('--- Persona assigned to plan ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/assign-persona-to-plan ---');
-          throw error;
-        }
-        break;
+    // Handle all operations through the handlers object
+    if (handlers[action]) {
+      return await handlers[action](request, response, db);
+    }
 
-      case 'bulk-patch-posts':
-        console.log('--- Received request for /api/mongodb/bulk-patch-posts ---');
-        try {
-          const { updates } = request.body;
-          
-          const postsCollection = db.collection('mediaPlanPosts');
-          const bulkOperations = updates.map(update => ({
-            updateOne: {
-              filter: createIdFilter(update.postId),
-              update: { $set: update.fields }
-            }
-          }));
-          
-          const result = await postsCollection.bulkWrite(bulkOperations);
-          
-          response.status(200).json({ success: true, modifiedCount: result.modifiedCount });
-          console.log('--- Bulk patched posts ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/bulk-patch-posts ---');
-          throw error;
-        }
-        break;
-
-      case 'bulk-update-post-schedules':
-        console.log('--- Received request for /api/mongodb/bulk-update-post-schedules ---');
-        try {
-          const { updates } = request.body;
-          
-          const postsCollection = db.collection('mediaPlanPosts');
-          const bulkOperations = updates.map(update => ({
-            updateOne: {
-              filter: createIdFilter(update.postId),
-              update: { 
-                $set: { 
-                  scheduledAt: update.scheduledAt,
-                  status: update.status
-                },
-                $unset: { upsert: true }
-              }
-            }
-          }));
-          
-          const result = await postsCollection.bulkWrite(bulkOperations);
-          
-          response.status(200).json({ success: true, modifiedCount: result.modifiedCount });
-          console.log('--- Bulk updated post schedules ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/bulk-update-post-schedules ---');
-          throw error;
-        }
-        break;
-
-      case 'app-init':
-        console.log('--- Received request for /api/mongodb/app-init ---');
-        try {
-          // 1. Check Credentials
-          const { MONGODB_URI } = process.env;
-          if (!MONGODB_URI) {
-            return response.status(200).json({ credentialsSet: false, brands: [], adminDefaults: {}, aiModels: [] });
-          }
-          await db.command({ ping: 1 });
-
-          // 2. List Brands (with robust filtering)
-          const brandRecords = await brandsCollection.find({}).toArray();
-          const brands = brandRecords
-            .filter(record => record && record._id && record.name) // Filter out malformed records
-            .map(record => ({
-              id: record._id.toString(),
-              name: record.name
-            }));
-
-          // 3. Fetch Admin Defaults and AI Models in parallel
-          const adminSettingsCollection = db.collection('adminSettings');
-          const aiModelsCollection = db.collection('aiModels');
-
-          const [settingsRecord, modelRecords] = await Promise.all([
-              adminSettingsCollection.findOne({}),
-              aiModelsCollection.find({}).toArray()
-          ]);
-
-          // Auto-initialize settings if needed
-          let adminDefaults = settingsRecord;
-          if (!adminDefaults || !adminDefaults.prompts) {
-            console.log('No admin prompts found in DB, initializing from defaultSettings.js...');
-            await adminSettingsCollection.updateOne(
-                  {},
-                  { $set: { ...initialSettings, updatedAt: new Date() } },
-                  { upsert: true }
-              );
-            adminDefaults = await adminSettingsCollection.findOne({});
-          }
-          
-          // Sanitize models
-          const aiModels = modelRecords.map(m => ({ ...m, id: m._id.toString() }));
-
-          response.status(200).json({ credentialsSet: true, brands: brands, adminDefaults: adminDefaults || {}, aiModels: aiModels });
-          console.log('--- App init data sent ---');
-        } catch (error) {
-          console.error('App init failed:', error);
-          response.status(500).json({ error: `App initialization failed: ${error.message}` });
-        }
-        break;
-
-      case 'check-credentials':
-        console.log('--- Received request for /api/mongodb/check-credentials ---');
-        try {
-          const { MONGODB_URI } = process.env;
-          
-          if (!MONGODB_URI) {
-            return response.status(400).json({ error: 'Missing MONGODB_URI in environment variables' });
-          }
-          
-          // Try to list collections to verify connection
-          const collections = await db.listCollections().toArray();
-          
-          response.status(200).json({ success: true, collections: collections.map(c => c.name) });
-          console.log('--- MongoDB connection verified ---');
-        } catch (error) {
-          console.error('MongoDB credential check failed:', error);
-          response.status(500).json({ error: `Failed to connect to MongoDB: ${error.message}` });
-        }
-        break;
-
-        case 'create-or-update-brand':
-            console.log('--- Received request for /api/mongodb/create-or-update-brand ---');
-            try {
-              const { assets, brandId } = request.body;
-  
-              const brandDocument = {
-                name: assets.brandFoundation?.brandName || '',
-                mission: assets.brandFoundation?.mission || '',
-                usp: assets.brandFoundation?.usp || '',
-                targetAudience: assets.brandFoundation?.targetAudience || '',
-                personality: assets.brandFoundation?.personality || '',
-                values: assets.brandFoundation?.values || [],
-                keyMessaging: assets.brandFoundation?.keyMessaging || [],
-                coreMediaAssets: assets.coreMediaAssets || { logoConcepts: [], colorPalette: [], fontRecommendations: [] },
-                unifiedProfileAssets: assets.unifiedProfileAssets || {},
-                settings: assets.settings || {}, 
-                updatedAt: new Date(),
-              };
-  
-              if (brandId) {
-                // This is an existing brand. Update it.
-                await brandsCollection.updateOne(
-                  { _id: new ObjectId(brandId) },
-                  { $set: brandDocument },
-                  { upsert: true }
-                );
-                response.status(200).json({ brandId: brandId });
-              } else {
-                // This is a new brand. Fetch admin defaults and clone only the allowed fields.
-                const adminSettingsCollection = db.collection('adminSettings');
-                const adminSettings = await adminSettingsCollection.findOne({});
-
-                const newBrandSettings = {};
-                if (adminSettings) {
-                    newBrandSettings.language = adminSettings.language;
-                    newBrandSettings.totalPostsPerMonth = adminSettings.totalPostsPerMonth;
-                    newBrandSettings.mediaPromptSuffix = adminSettings.mediaPromptSuffix;
-                    newBrandSettings.affiliateContentKit = adminSettings.affiliateContentKit;
-                    newBrandSettings.textGenerationModel = adminSettings.textGenerationModel;
-                    newBrandSettings.imageGenerationModel = adminSettings.imageGenerationModel;
-                    newBrandSettings.contentPillars = adminSettings.contentPillars || [];
-                }
-
-                newBrandSettings.prompts = {
-                    rules: {
-                        imagePrompt: [],
-                        postCaption: [],
-                        shortVideoScript: [],
-                        longVideoScript: []
-                    }
-                };
-
-                brandDocument.settings = newBrandSettings;
-
-                const newBrandObjectId = new ObjectId();
-                const newBrandId = newBrandObjectId.toString();
-                const fullDocument = {
-                    ...brandDocument,
-                    _id: newBrandObjectId,
-                    id: newBrandId,
-                    createdAt: new Date()
-                };
-                await brandsCollection.insertOne(fullDocument);
-                response.status(200).json({ brandId: newBrandId });
-              }
-              
-              console.log('--- Brand created or updated ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/create-or-update-brand ---');
-              throw error;
-            }
-            break;
-
-      case 'delete-affiliate-link':
-        console.log('--- Received request for /api/mongodb/delete-affiliate-link ---');
-        try {
-          const { linkId, brandId } = request.body;
-          
-          const affiliateProductsCollection = db.collection('affiliateProducts');
-          const result = await affiliateProductsCollection.deleteOne(
-            createIdFilter(linkId)
-          );
-          
-          response.status(200).json({ success: result.deletedCount > 0 });
-          console.log('--- Affiliate link deleted ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/delete-affiliate-link ---');
-          throw error;
-        }
-        break;
-
-      case 'delete-ai-model':
-        console.log('--- Received request for /api/mongodb/delete-ai-model ---');
-        try {
-          const { modelId } = request.body;
-          
-          const aiModelsCollection = db.collection('aiModels');
-          const result = await aiModelsCollection.deleteOne(
-            createIdFilter(modelId)
-          );
-          
-          response.status(200).json({ success: result.deletedCount > 0 });
-          console.log('--- AI model deleted ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/delete-ai-model ---');
-          throw error;
-        }
-        break;
-
-      case 'delete-persona':
-        console.log('--- Received request for /api/mongodb/delete-persona ---');
-        try {
-          const { personaId, brandId } = request.body;
-          
-          const personasCollection = db.collection('personas');
-          const result = await personasCollection.deleteOne({
-            _id: new ObjectId(personaId),
-            brandId: brandId
-          });
-          
-          response.status(200).json({ success: result.deletedCount > 0 });
-          console.log('--- Persona deleted ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/delete-persona ---');
-          throw error;
-        }
-        break;
-
-      case 'delete-trend':
-        console.log('--- Received request for /api/mongodb/delete-trend ---');
-        try {
-            const { trendId, brandId } = request.body;
-
-            if (!trendId || !brandId) {
-                return response.status(400).json({ error: 'Missing trendId or brandId in request body' });
-            }
-            
-            // Delete trend from MongoDB
-            const trendsCollection = db.collection('trends');
-            const result = await trendsCollection.deleteOne({ _id: new ObjectId(trendId), brandId: brandId });
-            
-            // Also delete associated ideas
-            const ideasCollection = db.collection('ideas');
-            await ideasCollection.deleteMany({ trendId: trendId });
-
-            response.status(200).json({ success: true });
-            console.log('--- Trend deleted successfully ---');
-
-        } catch (error) {
-            console.error('--- CRASH in /api/mongodb/delete-trend ---');
-            console.error('Error object:', error);
-            response.status(500).json({ error: `Failed to delete trend: ${error.message}` });
-        }
-        break;
-
-      case 'ensure-tables':
-        console.log('--- Received request for /api/mongodb/ensure-tables ---');
-        try {
-          // In MongoDB, collections are created automatically when first used
-          // We'll just return success
-          response.status(200).json({ success: true });
-          console.log('--- MongoDB collections ensured ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/ensure-tables ---');
-          throw error;
-        }
-        break;
-
-      
-
-      case 'fetch-affiliate-links':
-        console.log('--- Received request for /api/mongodb/fetch-affiliate-links ---');
-        try {
-          const { brandId } = request.body;
-          
-          const affiliateProductsCollection = db.collection('affiliateProducts');
-          const linkRecords = await affiliateProductsCollection.find({ brandId: brandId }).toArray();
-          
-          const affiliateLinks = linkRecords.map(record => ({
-            id: record._id.toString(),
-            productId: record.productId,
-            productName: record.productName,
-            price: record.price,
-            salesVolume: record.salesVolume,
-            providerName: record.providerName,
-            commissionRate: record.commissionRate,
-            commissionValue: record.commissionValue,
-            productLink: record.productLink,
-            promotionLink: record.promotionLink,
-            product_description: record.productDescription,
-            features: record.features || [],
-            use_cases: record.useCases || [],
-            customer_reviews: record.customerReviews,
-            product_rating: record.productRating,
-            product_avatar: record.productAvatar,
-            product_image_links: record.productImageLinks || []
-          }));
-          
-          response.status(200).json({ affiliateLinks });
-          console.log('--- Affiliate links fetched ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/fetch-affiliate-links ---');
-          throw error;
-        }
-        break;
-
-        case 'fetch-settings':
-            console.log('--- Received request for /api/mongodb/fetch-settings ---');
-            try {
-              const { brandId } = request.body;
-              
-              const brand = await brandsCollection.findOne({ _id: new ObjectId(brandId) });
-              
-              if (!brand) {
-                return response.status(200).json(null);
-              }
-              
-              response.status(200).json(brand.settings || {});
-              console.log('--- Settings fetched ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/fetch-settings ---');
-              throw error;
-            }
-            break;
-
-      
-
-      case 'list-media-plan-groups':
-        console.log('--- Received request for /api/mongodb/list-media-plan-groups ---');
-        try {
-            const { brandId } = request.body;
-
-            console.log('Loading list media plan groups for brandId: ', brandId)
-
-            if (!brandId) {
-                return response.status(400).json({ error: 'Missing brandId in request body' });
-            }
-            
-            // Fetch media plan groups data from MongoDB
-            const collection = db.collection('mediaPlanGroups');
-            const planRecords = await collection.find({ brandId: brandId }).toArray();
-            
-            // Transform MongoDB records to match the expected API response format
-            const groups = planRecords.map((record) => ({
-                id: record.id || record._id.toString(), // Use the stored id or fallback to ObjectId string
-                name: record.name,
-                prompt: record.prompt,
-                source: record.source,
-                productImages: record.productImages || [],
-                personaId: record.personaId
-            }));
-
-            response.status(200).json({ groups });
-            console.log('--- Media plan groups list sent to client ---');
-
-        } catch (error) {
-            console.error('--- CRASH in /api/mongodb/list-media-plan-groups ---');
-            console.error('Error object:', error);
-            
-            response.status(500).json({ error: `Failed to fetch media plan groups from MongoDB: ${error.message}` });
-        }
-        break;
-
-      case 'load-settings-data':
-        console.log('--- Received request for /api/mongodb/load-settings-data ---');
-        try {
-          const aiModelsCollection = db.collection('aiModels');
-          const adminSettingsCollection = db.collection('adminSettings');
-
-          // Fetch all data in parallel
-          const [
-            modelRecords,
-            adminSettingsRecord
-          ] = await Promise.all([
-            aiModelsCollection.find({}).toArray(),
-            adminSettingsCollection.findOne({})
-          ]);
-          
-          // Group models by service
-          const servicesMap = new Map();
-          modelRecords.forEach(model => {
-            if (!servicesMap.has(model.service)) {
-              servicesMap.set(model.service, {
-                id: model.service, // In the new schema, the service name is the ID
-                name: model.service,
-                models: []
-              });
-            }
-            servicesMap.get(model.service).models.push({
-              id: model._id.toString(),
-              name: model.name,
-              provider: model.provider,
-              capabilities: model.capabilities || []
-            });
-          });
-
-          const services = Array.from(servicesMap.values());
-
-          // Sanitize admin settings to ensure it's not null
-          let adminSettings = {};
-          if (adminSettingsRecord) {
-            adminSettings = {
-              ...adminSettingsRecord,
-              prompts: {
-                ...defaultPrompts,
-                ...(adminSettingsRecord.prompts || {}),
-              }
-            };
-          } else {
-            adminSettings = {
-                language: 'English',
-                totalPostsPerMonth: 30,
-                mediaPromptSuffix: '',
-                affiliateContentKit: '',
-                textGenerationModel: 'gemini-1.5-pro-latest',
-                imageGenerationModel: 'dall-e-3',
-                textModelFallbackOrder: [],
-                visionModels: [],
-                contentPillars: [],
-                prompts: defaultPrompts
-            };
-          }
-          
-          response.status(200).json({ services, adminSettings });
-          console.log('--- Settings data loaded ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/load-settings-data ---');
-          throw error;
-        }
-        break;
-
-      case 'load-media-plan':
-        console.log('--- Received request for /api/mongodb/load-media-plan ---');
-        try {
-          const { planId } = request.body;
-          
-          const mediaPlanGroupsCollection = db.collection('mediaPlanGroups');
-          const planRecord = await mediaPlanGroupsCollection.findOne({ _id: new ObjectId(planId) });
-          
-          if (!planRecord) {
-            return response.status(404).json({ error: `Plan with ID ${planId} not found.` });
-          }
-          
-          const mediaPlanPostsCollection = db.collection('mediaPlanPosts');
-          const postRecords = await mediaPlanPostsCollection.find({ mediaPlanId: planId }).toArray();
-          
-          const imageUrls = {};
-          const videoUrls = {};
-          const weeks = new Map();
-          
-          postRecords.forEach(record => {
-            // Collect image and video URLs
-            if (record.imageKey && record.imageUrl) imageUrls[record.imageKey] = record.imageUrl;
-            
-            // NEW: Pre-populate cache for carousel images
-            if (record.imageKeys && record.imageUrlsArray && Array.isArray(record.imageKeys) && Array.isArray(record.imageUrlsArray)) {
-              for (let i = 0; i < record.imageKeys.length; i++) {
-                if (record.imageKeys[i] && record.imageUrlsArray[i]) {
-                  imageUrls[record.imageKeys[i]] = record.imageUrlsArray[i];
-                }
-              }
-            }
-
-            if (record.videoKey && record.videoUrl) videoUrls[record.videoKey] = record.videoUrl;
-            
-            // Group posts by week
-            const weekNum = record.week;
-            if (!weeks.has(weekNum)) {
-              weeks.set(weekNum, { theme: record.theme, posts: [] });
-            }
-            
-            // Add post to week
-            weeks.get(weekNum).posts.push({
-              id: record._id.toString(),
-              platform: record.platform,
-              contentType: record.contentType,
-              title: record.title,
-              content: record.content || '',
-              description: record.description,
-              hashtags: record.hashtags || [],
-              cta: record.cta,
-              mediaPrompt: record.mediaPrompt,
-              script: record.script,
-              imageKey: record.imageKey,
-              imageKeys: record.imageKeys, // For carousel
-              imageUrl: record.imageUrl,
-              imageUrlsArray: record.imageUrlsArray, // For carousel
-              videoKey: record.videoKey,
-              mediaOrder: record.mediaOrder || [],
-              sources: record.sources || [],
-              promotedProductIds: record.promotedProductIds || [],
-              scheduledAt: record.scheduledAt,
-              publishedAt: record.publishedAt,
-              publishedUrl: record.publishedUrl,
-              autoComment: record.autoComment,
-              status: record.status || 'draft',
-              isPillar: record.isPillar,
-              pillar: record.pillar, // ADDED: Load pillar property
-              week: record.week,
-              postOrder: record.postOrder
-            });
-          });
-          
-          // Convert weeks map to array and sort
-          const finalPlan = Array.from(weeks.entries())
-            .sort((a, b) => a[0] - b[0])
-            .map(([weekNum, weekData]) => ({
-              week: weekNum,
-              theme: weekData.theme,
-              posts: weekData.posts
-            }));
-          
-          response.status(200).json({ plan: finalPlan, imageUrls, videoUrls });
-          console.log('--- Media plan loaded ---');
-        } catch (error) {
-          console.error('--- CRASH in /api/mongodb/load-media-plan ---');
-          throw error;
-        }
-        break;
-
-        case 'load-project':
-            console.log('--- Received request for /api/mongodb/load-project ---');
-            try {
-              const { brandId } = request.body;
-              
-              // This would load all project data for a brand
-              // Implementation would depend on what data is needed
-              response.status(200).json({ message: 'Project loading not fully implemented' });
-              console.log('--- Project loading placeholder ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/load-project ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-admin-defaults':
-            console.log('--- Received request for /api/mongodb/save-admin-defaults ---');
-            try {
-              const settings = request.body;
-              
-              const adminSettingsCollection = db.collection('adminSettings');
-
-              // Deep merge the received settings with the defaults to ensure all prompt fields exist
-              const settingsToSave = {
-                ...settings,
-                prompts: deepMerge(defaultPrompts, settings.prompts || {})
-              };
-              
-              // Update or insert admin settings
-              const result = await adminSettingsCollection.updateOne(
-                {}, // Match any document
-                { 
-                  $set: {
-                    language: settingsToSave.language,
-                    totalPostsPerMonth: settingsToSave.totalPostsPerMonth,
-                    mediaPromptSuffix: settingsToSave.mediaPromptSuffix,
-                    affiliateContentKit: settingsToSave.affiliateContentKit,
-                    textGenerationModel: settingsToSave.textGenerationModel,
-                    imageGenerationModel: settingsToSave.imageGenerationModel,
-                    textModelFallbackOrder: settingsToSave.textModelFallbackOrder || [],
-                    visionModels: settingsToSave.visionModels || [],
-                    contentPillars: settingsToSave.contentPillars || [],
-                    prompts: settingsToSave.prompts, // Save the full prompts object
-                    updatedAt: new Date()
-                  }
-                },
-                { upsert: true } // Create if doesn't exist
-              );
-              
-              response.status(200).json({ success: true });
-              console.log('--- Admin defaults saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-admin-defaults ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-affiliate-links':
-            console.log('--- Received request for /api/mongodb/save-affiliate-links ---');
-            try {
-              const { links, brandId } = request.body;
-              
-              const affiliateProductsCollection = db.collection('affiliateProducts');
-              const bulkOperations = [];
-    
-              const newLinks = [];
-              for (const link of links) {
-                const linkDocument = {
-                    productId: link.productId,
-                    productName: link.productName,
-                    price: link.price,
-                    salesVolume: link.salesVolume,
-                    providerName: link.providerName,
-                    commissionRate: link.commissionRate,
-                    commissionValue: link.commissionValue,
-                    productLink: link.productLink,
-                    promotionLink: link.promotionLink,
-                    brandId: brandId,
-                    updatedAt: new Date()
-                };
-    
-                if (link.id && ObjectId.isValid(link.id)) { // Update existing
-                    bulkOperations.push({
-                        updateOne: {
-                            filter: { _id: new ObjectId(link.id), brandId: brandId },
-                            update: { $set: linkDocument },
-                        }
-                    });
-                } else { // Insert new
-                    const newLinkObjectId = new ObjectId();
-                    const newLinkId = newLinkObjectId.toString();
-                    const newLinkDocument = {
-                        ...linkDocument,
-                        _id: newLinkObjectId,
-                        id: newLinkId,
-                    };
-                    newLinks.push(newLinkDocument);
-                    bulkOperations.push({
-                        insertOne: {
-                            document: newLinkDocument
-                        }
-                    });
-                }
-              }
-            
-              if (bulkOperations.length > 0) {
-                await affiliateProductsCollection.bulkWrite(bulkOperations);
-              }
-              
-              response.status(200).json({ success: true, links: newLinks });
-              console.log('--- Affiliate links saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-affiliate-links ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-ai-model':
-            console.log('--- Received request for /api/mongodb/save-ai-model ---');
-            try {
-              const { model } = request.body; // Service name is now part of the model object
-              
-              const aiModelsCollection = db.collection('aiModels');
-              
-              // Prepare model document
-              const modelDocument = {
-                name: model.name,
-                provider: model.provider,
-                capabilities: model.capabilities || [],
-                service: model.service, // New unified field
-                updatedAt: new Date()
-              };
-              
-              // If model.id exists, update; otherwise create new
-              if (model.id) {
-                await aiModelsCollection.updateOne(
-                  { _id: new ObjectId(model.id) },
-                  { $set: modelDocument },
-                  { upsert: true }
-                );
-                response.status(200).json({ id: model.id });
-              } else {
-                const newModelObjectId = new ObjectId();
-                const newModelId = newModelObjectId.toString();
-                const fullModelDocument = {
-                    ...modelDocument,
-                    _id: newModelObjectId,
-                    id: newModelId
-                };
-                await aiModelsCollection.insertOne(fullModelDocument);
-                response.status(200).json({ id: newModelId });
-              }
-              
-              console.log('--- AI model saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-ai-model ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-ideas':
-            console.log('--- Received request for /api/mongodb/save-ideas ---');
-            try {
-              const { ideas, brandId } = request.body;
-              
-              const ideasCollection = db.collection('ideas');
-              const newIdeas = [];
-              const operations = ideas.map(idea => {
-                const ideaDocument = {
-                    title: idea.title,
-                    description: idea.description,
-                    targetAudience: idea.targetAudience,
-                    productId: idea.productId,
-                    trendId: idea.trendId,
-                    brandId: brandId,
-                    updatedAt: new Date()
-                };
-
-                if (idea.id && ObjectId.isValid(idea.id)) {
-                    return {
-                        updateOne: {
-                            filter: { _id: new ObjectId(idea.id) },
-                            update: { $set: ideaDocument },
-                        }
-                    };
-                } else {
-                    const newIdeaObjectId = new ObjectId();
-                    const newIdeaId = newIdeaObjectId.toString();
-                    const newIdeaDocument = {
-                        ...ideaDocument,
-                        _id: newIdeaObjectId,
-                        id: newIdeaId,
-                    };
-                    newIdeas.push(newIdeaDocument);
-                    return {
-                        insertOne: {
-                            document: newIdeaDocument
-                        }
-                    };
-                }
-              });
-
-              if (operations.length > 0) {
-                await ideasCollection.bulkWrite(operations);
-              }
-              
-              response.status(200).json({ success: true, ideas: newIdeas });
-              console.log('--- Ideas saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-ideas ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-media-plan-group':
-            console.log('--- Received request for /api/mongodb/save-media-plan-group ---');
-            try {
-              const { group, imageUrls, brandId } = request.body;
-              
-              const mediaPlanGroupsCollection = db.collection('mediaPlanGroups');
-              const postsCollection = db.collection('mediaPlanPosts');
-
-              // 1. Generate a new ObjectId on the server for the group.
-              const groupObjectId = new ObjectId();
-              const groupId = groupObjectId.toString();
-
-              const groupDocument = {
-                _id: groupObjectId, // ObjectId for the DB
-                id: groupId,       // String version for consistency
-                name: group.name,
-                prompt: group.prompt,
-                source: group.source,
-                productImages: group.productImages || [],
-                brandId,
-                personaId: group.personaId,
-                updatedAt: new Date(),
-                createdAt: new Date(),
-              };
-    
-              // Insert the new group document.
-              await mediaPlanGroupsCollection.insertOne(groupDocument);
-              
-              const allPostsWithNewIds = [];
-              if (group.plan && Array.isArray(group.plan)) {
-                // 2. Ignore client-side IDs and generate new ObjectIds for each post.
-                group.plan.forEach(week => {
-                  if (week && week.posts && Array.isArray(week.posts)) {
-                    week.posts.forEach((post, postIndex) => {
-                      const postObjectId = new ObjectId();
-                      const postId = postObjectId.toString();
-                      
-                      allPostsWithNewIds.push({
-                        ...post,
-                        _id: postObjectId, // Use the new server-generated ObjectId
-                        id: postId,         // Use the string version of the new ID
-                        mediaPlanId: groupId,
-                        week: week.week,
-                        theme: week.theme,
-                        brandId: brandId,
-                        imageUrl: post.imageKey && !Array.isArray(post.imageKey) ? imageUrls[post.imageKey] : null,
-                        imageKeys: post.imageKeys, // Save the array of keys
-                        imageUrlsArray: post.imageUrlsArray, // Save the array of URLs
-                        videoUrl: post.videoKey ? imageUrls[post.videoKey] : null,
-                        postOrder: postIndex,
-                        updatedAt: new Date(),
-                        createdAt: new Date(),
-                      });
-                    });
-                  }
-                });
-              }
-              
-              // 3. Save the posts with their new, correct IDs.
-              if (allPostsWithNewIds.length > 0) {
-                  const bulkOperations = allPostsWithNewIds.map(post => ({
-                      insertOne: {
-                          document: post
-                      }
-                  }));
-                  await postsCollection.bulkWrite(bulkOperations);
-              }
-              
-              // 4. Return the saved plan with the correct, server-generated IDs to the client.
-              const finalPlan = {
-                ...groupDocument,
-                plan: group.plan.map(week => ({
-                  ...week,
-                  posts: allPostsWithNewIds
-                    .filter(p => p.week === week.week)
-                    // Ensure client gets string IDs
-                    .map(p => ({ ...p, _id: p.id })) 
-                }))
-              };
-
-              // Remove the ObjectId version of _id before sending to client
-              delete finalPlan._id;
-
-              response.status(200).json({ savedPlan: finalPlan });
-              console.log('--- Media plan group saved with server-generated ObjectIds ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-media-plan-group ---');
-              console.error('Error details:', error);
-              throw error;
-            }
-            break;
-    
-          case 'save-persona':
-            console.log('--- Received request for /api/mongodb/save-persona ---');
-            try {
-              const { persona, brandId } = request.body;
-              
-              const personasCollection = db.collection('personas');
-              
-              // Prepare persona document with the new rich structure
-              const personaDocument = {
-                nickName: persona.nickName,
-                demographics: persona.demographics || { age: 0, location: '', occupation: '' },
-                backstory: persona.backstory || '',
-                voice: persona.voice || { personalityTraits: [], communicationStyle: { formality: 50, energy: 50 }, linguisticRules: [] },
-                knowledgeBase: persona.knowledgeBase || [],
-                brandRelationship: persona.brandRelationship || { originStory: '', coreAffinity: '', productUsage: '' },
-                visualCharacteristics: persona.visualCharacteristics || '',
-
-                // Legacy fields
-                outfitDescription: persona.outfitDescription || '',
-                mainStyle: persona.mainStyle || '',
-                activityField: persona.activityField || '',
-                avatarImageKey: persona.avatarImageKey,
-                avatarImageUrl: persona.avatarImageUrl,
-                photos: persona.photos || [],
-                socialAccounts: persona.socialAccounts || [],
-                gender: persona.gender,
-
-                brandId: brandId,
-                updatedAt: new Date(),
-              };
-              
-              // If persona.id exists AND it's a valid ObjectId, it's an update.
-              if (persona.id && ObjectId.isValid(persona.id)) {
-                await personasCollection.updateOne(
-                  { _id: new ObjectId(persona.id) },
-                  { $set: personaDocument },
-                  { upsert: true }
-                );
-                response.status(200).json({ id: persona.id });
-              } else {
-                // Otherwise, it's a new persona. Generate a new, unified ID.
-                const newPersonaObjectId = new ObjectId();
-                const newPersonaId = newPersonaObjectId.toString();
-                const fullPersonaDocument = {
-                    ...personaDocument,
-                    _id: newPersonaObjectId,
-                    id: newPersonaId // Unified ID
-                };
-                await personasCollection.insertOne(fullPersonaDocument);
-                response.status(200).json({ id: newPersonaId });
-              }
-              
-              console.log('--- Persona saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-persona ---');
-              throw error;
-            }
-            break;
-    
-            case 'save-settings':
-                console.log('--- Received request for /api/mongodb/save-settings ---');
-                try {
-                  const { settings, brandId } = request.body;
-                  
-                  // Create a "slim" settings object that ONLY contains what a brand is allowed to override.
-                  const slimSettings = {
-                      // Copy all top-level settings EXCEPT for prompts
-                      language: settings.language,
-                      totalPostsPerMonth: settings.totalPostsPerMonth,
-                      mediaPromptSuffix: settings.mediaPromptSuffix,
-                      affiliateContentKit: settings.affiliateContentKit,
-                      textGenerationModel: settings.textGenerationModel,
-                      imageGenerationModel: settings.imageGenerationModel,
-                      textModelFallbackOrder: settings.textModelFallbackOrder,
-                      visionModels: settings.visionModels,
-                      contentPillars: settings.contentPillars,
-                      // For prompts, only save the 'rules' object.
-                      prompts: {
-                          rules: settings.prompts?.rules || {}
-                      }
-                  };
-                  
-                  const result = await brandsCollection.updateOne(
-                    { _id: new ObjectId(brandId) },
-                    // Save the slimmed-down settings object, not the one from the client.
-                    { $set: { settings: slimSettings, updatedAt: new Date() } }
-                  );
-                  
-                  response.status(200).json({ success: true });
-                  console.log('--- Settings saved (slimmed) ---');
-                } catch (error) {
-                  console.error('--- CRASH in /api/mongodb/save-settings ---');
-                  throw error;
-                }
-                break;
-    
-          case 'save-trend':
-            console.log('--- Received request for /api/mongodb/save-trend ---');
-            try {
-              const { trend, brandId } = request.body;
-              
-              const trendsCollection = db.collection('trends');
-              
-              // Prepare trend document with ALL fields including enhanced metadata
-              const trendDocument = {
-                industry: trend.industry,
-                topic: trend.topic,
-                keywords: trend.keywords || [],
-                links: trend.links || [],
-                notes: trend.notes,
-                analysis: trend.analysis,
-                brandId: brandId,
-                createdAt: trend.createdAt,
-                updatedAt: new Date(),
-                // Enhanced metadata fields
-                searchVolume: trend.searchVolume,
-                competitionLevel: trend.competitionLevel,
-                peakTimeFrame: trend.peakTimeFrame,
-                geographicDistribution: trend.geographicDistribution,
-                relatedQueries: trend.relatedQueries,
-                trendingScore: trend.trendingScore,
-                sourceUrls: trend.sourceUrls,
-                category: trend.category,
-                sentiment: trend.sentiment,
-                predictedLifespan: trend.predictedLifespan
-              };
-              
-              // If trend.id exists and is a valid ObjectId, it's an update.
-              if (trend.id && ObjectId.isValid(trend.id)) {
-                await trendsCollection.updateOne(
-                  { _id: new ObjectId(trend.id) },
-                  { $set: trendDocument },
-                  { upsert: true }
-                );
-                response.status(200).json({ id: trend.id });
-              } else {
-                const newTrendObjectId = new ObjectId();
-                const newTrendId = newTrendObjectId.toString();
-                const fullTrendDocument = {
-                    ...trendDocument,
-                    _id: newTrendObjectId,
-                    id: newTrendId
-                };
-                await trendsCollection.insertOne(fullTrendDocument);
-                response.status(200).json({ id: newTrendId });
-              }
-              
-              console.log('--- Trend saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-trend ---');
-              throw error;
-            }
-            break;
-    
-          case 'save-trends':
-            console.log('--- Received request for /api/mongodb/save-trends ---');
-            try {
-              const { trends, brandId } = request.body;
-              
-              const trendsCollection = db.collection('trends');
-              
-              // Prepare bulk operations
-              const bulkOperations = [];
-              const savedTrends = [];
-              
-              for (const trend of trends) {
-                // Prepare trend document with ALL fields including enhanced metadata
-                const trendDocument = {
-                  industry: trend.industry,
-                  topic: trend.topic,
-                  keywords: trend.keywords || [],
-                  links: trend.links || [],
-                  notes: trend.notes,
-                  analysis: trend.analysis,
-                  brandId: brandId,
-                  createdAt: trend.createdAt,
-                  updatedAt: new Date(),
-                  // Enhanced metadata fields
-                  searchVolume: trend.searchVolume,
-                  competitionLevel: trend.competitionLevel,
-                  peakTimeFrame: trend.peakTimeFrame,
-                  geographicDistribution: trend.geographicDistribution,
-                  relatedQueries: trend.relatedQueries,
-                  trendingScore: trend.trendingScore,
-                  sourceUrls: trend.sourceUrls,
-                  category: trend.category,
-                  sentiment: trend.sentiment,
-                  predictedLifespan: trend.predictedLifespan
-                };
-                
-                // If trend.id exists and is a valid ObjectId, it's an update.
-                if (trend.id && ObjectId.isValid(trend.id)) {
-                  bulkOperations.push({
-                    updateOne: {
-                      filter: { _id: new ObjectId(trend.id) },
-                      update: { $set: trendDocument },
-                      upsert: true
-                    }
-                  });
-                  savedTrends.push({ ...trendDocument, id: trend.id, _id: new ObjectId(trend.id) });
-                } else {
-                  const newTrendObjectId = new ObjectId();
-                  const newTrendId = newTrendObjectId.toString();
-                  const fullTrendDocument = {
-                      ...trendDocument,
-                      _id: newTrendObjectId,
-                      id: newTrendId
-                  };
-                  bulkOperations.push({
-                    insertOne: {
-                      document: fullTrendDocument
-                    }
-                  });
-                  savedTrends.push(fullTrendDocument);
-                }
-              }
-              
-              // Execute bulk operations
-              if (bulkOperations.length > 0) {
-                await trendsCollection.bulkWrite(bulkOperations);
-              }
-              
-              response.status(200).json({ trends: savedTrends });
-              console.log('--- Trends saved ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/save-trends ---');
-              throw error;
-            }
-            break;
-    
-          case 'sync-asset-media':
-                console.log('--- Received request for /api/mongodb/sync-asset-media ---');
-                try {
-                  const { brandId, assets } = request.body;
-                  
-                  const brand = await brandsCollection.findOne({ _id: new ObjectId(brandId) });
-                  if (!brand) {
-                    return response.status(404).json({ error: 'Brand not found' });
-                  }
-        
-                  const brandUpdates = {
-                    // Update the entire coreMediaAssets object. 
-                    // This is safe as the frontend sends the full, correct structure.
-                    'coreMediaAssets': assets.coreMediaAssets,
-                    'unifiedProfileAssets': assets.unifiedProfileAssets
-                  };
-                  
-                  await brandsCollection.updateOne(
-                    { _id: new ObjectId(brandId) },
-                    { $set: brandUpdates },
-                    { upsert: true }
-                  );
-                  
-                  response.status(200).json({ success: true });
-                  console.log('--- Asset media synced ---');
-                } catch (error) {
-                  console.error('--- CRASH in /api/mongodb/sync-asset-media ---');
-                  console.error('Error object:', error);
-                  // Provide a more informative error response
-                  response.status(500).json({ error: `Failed to sync asset media: ${error.message}` });
-                }
-                break;
-    
-          case 'update-media-plan-post':
-            console.log('--- Received request for /api/mongodb/update-media-plan-post ---');
-            try {
-              const { post, brandId, imageUrl, videoUrl, imageUrlsArray } = request.body;
-              
-              const postsCollection = db.collection('mediaPlanPosts');
-              
-              // Prepare post document with all possible fields from the client
-              const postDocument = {
-                title: post.title,
-                week: post.week,
-                theme: post.theme,
-                platform: post.platform,
-                contentType: post.contentType,
-                content: post.content,
-                description: post.description,
-                hashtags: post.hashtags || [],
-                cta: post.cta,
-                mediaPrompt: post.mediaPrompt,
-                script: post.script,
-                imageKey: post.imageKey,
-                imageKeys: post.imageKeys, // For carousel
-                imageUrl: imageUrl, // Comes from request body separately
-                videoKey: post.videoKey,
-                videoUrl: videoUrl, // Comes from request body separately
-                mediaOrder: post.mediaOrder || [],
-                sources: post.sources || [],
-                scheduledAt: post.scheduledAt,
-                publishedAt: post.publishedAt,
-                publishedUrl: post.publishedUrl,
-                autoComment: post.autoComment,
-                status: post.status,
-                pillar: post.pillar,
-                isPillar: post.isPillar,
-                brandId: brandId, // Comes from request body separately
-                mediaPlanId: post.mediaPlanId,
-                promotedProductIds: post.promotedProductIds || [],
-                postOrder: post.postOrder,
-                updatedAt: new Date()
-              };
-              
-              // Remove undefined fields to avoid overwriting existing data with null
-              Object.keys(postDocument).forEach(key => 
-                postDocument[key] === undefined && delete postDocument[key]
-              );
-              
-              // Handle carousel-specific imageUrlsArray update
-              // To prevent race conditions, we'll update individual array elements
-              let updateOperation = { $set: postDocument };
-              
-              if (imageUrlsArray && Array.isArray(imageUrlsArray)) {
-                // For carousel posts, update specific indices without affecting others
-                // This prevents race conditions where concurrent updates overwrite each other
-                const arrayUpdates = {};
-                imageUrlsArray.forEach((url, index) => {
-                  if (url !== undefined && url !== null) {
-                    // Update only the specific array element, preserving other elements
-                    arrayUpdates[`imageUrlsArray.${index}`] = url;
-                  }
-                });
-                
-                // Only set individual elements, not the entire array
-                // This avoids conflicts with MongoDB's update operation
-                updateOperation = {
-                  $set: {
-                    ...postDocument,
-                    ...arrayUpdates
-                  }
-                };
-              }
-              
-              // Update the post. Do NOT upsert. If the post doesn't exist, it's a client-side data issue.
-              const result = await postsCollection.updateOne(
-                createIdFilter(post.id),
-                updateOperation
-              );
-
-              if (result.matchedCount === 0) {
-                console.warn(`--- update-media-plan-post did not find a document to update for id: ${post.id} ---`);
-              }
-              
-              response.status(200).json({ success: true, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
-              console.log('--- Media plan post updated ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/update-media-plan-post ---');
-              throw error;
-            }
-            break;
-    
-          case 'check-product-exists':
-            console.log('--- Received request for /api/mongodb/check-product-exists ---');
-            try {
-              const { productId } = request.body;
-              
-              const affiliateProductsCollection = db.collection('affiliateProducts');
-              const productRecord = await affiliateProductsCollection.findOne({ productId: productId });
-              
-              response.status(200).json({ exists: !!productRecord });
-              console.log('--- Product existence check completed ---');
-            } catch (error) {
-              console.error('--- CRASH in /api/mongodb/check-product-exists ---');
-              throw error;
-            }
-            break;
-    
-          case 'load-ideas-for-trend':
-            console.log('--- Received request for /api/mongodb/load-ideas-for-trend ---');
-            try {
-                const { trendId, brandId } = request.body;
-    
-                if (!trendId || !brandId) {
-                    return response.status(400).json({ error: 'Missing trendId or brandId in request body' });
-                }
-                
-                // Fetch ideas data from MongoDB
-                const ideasCollection = db.collection('ideas');
-                const ideaRecords = await ideasCollection.find({ trendId: trendId }).toArray();
-                
-                // Transform MongoDB records to match the expected API response format
-                const ideas = ideaRecords.map((record) => ({
-                    id: record._id.toString(),
-                    trendId: record.trendId,
-                    title: record.title,
-                    description: record.description,
-                    targetAudience: record.targetAudience,
-                    productId: record.productId,
-                    ...record // Include any other fields that might be in the record
-                }));
-    
-                response.status(200).json({ ideas });
-                console.log('--- Ideas data sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-ideas-for-trend ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load ideas for trend: ${error.message}` });
-            }
-            break;
-    
-            case 'load-complete-project':
-                console.log('--- Received request for /api/mongodb/load-complete-project ---');
-                try {
-                  const { brandId } = request.body;
-                  
-                  const brandRecord = await brandsCollection.findOne({ _id: new ObjectId(brandId) });
-                  
-                  if (!brandRecord) {
-                    response.status(404).json({ error: `Brand with ID ${brandId} not found.` });
-                    return;
-                  }
-                  
-                  const [
-                    affiliateProductsRecords,
-                    personasRecords,
-                    trendsRecords,
-                    ideasRecords,
-                    mediaPlanGroupsRecords
-                  ] = await Promise.all([
-                    db.collection('affiliateProducts').find({ brandId: brandId }).toArray(),
-                    db.collection('personas').find({ brandId: brandId }).toArray(),
-                    db.collection('trends').find({ brandId: brandId }).toArray(),
-                    db.collection('ideas').find({ brandId: brandId }).toArray(),
-                    db.collection('mediaPlanGroups').find({ brandId: brandId }).toArray()
-                  ]);
-                  
-                  const affiliateLinks = affiliateProductsRecords.map(record => ({ /* ... */ }));
-                  const personas = personasRecords.map(record => ({ /* ... */ }));
-                  const trends = trendsRecords.map(record => ({ /* ... */ }));
-                  const ideas = ideasRecords.map(record => ({ /* ... */ }));
-                  const mediaPlans = mediaPlanGroupsRecords.map(record => ({ /* ... */ }));
-                  
-                  const assets = {
-                    brandFoundation: {
-                      brandName: brandRecord.name,
-                      mission: brandRecord.mission,
-                      values: brandRecord.values || [],
-                      targetAudience: brandRecord.targetAudience,
-                      personality: brandRecord.personality,
-                      keyMessaging: brandRecord.keyMessaging || [],
-                      usp: brandRecord.usp
-                    },
-                    coreMediaAssets: {
-                      // Read logo concepts from the consolidated location
-                      logoConcepts: brandRecord.coreMediaAssets?.logoConcepts || [],
-                      colorPalette: brandRecord.coreMediaAssets?.colorPalette || {},
-                      fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {}
-                    },
-                    unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
-                    mediaPlans: mediaPlans,
-                    affiliateLinks: affiliateLinks,
-                    personas: personas,
-                    trends: trends,
-                    ideas: ideas,
-                    settings: brandRecord.settings || {}
-                  };
-                  
-                  const generatedImages = {};
-                  const generatedVideos = {};
-                  
-                  response.status(200).json({
-                    assets,
-                    generatedImages,
-                    generatedVideos,
-                    brandId
-                  });
-                  console.log('--- Complete project loaded ---');
-                } catch (error) {
-                  console.error('--- CRASH in /api/mongodb/load-complete-project ---');
-                  throw error;
-                }
-                break;
-            
-            case 'initial-load':
-                console.log('--- Received request for /api/mongodb/initial-load ---');
-                try {
-                    const { brandId } = request.body;
-        
-                    if (!brandId) {
-                      return response.status(400).json({ error: 'Missing brandId in request body' });
-                    }
-                    
-                    const [brandRecord, affiliateLinksRecords] = await Promise.all([
-                        brandsCollection.findOne({ _id: new ObjectId(brandId) }),
-                        db.collection('affiliateProducts').find({ brandId: brandId }).toArray()
-                    ]);
-                    
-                    if (!brandRecord) {
-                      return response.status(404).json({ error: `Brand with ID ${brandId} not found.` });
-                    }
-
-                    const affiliateLinks = affiliateLinksRecords.map((record) => ({
-                        id: record._id.toString(),
-                        productId: record.productId,
-                        productName: record.productName,
-                        price: record.price,
-                        salesVolume: record.salesVolume,
-                        providerName: record.providerName,
-                        commissionRate: record.commissionRate,
-                        commissionValue: record.commissionValue,
-                        productLink: record.productLink,
-                        promotionLink: record.promotionLink,
-                        product_avatar: record.productAvatar,
-                        product_description: record.productDescription,
-                        features: record.features || [],
-                        use_cases: record.useCases || [],
-                        customer_reviews: record.customerReviews,
-                        product_rating: record.productRating,
-                        product_image_links: record.productImageLinks || [],
-                        ...record
-                    }));
-        
-                    const brandSummary = {
-                      id: brandRecord._id.toString(),
-                      name: brandRecord.name,
-                      logoUrl: brandRecord.logoUrl // This field might not exist anymore, but keep for compatibility if needed elsewhere
-                    };
-        
-                    const brandKitData = {
-                      brandFoundation: {
-                        brandName: brandRecord.name,
-                        mission: brandRecord.mission,
-                        values: brandRecord.values || [],
-                        targetAudience: brandRecord.targetAudience,
-                        personality: brandRecord.personality,
-                        keyMessaging: brandRecord.keyMessaging || [],
-                        usp: brandRecord.usp,
-                      },
-                      coreMediaAssets: {
-                        // Read logo concepts from the consolidated location
-                        logoConcepts: brandRecord.coreMediaAssets?.logoConcepts || [],
-                        colorPalette: brandRecord.coreMediaAssets?.colorPalette || {},
-                        fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {},
-                      },
-                      unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
-                      settings: brandRecord.settings || {}
-                    };
-
-                    response.status(200).json({
-                      brandSummary,
-                      brandKitData,
-                      affiliateLinks
-                    });
-                    console.log('--- Initial load data sent to client ---');
-        
-                } catch (error) {
-                    console.error('--- CRASH in /api/mongodb/initial-load ---');
-                    throw error;
-                }
-                break;
-        
-        case 'load-affiliate-vault':
-            console.log('--- Received request for /api/mongodb/load-affiliate-vault ---');
-            try {
-                const { brandId } = request.body;
-    
-                if (!brandId) {
-                    return response.status(400).json({ error: 'Missing brandId in request body' });
-                }
-                
-                // Fetch affiliate links data from MongoDB
-                const collection = db.collection('affiliateProducts');
-                const linkRecords = await collection.find({ brandId: brandId }).toArray();
-                
-                // Transform MongoDB records to match the expected API response format
-                const affiliateLinks = linkRecords.map((record) => ({
-                    id: record._id.toString(),
-                    productId: record.productId,
-                    productName: record.productName,
-                    price: record.price,
-                    salesVolume: record.salesVolume,
-                    providerName: record.providerName,
-                    commissionRate: record.commissionRate,
-                    commissionValue: record.commissionValue,
-                    productLink: record.productLink,
-                    promotionLink: record.promotionLink,
-                    product_avatar: record.productAvatar,
-                    product_description: record.productDescription,
-                    features: record.features || [],
-                    use_cases: record.useCases || [],
-                    customer_reviews: record.customerReviews,
-                    product_rating: record.productRating,
-                    product_image_links: record.productImageLinks || [],
-                    ...record // Include any other fields that might be in the record
-                }));
-    
-                response.status(200).json({ affiliateLinks });
-                console.log('--- Affiliate vault data sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-affiliate-vault ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load affiliate vault data: ${error.message}` });
-            }
-            break;
-    
-        
-    
-        case 'load-media-plan-posts-DEPRECATED':
-            console.log('--- Received request for /api/mongodb/load-media-plan-posts ---');
-            try {
-                const { planId } = request.body;
-    
-                if (!planId) {
-                    return response.status(400).json({ error: 'Missing planId in request body' });
-                }
-                
-                // Fetch posts for the specific media plan
-                const collection = db.collection('mediaPlanPosts');
-                const postRecords = await collection.find({ mediaPlanId: planId }).toArray();
-                
-                // Group posts by week and theme
-                const weeksMap = new Map();
-                
-                postRecords.forEach(record => {
-                    const weekNum = record.week || 1;
-                    const theme = record.theme || 'Untitled Week';
-                    
-                    if (!weeksMap.has(weekNum)) {
-                        weeksMap.set(weekNum, {
-                            week: weekNum,
-                            theme: theme,
-                            posts: []
-                        });
-                    }
-                    
-                    // Add post to the appropriate week
-                    weeksMap.get(weekNum).posts.push({
-                        id: record._id.toString(),
-                        platform: record.platform,
-                        contentType: record.contentType,
-                        title: record.title,
-                        content: record.content,
-                        description: record.description,
-                        hashtags: record.hashtags || [],
-                        cta: record.cta,
-                        mediaPrompt: record.mediaPrompt,
-                        script: record.script,
-                        imageKey: record.imageKey,
-                        videoKey: record.videoKey,
-                        mediaOrder: record.mediaOrder || [],
-                        sources: record.sources || [],
-                        promotedProductIds: record.promotedProductIds || [],
-                        scheduledAt: record.scheduledAt,
-                        publishedAt: record.publishedAt,
-                        publishedUrl: record.publishedUrl,
-                        autoComment: record.autoComment,
-                        status: record.status || 'draft',
-                        isPillar: record.isPillar,
-                        week: record.week,
-                        postOrder: record.postOrder
-                    });
-                });
-                
-                // Convert map to array and sort by week number
-                const plan = Array.from(weeksMap.values()).sort((a, b) => a.week - b.week);
-                
-                // Extract image and video URLs
-                const imageUrls = {};
-                const videoUrls = {};
-                
-                postRecords.forEach(record => {
-                    if (record.imageKey && record.imageUrl) {
-                        imageUrls[record.imageKey] = record.imageUrl;
-                    }
-                    if (record.videoKey && record.videoUrl) {
-                        videoUrls[record.videoKey] = record.videoUrl;
-                    }
-                });
-    
-                response.status(200).json({
-                    plan,
-                    imageUrls,
-                    videoUrls
-                });
-                console.log('--- Media plan posts sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-media-plan-posts ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load media plan posts: ${error.message}` });
-            }
-            break;
-    
-        case 'load-personas':
-            console.log('--- Received request for /api/mongodb/load-personas ---');
-            try {
-                const { brandId } = request.body;
-    
-                if (!brandId) {
-                    return response.status(400).json({ error: 'Missing brandId in request body' });
-                }
-                
-                // Fetch personas data from MongoDB
-                const collection = db.collection('personas');
-                const personaRecords = await collection.find({ brandId: brandId }).toArray();
-                
-                // Transform MongoDB records to match the expected API response format
-                // Convert _id to id and remove _id field
-                const personas = personaRecords.map((record) => ({
-                    ...record, // Spread all fields from the database record
-                    id: record._id.toString(), // Ensure 'id' is the string representation of '_id'
-                }));
-    
-                response.status(200).json({ personas });
-                console.log('--- Personas data sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-personas ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load personas data: ${error.message}` });
-            }
-            break;
-    
-        case 'load-strategy-hub':
-            console.log('--- Received request for /api/mongodb/load-strategy-hub ---');
-            try {
-                const { brandId } = request.body;
-    
-                if (!brandId) {
-                    return response.status(400).json({ error: 'Missing brandId in request body' });
-                }
-                
-                // Fetch trends data from MongoDB
-                const trendsCollection = db.collection('trends');
-                const trendRecords = await trendsCollection.find({ brandId: brandId }).toArray();
-                
-                // Transform MongoDB records to match the expected API response format
-                const trends = trendRecords.map((record) => ({
-                    id: record._id.toString(),
-                    brandId: record.brandId,
-                    industry: record.industry,
-                    topic: record.topic,
-                    keywords: record.keywords || [],
-                    links: record.links || [],
-                    notes: record.notes,
-                    analysis: record.analysis,
-                    createdAt: record.createdAt,
-                    ...record // Include any other fields that might be in the record
-                }));
-    
-                // Return only the trends
-                response.status(200).json({ trends });
-                console.log('--- Strategy hub data (trends only) sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-strategy-hub ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load strategy hub data: ${error.message}` });
-            }
-            break;
-    
-        case 'load-trend':
-            console.log('--- Received request for /api/mongodb/load-trend ---');
-            try {
-                const { trendId, brandId } = request.body;
-    
-                if (!trendId || !brandId) {
-                    return response.status(400).json({ error: 'Missing trendId or brandId in request body' });
-                }
-                
-                // Fetch trend data from MongoDB
-                const trendsCollection = db.collection('trends');
-                const trendRecord = await trendsCollection.findOne({ _id: new ObjectId(trendId), brandId: brandId });
-                
-                if (!trendRecord) {
-                    return response.status(404).json({ error: 'Trend not found' });
-                }
-                
-                // Transform MongoDB record to match the expected API response format
-                const trend = {
-                    id: trendRecord._id.toString(),
-                    brandId: trendRecord.brandId,
-                    industry: trendRecord.industry,
-                    topic: trendRecord.topic,
-                    keywords: trendRecord.keywords || [],
-                    links: trendRecord.links || [],
-                    notes: trendRecord.notes,
-                    analysis: trendRecord.analysis,
-                    createdAt: trendRecord.createdAt,
-                    ...trendRecord // Include any other fields that might be in the record
-                };
-    
-                response.status(200).json({ trend });
-                console.log('--- Trend data sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/load-trend ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load trend: ${error.message}` });
-            }
-            break;
-    
-        case 'load-media-plan-posts':
-            console.log('--- Received request for /api/mongodb/media-plan-posts ---');
-            try {
-                const { planId, page = 1, limit = 30 } = request.body;
-    
-                if (!planId) {
-                    return response.status(400).json({ error: 'Missing planId in request body' });
-                }
-    
-                // Calculate offset for pagination
-                const offset = (page - 1) * limit;
-                
-                // Fetch posts for the specific media plan with pagination
-                const collection = db.collection('mediaPlanPosts');
-                const allPostRecords = await collection.find({ mediaPlanId: planId }).toArray();
-                
-                // Sort posts by week and then by post order if available
-                allPostRecords.sort((a, b) => {
-                    const weekA = a.week || 0;
-                    const weekB = b.week || 0;
-                    if (weekA !== weekB) return weekA - weekB;
-                    
-                    // If week is the same, sort by post order or creation date
-                    const orderA = a.postOrder || new Date(a.createdTime || 0).getTime();
-                    const orderB = b.postOrder || new Date(b.createdTime || 0).getTime();
-                    return orderA - orderB;
-                });
-                
-                // Apply pagination
-                const paginatedPosts = allPostRecords.slice(offset, offset + limit);
-                
-                const posts = paginatedPosts.map((record) => ({
-                    id: record._id.toString(),
-                    platform: record.platform,
-                    contentType: record.contentType,
-                    title: record.title,
-                    content: record.content,
-                    description: record.description,
-                    hashtags: record.hashtags || [],
-                    cta: record.cta,
-                    mediaPrompt: record.mediaPrompt,
-                    script: record.script,
-                    imageKey: record.imageKey,
-                    videoKey: record.videoKey,
-                    mediaOrder: record.mediaOrder || [],
-                    sources: record.sources || [],
-                    promotedProductIds: record.promotedProductIds || [],
-                    scheduledAt: record.scheduledAt,
-                    publishedAt: record.publishedAt,
-                    publishedUrl: record.publishedUrl,
-                    autoComment: record.autoComment,
-                    status: record.status,
-                    isPillar: record.isPillar,
-                    week: record.week,
-                    postOrder: record.postOrder,
-                    ...record // Include any other fields that might be in the record
-                }));
-    
-                response.status(200).json({
-                    posts,
-                    pagination: {
-                        currentPage: page,
-                        totalPages: Math.ceil(allPostRecords.length / limit),
-                        totalPosts: allPostRecords.length,
-                        hasNextPage: offset + limit < allPostRecords.length,
-                        hasPrevPage: page > 1
-                    }
-                });
-                console.log('--- Media plan posts sent to client ---');
-    
-            } catch (error) {
-                console.error('--- CRASH in /api/mongodb/media-plan-posts ---');
-                console.error('Error object:', error);
-                response.status(500).json({ error: `Failed to load media plan posts: ${error.message}` });
-            }
-            break;
-    
-          default:
-            response.status(400).json({ error: `Unknown action: ${action}` });
-        }
-      } catch (error) {
-        console.error('--- CRASH in /api/mongodb/[action] ---');
-        console.error('Error object:', error);
-        response.status(500).json({ error: `Failed to process action ${action}: ${error.message}` });
-      }
+    // Unknown action
+    response.status(400).json({ error: `Unknown action: ${action}` });
+  } catch (error) {
+    console.error('--- CRASH in /api/mongodb/[action] ---');
+    console.error('Error object:', error);
+    response.status(500).json({ error: `Failed to process action ${action}: ${error.message}` });
+  }
 }
-
 
 export default allowCors(handler);

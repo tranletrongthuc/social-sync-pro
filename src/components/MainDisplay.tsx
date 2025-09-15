@@ -30,6 +30,7 @@ const ContentStrategyPage = React.lazy(() => import('./ContentStrategyPage'));
 interface MainDisplayProps {
   assets: GeneratedAssets;
   onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo) => void;
+  onGenerateAllCarouselImages: (postInfo: PostInfo) => Promise<void>;
   onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo) => void;
   generatedImages: Record<string, string>;
   generatedVideos: Record<string, string>;
@@ -150,6 +151,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   const {
     assets,
     onGenerateImage,
+    onGenerateAllCarouselImages,
     onSetImage,
     generatedImages,
     generatedVideos,
@@ -329,6 +331,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               affiliateLinks={assets.affiliateLinks || []}
               onOpenWizard={handleOpenWizard}
               onGenerateImage={onGenerateImage}
+              onGenerateAllCarouselImages={onGenerateAllCarouselImages}
               onSetImage={onSetImage}
               generatedImages={generatedImages}
               generatedVideos={generatedVideos}

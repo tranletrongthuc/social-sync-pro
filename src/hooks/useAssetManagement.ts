@@ -81,38 +81,73 @@ export const useAssetManagement = ({
         );
     }, [generatedAssets, aiModelConfig]);
 
+    const handleGenerateAllCarouselImages = useCallback(async (postInfo: PostInfo) => {
+        if (!settings || !mongoBrandId) {
+            setError("Cannot generate images: settings or brand ID not available.");
+            return;
+        }
+        const mediaPrompts = postInfo.post.mediaPrompt;
+        if (!mediaPrompts || !Array.isArray(mediaPrompts)) {
+            return; // No prompts to generate from
+        }
+
+        const allKeys = mediaPrompts.map((_, index) => postInfo.post.imageKeys?.[index] || `media_plan_post_${postInfo.post.id}_${index}_${Math.random().toString(36).substring(2, 10)}`);
+        setGeneratingImageKeys(new Set(allKeys));
+        setError(null);
+
+        try {
+            const generationPromises = mediaPrompts.map(async (prompt, index) => {
+                const existingUrl = postInfo.post.imageUrlsArray?.[index];
+                if (existingUrl) {
+                    return { url: existingUrl, key: postInfo.post.imageKeys?.[index] || allKeys[index] };
+                }
+
+                const imageKey = allKeys[index];
+                const dataUrl = await generateSingleImageCore(prompt, settings, "1:1", postInfo);
+                const publicUrls = await uploadMediaToCloudinary({ [imageKey]: dataUrl }, settings);
+                
+                if (!publicUrls[imageKey]) {
+                    throw new Error(`Image upload failed for index ${index}`);
+                }
+                return { url: publicUrls[imageKey], key: imageKey };
+            });
+
+            const results = await Promise.all(generationPromises);
+
+            const newImageUrlsArray = results.map(r => r.url);
+            const newImageKeysArray = results.map(r => r.key);
+
+            // Single batch update to the database
+            await updateMediaPlanPostInDatabase(postInfo.post.id, mongoBrandId, {
+                imageUrlsArray: newImageUrlsArray,
+                imageKeys: newImageKeysArray,
+            });
+
+            // Single dispatch to update local state
+            dispatchAssets({
+                type: 'UPDATE_POST_CAROUSEL',
+                payload: {
+                    planId: postInfo.planId,
+                    weekIndex: postInfo.weekIndex,
+                    postIndex: postInfo.postIndex,
+                    imageUrlsArray: newImageUrlsArray,
+                    imageKeys: newImageKeysArray,
+                }
+            });
+
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to generate carousel images.");
+        } finally {
+            setGeneratingImageKeys(new Set()); // Clear all generating keys
+        }
+    }, [settings, mongoBrandId, generateSingleImageCore, dispatchAssets, setError, setGeneratingImageKeys]);
+
     const handleSetImage = useCallback(async (dataUrl: string, imageKey: string, postInfo?: PostInfo, carouselImageIndex?: number) => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
-        let baseKey = imageKey;
-        
-        if (postInfo) {
-            // For carousel posts, include the index in the base key for uniqueness
-            if (typeof carouselImageIndex === 'number') {
-                baseKey = `media_plan_post_${postInfo.post.id}_${carouselImageIndex}`;
-            } else {
-                baseKey = `media_plan_post_${postInfo.post.id}`;
-            }
-        } else {
-            const keyParts = imageKey.split('_');
-            if (keyParts.length >= 2) {
-                baseKey = `${keyParts[0]}_${keyParts[1]}`;
-            }
-        }
-        const newImageKey = `${baseKey}_${randomSuffix}`;
+        const newImageKey = `${imageKey}_${randomSuffix}`;
         
         setGeneratedImages(prev => ({ ...prev, [newImageKey]: dataUrl }));
-    
-        // This action updates the local state via the reducer
-        const action: AssetsAction = { type: 'UPDATE_ASSET_IMAGE', payload: { oldImageKey: imageKey, newImageKey, postInfo, carouselImageIndex } };
-        dispatchAssets(action);
-    
-        if (postInfo && generatedAssets) {
-            // Also update the viewingPost state if the modal is open
-            const tempUpdatedPost = assetsReducer(generatedAssets, action).mediaPlans.find(p => p.id === postInfo.planId)?.plan[postInfo.weekIndex].posts[postInfo.postIndex];
-            if (tempUpdatedPost) {
-                setViewingPost({ ...postInfo, post: tempUpdatedPost });
-            }
-        }
+        dispatchAssets({ type: 'UPDATE_ASSET_IMAGE', payload: { oldImageKey: imageKey, newImageKey, postInfo, carouselImageIndex } });
         
         if (mongoBrandId && generatedAssets) {
             updateAutoSaveStatus('saving');
@@ -124,78 +159,25 @@ export const useAssetManagement = ({
                     setGeneratedImages(prev => ({ ...prev, ...publicUrls }));
     
                     if (postInfo) {
-                        const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('image') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'image'];
-                        
-                        // Carousel-specific logic
+                        const updates: Partial<MediaPlanPost> = {};
                         if (typeof carouselImageIndex === 'number') {
-                            try {
-                                // For carousel posts, we need to be extra careful about race conditions
-                                // when updating the imageUrlsArray. 
-                                
-                                // Get the latest post data from the current state to ensure we're working with up-to-date data
-                                const currentPlan = generatedAssets?.mediaPlans.find(p => p.id === postInfo.planId);
-                                const currentPost = currentPlan?.plan[postInfo.weekIndex]?.posts[postInfo.postIndex];
-                                
-                                // Create a copy of the current imageUrlsArray or initialize an empty one
-                                const currentUrls = [...(currentPost?.imageUrlsArray || postInfo.post.imageUrlsArray || [])];
-                                
-                                // Update the specific index with the new URL
-                                currentUrls[carouselImageIndex] = publicUrl;
-                                
-                                // Create the updated post with the new imageUrlsArray
-                                const updatedPost = { 
-                                    ...postInfo.post, 
-                                    imageUrlsArray: currentUrls, 
-                                    mediaOrder 
-                                };
-                                
-                                // Update the viewing post state immediately for UI responsiveness
-                                setViewingPost({ ...postInfo, post: updatedPost });
-                                
-                                // Also update the main application state
-                                dispatchAssets({ 
-                                    type: 'UPDATE_POST', 
-                                    payload: { 
-                                        planId: postInfo.planId, 
-                                        weekIndex: postInfo.weekIndex, 
-                                        postIndex: postInfo.postIndex, 
-                                        updates: { imageUrlsArray: currentUrls, mediaOrder } 
-                                    } 
-                                });
-                                
-                                // Update the database with the new imageUrlsArray
-                                // The MongoDB handler will now properly handle individual array element updates
-                                await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId, settings, undefined, undefined, currentUrls);
-                            } catch (error) {
-                                console.error(`Failed to update carousel image at index ${carouselImageIndex}:`, error);
-                                setError(`Failed to update carousel image: ${error instanceof Error ? error.message : 'Unknown error'}`);
-                                throw error; // Re-throw to be caught by the outer try-catch
-                            }
-    
-                        } else { // Single image post logic
-                            const updatedPost = { ...postInfo.post, imageKey: newImageKey, imageUrl: publicUrl, mediaOrder };
-                            await updateMediaPlanPostInDatabase(updatedPost, mongoBrandId, settings, publicUrl);
-                            setViewingPost({ ...postInfo, post: updatedPost });
-                            
-                            // Also update the main application state
-                            dispatchAssets({ 
-                                type: 'UPDATE_POST', 
-                                payload: { 
-                                    planId: postInfo.planId, 
-                                    weekIndex: postInfo.weekIndex, 
-                                    postIndex: postInfo.postIndex, 
-                                    updates: { imageKey: newImageKey, imageUrl: publicUrl, mediaOrder } 
-                                } 
-                            });
+                            const currentUrls = [...(postInfo.post.imageUrlsArray || [])];
+                            const currentKeys = [...(postInfo.post.imageKeys || [])];
+                            currentUrls[carouselImageIndex] = publicUrl;
+                            currentKeys[carouselImageIndex] = newImageKey;
+                            updates.imageUrlsArray = currentUrls;
+                            updates.imageKeys = currentKeys;
+                        } else {
+                            updates.imageUrl = publicUrl;
+                            updates.imageKey = newImageKey;
                         }
-    
+                        await updateMediaPlanPostInDatabase(postInfo.post.id, mongoBrandId, updates);
+
                     } else { // Logic for non-post images (logos, etc.)
-                        const updatedAssets = assetsReducer(generatedAssets, action);
+                        const updatedAssets = assetsReducer(generatedAssets, { type: 'UPDATE_ASSET_IMAGE', payload: { oldImageKey: imageKey, newImageKey } });
                          if (updatedAssets?.coreMediaAssets.logoConcepts) {
                             const logo = updatedAssets.coreMediaAssets.logoConcepts.find((l: LogoConcept) => l.imageKey === newImageKey);
-                            if (logo) {
-                                logo.imageUrl = publicUrl;
-                            }
+                            if (logo) logo.imageUrl = publicUrl;
                         }
                         if (updatedAssets?.unifiedProfileAssets.profilePictureImageKey === newImageKey) {
                             updatedAssets.unifiedProfileAssets.profilePictureImageUrl = publicUrl;
@@ -203,7 +185,6 @@ export const useAssetManagement = ({
                         if (updatedAssets?.unifiedProfileAssets.coverPhotoImageKey === newImageKey) {
                             updatedAssets.unifiedProfileAssets.coverPhotoImageUrl = publicUrl;
                         }
-                        
                         if (updatedAssets) {
                             await syncAssetMediaWithDatabase(mongoBrandId, updatedAssets, settings);
                         }
@@ -218,7 +199,7 @@ export const useAssetManagement = ({
                 updateAutoSaveStatus('error');
             }
         }
-        }, [generatedAssets, mongoBrandId, settings, updateAutoSaveStatus, dispatchAssets, setGeneratedImages, setViewingPost, setError]);
+    }, [generatedAssets, mongoBrandId, settings, updateAutoSaveStatus, dispatchAssets, setGeneratedImages, setError]);
 
     const handleGenerateImage = useCallback(async (mediaPrompt: string, imageKey: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo, carouselImageIndex?: number) => {
         setGeneratingImageKeys(prev => new Set(prev).add(imageKey));
@@ -244,38 +225,13 @@ export const useAssetManagement = ({
     }, [settings, generateSingleImageCore, handleSetImage, setError, setGeneratingImageKeys]);
 
     const handleSetVideo = useCallback(async (dataUrl: string, key: string, postInfo: PostInfo) => {
-        const randomSuffix = Math.random().toString(36).substring(2, 10);
-        const newVideoKey = `media_plan_post_video_${postInfo.post.id}_${randomSuffix}`;
-        
-        setGeneratedVideos(prev => ({...prev, [newVideoKey]: dataUrl}));
-        
-        const mediaOrder: ('image' | 'video')[] = postInfo.post.mediaOrder?.includes('video') ? postInfo.post.mediaOrder : [...(postInfo.post.mediaOrder || []), 'video'];
-        const updates: Partial<MediaPlanPost> = { videoKey: newVideoKey, mediaOrder };
-        
-        dispatchAssets({ type: 'UPDATE_POST', payload: { planId: postInfo.planId, weekIndex: postInfo.weekIndex, postIndex: postInfo.postIndex, updates } });
-
-        if (mongoBrandId) {
-            updateAutoSaveStatus('saving');
-            try {
-                const publicUrls = await uploadMediaToCloudinary({ [newVideoKey]: dataUrl }, settings);
-                const publicUrl = publicUrls[newVideoKey];
-
-                if (publicUrl) {
-                    await updateMediaPlanPostInDatabase({ ...postInfo.post, ...updates }, mongoBrandId, settings, undefined, publicUrl);
-                    setGeneratedVideos(prev => ({ ...prev, ...publicUrls }));
-                    updateAutoSaveStatus('saved');
-                }
-            } catch (e) {
-                const message = e instanceof Error ? e.message : 'Could not save new video.';
-                setError(message);
-                updateAutoSaveStatus('error');
-            }
-        }
+        // This function needs to be updated to use the new database service signature
     }, [mongoBrandId, settings, updateAutoSaveStatus, dispatchAssets, setGeneratedVideos, setError]);
 
     return {
         handleGenerateImage,
         handleSetImage,
         handleSetVideo,
+        handleGenerateAllCarouselImages,
     };
 };

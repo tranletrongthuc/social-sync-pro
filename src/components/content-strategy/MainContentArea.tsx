@@ -79,6 +79,7 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
     }
   };
   const texts = (T as any)[language] || T['English'];
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const handleDeleteTrend = (trendId: string) => {
     if(window.confirm(texts.confirmDelete)) {
@@ -98,7 +99,6 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
   }
 
   const isProductTrend = selectedTrend.id.startsWith('product-');
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   return (
     <main className="flex-1 flex flex-col min-h-0">

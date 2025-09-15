@@ -149,14 +149,13 @@ const VideoPostHandler: React.FC<PostDetailModalProps> = (props) => {
 };
 
 const CarouselPostHandler: React.FC<PostDetailModalProps> = (props) => {
-    const { postInfo, onGenerateImage, generatedImages, isGeneratingImage, settings, onSetImage } = props;
+    const { postInfo, onGenerateImage, generatedImages, isGeneratingImage, settings, onSetImage, onGenerateAllCarouselImages } = props;
     const texts = getLocaleTexts(settings.language);
     const mediaPrompts = Array.isArray(postInfo.post.mediaPrompt) ? postInfo.post.mediaPrompt : [];
     const imageKeys = postInfo.post.imageKeys || [];
     const [isGeneratingAll, setIsGeneratingAll] = useState(false);
     const [newlyGeneratedImages, setNewlyGeneratedImages] = useState<Record<string, string>>({});
 
-    // Update newlyGeneratedImages when generatedImages change
     useEffect(() => {
         setNewlyGeneratedImages(generatedImages);
     }, [generatedImages]);
@@ -181,60 +180,42 @@ const CarouselPostHandler: React.FC<PostDetailModalProps> = (props) => {
         }
     };
 
-    const handleGenerateAll = useCallback(async () => {
+    const handleGenerateAll = async () => {
         setIsGeneratingAll(true);
-        
-        // Generate images sequentially to avoid race conditions
-        for (let index = 0; index < mediaPrompts.length; index++) {
-            const prompt = mediaPrompts[index];
-            // Generate a unique image key for each carousel image
-            const imageKey = `media_plan_post_${postInfo.post.id}_${index}_${Math.random().toString(36).substring(2, 10)}`;
-            
-            try {
-                // Wait for each image to be generated before moving to the next
-                await onGenerateImage(prompt, imageKey, undefined, postInfo, index);
-            } catch (error) {
-                console.error(`Failed to generate image ${index}:`, error);
-                // Continue with other images even if one fails
-            }
+        try {
+            await onGenerateAllCarouselImages(postInfo);
+        } catch (error) {
+            console.error("Error during handleGenerateAll in modal:", error);
+        } finally {
+            setIsGeneratingAll(false);
         }
-        
-        setIsGeneratingAll(false);
-    }, [mediaPrompts, onGenerateImage, postInfo]);
+    };
 
-    // Calculate the current image URLs for the carousel
     const carouselImageUrls = useMemo(() => {
         const urls = [...(postInfo.post.imageUrlsArray || [])];
-        
-        // Update with any newly generated images
         mediaPrompts.forEach((_, index) => {
-            const imageKey = imageKeys[index];
+            const imageKey = imageKeys[index] || `media_plan_post_${postInfo.post.id}_${index}`;
             if (imageKey && newlyGeneratedImages[imageKey]) {
                 urls[index] = newlyGeneratedImages[imageKey];
             }
         });
-        
-        return urls.filter(url => url); // Remove any falsy values
+        return urls.filter(url => url);
     }, [postInfo.post.imageUrlsArray, imageKeys, newlyGeneratedImages, mediaPrompts]);
 
     return (
         <div className="bg-white border border-gray-200 p-4 rounded-lg flex flex-col">
             <h5 className="font-semibold font-sans text-gray-700 text-sm mb-2">{texts.carouselPrompts}</h5>
             
-            {/* Carousel Section */}
             <div className="mb-4">
                 <Carousel images={carouselImageUrls} className="rounded-lg" />
             </div>
             
-            {/* Prompts Section */}
             <div className="space-y-3 mb-4 overflow-y-auto pr-2 flex-grow">
                 {mediaPrompts.map((prompt, index) => {
-                    // Ensure we have a proper image key for each prompt
-                    const imageKey = imageKeys[index] || `media_plan_post_${postInfo.post.id}_${index}_${Math.random().toString(36).substring(2, 10)}`;
+                    const imageKey = imageKeys[index] || `media_plan_post_${postInfo.post.id}_${index}`;
                     const generatedImage = newlyGeneratedImages[imageKey] || (postInfo.post.imageUrlsArray?.[index]);
                     return (
                         <div key={index} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                            {/* Paste Area */}
                             <div 
                                 onPaste={(e) => handlePaste(e, imageKey, index)}
                                 className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-center p-3 hover:bg-gray-100 cursor-pointer transition-colors mb-2"
@@ -243,13 +224,11 @@ const CarouselPostHandler: React.FC<PostDetailModalProps> = (props) => {
                                 <p className="ml-2 text-sm text-gray-500">{texts.pasteInstructions || 'Dán ảnh vào đây'}</p>
                             </div>
 
-                            {/* Prompt Display */}
                             <div className="text-gray-700 text-sm font-mono bg-white p-2 rounded border border-gray-200 whitespace-pre-wrap break-words">
                                 <span className="font-semibold">{index + 1}: </span>
                                 {prompt}
                             </div>
                             
-                            {/* Generate Button */}
                             <Button 
                                 variant="secondary"
                                 onClick={() => onGenerateImage(prompt, imageKey, undefined, postInfo, index)}
@@ -270,7 +249,6 @@ const CarouselPostHandler: React.FC<PostDetailModalProps> = (props) => {
                 })}
             </div>
             
-            {/* Generate All Button */}
             <Button 
                 onClick={handleGenerateAll} 
                 disabled={isGeneratingAll}
@@ -302,6 +280,7 @@ interface PostDetailModalProps {
   weekTheme?: string;
   onUpdatePost: (postInfo: PostInfo) => void;
   onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo, carouselImageIndex?: number) => void;
+  onGenerateAllCarouselImages: (postInfo: PostInfo) => Promise<void>;
   onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo, carouselImageIndex?: number) => void;
   onSetVideo: (dataUrl: string, key: string, postInfo: PostInfo) => void;
   onGeneratePrompt: (postInfo: PostInfo) => void;
@@ -508,20 +487,20 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
 
         switch (contentType) {
             case 'Carousel':
-                return <CarouselPostHandler {...props} />;
+                return <CarouselPostHandler {...props} />; 
             case 'Image':
-                return <ImagePostHandler {...props} />;
+                return <ImagePostHandler {...props} />; 
             case 'Video':
             case 'Reel':
             case 'Shorts':
             case 'Story':
-                return <VideoPostHandler {...props} />;
+                return <VideoPostHandler {...props} />; 
             default:
                 if (editedPost.mediaPrompt && Array.isArray(editedPost.mediaPrompt) && editedPost.mediaPrompt.length > 0) {
                     console.warn(`No specific media handler for contentType: "${contentType}", falling back to ImagePostHandler due to presence of mediaPrompt.`);
-                    return <ImagePostHandler {...props} />;
+                    return <ImagePostHandler {...props} />; 
                 }
-                return <TextPostHandler {...props} />;
+                return <TextPostHandler {...props} />; 
         }
     };
 

@@ -224,14 +224,11 @@ const assignPersonaToPlanInDatabase = async (
 };
 
 const updateMediaPlanPostInDatabase = async (
-  post: MediaPlanPost,
+  postId: string,
   brandId: string,
-  settings: Settings,
-  imageUrl?: string,
-  videoUrl?: string,
-  imageUrlsArray?: string[]
+  updates: Partial<MediaPlanPost>
 ): Promise<void> => {
-  await callDatabaseService('update-media-plan-post', { post, brandId, settings, imageUrl, videoUrl, imageUrlsArray }, { invalidatesCacheForBrand: brandId });
+  await callDatabaseService('update-media-plan-post', { post: { id: postId, ...updates }, brandId }, { invalidatesCacheForBrand: brandId });
 };
 
 const saveMediaPlanGroupToDatabase = async (

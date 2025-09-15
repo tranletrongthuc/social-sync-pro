@@ -51,7 +51,7 @@ export const useSchedulingManagement = ({
         const updates = { scheduledAt, status: 'scheduled' as PostStatus };
         dispatchAssets({ type: 'UPDATE_POST', payload: { ...postInfo, updates } });
         if (mongoBrandId) {
-            updateMediaPlanPostInDatabase({ ...postInfo.post, ...updates }, mongoBrandId, settings)
+            updateMediaPlanPostInDatabase(postInfo.post.id, mongoBrandId, updates)
                 .then(() => updateAutoSaveStatus('saved'))
                 .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
         }

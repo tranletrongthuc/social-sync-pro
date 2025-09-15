@@ -43,6 +43,7 @@ interface MediaPlanDisplayProps {
   affiliateLinks: AffiliateLink[];
   onOpenWizard: (prompt?: string) => void;
   onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo) => void;
+  onGenerateAllCarouselImages: (postInfo: PostInfo) => Promise<void>;
   onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo) => void;
   generatedImages: Record<string, string>;
   generatedVideos: Record<string, string>;
@@ -101,6 +102,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     affiliateLinks,
     onOpenWizard, 
     onGenerateImage, 
+    onGenerateAllCarouselImages,
     onSetImage, 
     generatedImages, 
     generatedVideos, 
@@ -875,6 +877,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
                onUpdatePost(updatedInfo);
                setViewingPost(updatedInfo);
              }}
+             onGenerateAllCarouselImages={onGenerateAllCarouselImages}
              onAcceptSuggestion={(productId) => {
                if(viewingPost) {
                  const updatedPost = {

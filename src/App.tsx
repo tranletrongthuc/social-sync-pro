@@ -149,7 +149,7 @@ const App: React.FC = () => {
         setGeneratedImages, setError, setLoaderContent, ensureMongoProject, generatedAssets, setSuccessMessage
     });
 
-    const assetManager = useAssetManagement({
+    const { handleGenerateImage, handleSetImage, handleSetVideo, handleGenerateAllCarouselImages } = useAssetManagement({
         mongoBrandId, generatedAssets, settings, aiModelConfig, dispatchAssets, setGeneratedImages, setGeneratedVideos,
         setGeneratingImageKeys, updateAutoSaveStatus, setError, setViewingPost
     });
@@ -423,9 +423,10 @@ const App: React.FC = () => {
                             onSaveProject={projectIO.handleSaveProjectToFile}
                             isSavingProject={false}
                             onSelectPlan={projectIO.handleSelectPlan}
-                            onGenerateImage={assetManager.handleGenerateImage}
-                            onSetImage={assetManager.handleSetImage}
-                            onSetVideo={assetManager.handleSetVideo}
+                            onGenerateImage={handleGenerateImage}
+                            onSetImage={handleSetImage}
+                            onSetVideo={handleSetVideo}
+                            onGenerateAllCarouselImages={handleGenerateAllCarouselImages}
                             onSavePersona={personaManager.handleSavePersona}
                             onDeletePersona={personaManager.handleDeletePersona}
                             onUpdatePersona={personaManager.handleUpdatePersona}

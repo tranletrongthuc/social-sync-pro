@@ -20,6 +20,7 @@ export type AssetsAction =
   | { type: 'UPDATE_BRAND_KIT'; payload: Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> }
   | { type: 'ADD_MEDIA_PLAN'; payload: MediaPlanGroup }
   | { type: 'UPDATE_POST'; payload: { planId: string; weekIndex: number; postIndex: number; updates: Partial<MediaPlanPost> } }
+  | { type: 'UPDATE_POST_CAROUSEL'; payload: { planId: string; weekIndex: number; postIndex: number; imageUrlsArray: string[]; imageKeys: string[] } }
   | { type: 'UPDATE_PLAN'; payload: { planId: string; plan: MediaPlan } }
   | { type: 'UPDATE_ASSET_IMAGE'; payload: { oldImageKey: string; newImageKey: string; postInfo?: PostInfo; carouselImageIndex?: number } }
   | { type: 'ADD_OR_UPDATE_AFFILIATE_LINK'; payload: AffiliateLink }
@@ -118,6 +119,21 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
                 const postToUpdate = newState.mediaPlans[planIndex].plan[weekIndex]?.posts[postIndex];
                 if (postToUpdate) {
                     newState.mediaPlans[planIndex].plan[weekIndex].posts[postIndex] = { ...postToUpdate, ...updates };
+                }
+            }
+            return newState;
+        }
+
+        case 'UPDATE_POST_CAROUSEL': {
+            const { planId, weekIndex, postIndex, imageUrlsArray, imageKeys } = action.payload;
+            const newState = JSON.parse(JSON.stringify(state));
+            const planIndex = newState.mediaPlans.findIndex((p: MediaPlanGroup) => p.id === planId);
+            
+            if (planIndex !== -1) {
+                const postToUpdate = newState.mediaPlans[planIndex].plan[weekIndex]?.posts[postIndex];
+                if (postToUpdate) {
+                    postToUpdate.imageUrlsArray = imageUrlsArray;
+                    postToUpdate.imageKeys = imageKeys;
                 }
             }
             return newState;
