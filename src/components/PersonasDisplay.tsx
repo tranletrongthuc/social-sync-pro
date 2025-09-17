@@ -43,7 +43,7 @@ const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: ()
                 <p className="text-sm text-gray-700 line-clamp-3">{persona.backstory || persona.background}</p>
             </div>
             <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                {(persona.personalityTraits || []).slice(0, 3).map(trait => (
+                {(persona.voice?.personalityTraits || []).slice(0, 3).map(trait => (
                     <span key={trait} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{trait}</span>
                 ))}
                 {(persona.interestsAndHobbies || []).slice(0, 3).map(interest => (
@@ -126,14 +126,21 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
             brandId: '', // Will be populated on save
             demographics: { age: 30, gender: 'Non-binary', location: '', occupation: '', incomeLevel: '' },
             backstory: '',
-            personalityTraits: [],
             goalsAndMotivations: [],
             painPoints: [],
-            communicationStyle: { tone: '', voice: '', preferredChannels: [] },
             interestsAndHobbies: [],
             knowledgeBase: [],
             brandRelationship: { awareness: '', perception: '', engagement: '' },
             photos: [],
+            voice: {
+                personalityTraits: [],
+                linguisticRules: [],
+                communicationStyle: {
+                    tone: '',
+                    voice: '',
+                    preferredChannels: []
+                }
+            },
             // Setting other optional fields to undefined for clarity
             imageKey: undefined,
             imageUrl: undefined,
@@ -141,7 +148,6 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
             avatarImageUrl: undefined,
             mainStyle: undefined,
             activityField: undefined,
-            voice: undefined,
             contentTone: undefined,
             visualCharacteristics: undefined,
             coreCharacteristics: undefined,

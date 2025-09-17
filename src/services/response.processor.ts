@@ -490,11 +490,21 @@ export const processIdeasFromProductResponse = (jsonText: string, product: Affil
 };
 
 export const processAutoGeneratePersonaResponse = (jsonText: string): Partial<Persona>[] => {
-    const personaData = sanitizeAndParseJson(jsonText);
-    if (!personaData || !Array.isArray(personaData)) {
+    const parsedData = sanitizeAndParseJson(jsonText);
+
+    let personasArray: any;
+
+    // The AI might return { "Personas": [...] } or just [...]
+    if (Array.isArray(parsedData)) {
+        personasArray = parsedData;
+    } else if (parsedData && typeof parsedData === 'object' && Array.isArray(parsedData.Personas)) {
+        personasArray = parsedData.Personas;
+    }
+
+    if (!personasArray || !Array.isArray(personasArray)) {
         throw new Error("Received invalid or empty array response from AI when generating persona profiles.");
     }
-    return personaData as Partial<Persona>[];
+    return personasArray as Partial<Persona>[];
 };
 
 export const processSuggestTrendsResponse = (jsonText: string): Omit<Trend, 'id' | 'brandId'>[] => {

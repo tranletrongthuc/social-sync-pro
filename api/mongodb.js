@@ -364,25 +364,9 @@ const handlers = {
 
   'save-persona': createHandler('save-persona', async ({ persona, brandId }) => {
     const { db } = await getClientAndDb();
-    const personaDocument = {
-      nickName: persona.nickName,
-      demographics: persona.demographics || { age: 0, location: '', occupation: '' },
-      backstory: persona.backstory || '',
-      voice: persona.voice || { personalityTraits: [], communicationStyle: { formality: 50, energy: 50 }, linguisticRules: [] },
-      knowledgeBase: persona.knowledgeBase || [],
-      brandRelationship: persona.brandRelationship || { originStory: '', coreAffinity: '', productUsage: '' },
-      visualCharacteristics: persona.visualCharacteristics || '',
-      outfitDescription: persona.outfitDescription || '',
-      mainStyle: persona.mainStyle || '',
-      activityField: persona.activityField || '',
-      avatarImageKey: persona.avatarImageKey,
-      avatarImageUrl: persona.avatarImageUrl,
-      photos: persona.photos || [],
-      socialAccounts: persona.socialAccounts || [],
-      gender: persona.gender
-    };
-    
-    const id = await saveEntityTemplate(db, 'personas', { ...personaDocument, id: persona.id }, brandId);
+    // Directly use the incoming persona object as the entity to save/update.
+    // saveEntityTemplate will handle adding/updating _id, id, createdAt, updatedAt.
+    const id = await saveEntityTemplate(db, 'personas', persona, brandId);
     return { id };
   }),
 

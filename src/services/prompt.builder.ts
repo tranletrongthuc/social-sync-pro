@@ -120,7 +120,7 @@ function buildPersonaComponent(persona: Persona): string {
     let result = "Persona Profile to Embody:\n";
     result += "- Nickname: " + persona.nickName + "\n";
     result += "- Background: " + persona.background + "\n";
-    result += "- Voice & Style: " + (persona.communicationStyle?.voice || '');
+    result += "- Voice & Style: " + (persona.voice?.communicationStyle?.voice || '');
     return result;
 }
 
@@ -278,29 +278,39 @@ export const PERSONAS_JSON_STRUCTURE = [
     {
         nickName: "string",
         fullName: "string",
-        background: "string",
-        outfitDescription: "string",
+        background: "Detailed origin story and background of the persona.",
+        backstory: "Key life events and experiences that shaped the persona.",
+        outfitDescription: "Detailed description of their typical clothing and style.",
+        visualCharacteristics: "Detailed description of their physical appearance, mannerisms, and overall visual presence.",
+        mainStyle: "The primary aesthetic or style they embody (e.g., 'Minimalist', 'Bohemian', 'Techwear').",
+        activityField: "The main industry or field of activity they are involved in (e.g., 'Technology', 'Fashion', 'Music').",
         demographics: {
             age: 0,
-            gender: "string",
+            gender: "'Male' | 'Female' | 'Non-binary'",
             location: "string",
             occupation: "string",
             incomeLevel: "string"
         },
-        personalityTraits: ["string"],
+        voice: {
+            personalityTraits: ["string"],
+            linguisticRules: ["Specific rules for how the persona communicates, e.g., 'Avoids slang', 'Uses emojis frequently'"],
+            communicationStyle: {
+                tone: "string",
+                voice: "string",
+                preferredChannels: ["string"]
+            }
+        },
         goalsAndMotivations: ["string"],
         painPoints: ["string"],
-        communicationStyle: {
-            tone: "string",
-            voice: "string",
-            preferredChannels: ["string"]
-        },
+        contentTone: "The specific tone to be used when creating content as this persona.",
+        coreCharacteristics: "The most fundamental and defining characteristics of the persona.",
+        keyMessages: "The key messages or themes this persona should consistently communicate.",
         interestsAndHobbies: ["string"],
         knowledgeBase: ["string"],
         brandRelationship: {
-            awareness: "string",
-            perception: "string",
-            engagement: "string"
+            awareness: "How the persona became aware of the brand.",
+            perception: "What the persona thinks and feels about the brand.",
+            engagement: "How the persona interacts with the brand."
         }
     }
 ];
@@ -713,7 +723,8 @@ export function buildAutoGeneratePersonaPrompt(params: {
     const { mission, usp, settings } = params;
     
     const prompt = new PromptBuilder()
-        .addInstruction(`You are an expert persona specialist. Your task is to create diverse brand personas based on the provided brand information.`)
+        .addInstruction(`You are an expert persona specialist. Your task is to create exactly 3 diverse brand personas based on the provided brand information.`)
+        .addInstruction(`You MUST generate exactly 3 diverse personas.`)
         .addInstruction(`Brand Mission: ${mission}`)
         .addInstruction(`Brand USP: ${usp}`)
         .addJsonOutput("Personas", PERSONAS_JSON_STRUCTURE)

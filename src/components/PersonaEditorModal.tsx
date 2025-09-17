@@ -59,9 +59,9 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
       personalityTraits: 'Nét tính cách',
       linguisticRules: 'Quy tắc ngôn ngữ',
       knowledgeBase: 'Cơ sở kiến thức (Sở thích, Mối quan tâm)',
-      originStory: 'Câu chuyện nguồn gốc',
-      coreAffinity: 'Sự tương đồng cốt lõi',
-      productUsage: 'Cách sử dụng sản phẩm',
+      awareness: 'Mức độ nhận biết',
+      perception: 'Nhận thức',
+      engagement: 'Sự tương tác',
     },
     'English': {
       title: 'Edit Persona',
@@ -80,9 +80,9 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
       personalityTraits: 'Personality Traits',
       linguisticRules: 'Linguistic Rules',
       knowledgeBase: 'Knowledge Base (Hobbies, Interests)',
-      originStory: 'Origin Story',
-      coreAffinity: 'Core Affinity',
-      productUsage: 'Product Usage',
+      awareness: 'Awareness',
+      perception: 'Perception',
+      engagement: 'Engagement',
     }
   };
   const texts = (T as any)[language] || T['English'];
@@ -147,9 +147,9 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
       case 'brand':
         return (
             <div>
-                <TextAreaField label={texts.originStory} name="brandRelationship.originStory" value={editedPersona.brandRelationship?.originStory || ''} onChange={handleChange} rows={3} />
-                <TextAreaField label={texts.coreAffinity} name="brandRelationship.coreAffinity" value={editedPersona.brandRelationship?.coreAffinity || ''} onChange={handleChange} rows={3} />
-                <TextAreaField label={texts.productUsage} name="brandRelationship.productUsage" value={editedPersona.brandRelationship?.productUsage || ''} onChange={handleChange} rows={3} />
+                <TextAreaField label={texts.awareness} name="brandRelationship.awareness" value={editedPersona.brandRelationship?.awareness || ''} onChange={handleChange} rows={3} />
+                <TextAreaField label={texts.perception} name="brandRelationship.perception" value={editedPersona.brandRelationship?.perception || ''} onChange={handleChange} rows={3} />
+                <TextAreaField label={texts.engagement} name="brandRelationship.engagement" value={editedPersona.brandRelationship?.engagement || ''} onChange={handleChange} rows={3} />
             </div>
         );
       default:

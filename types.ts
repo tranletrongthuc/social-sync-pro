@@ -156,8 +156,6 @@ export type Persona = {
     photos?: PersonaPhoto[];
     mainStyle?: string;
     activityField?: string;
-    voice?: any;
-    // New detailed fields
     demographics?: {
         age: number;
         gender: 'Male' | 'Female' | 'Non-binary';
@@ -166,14 +164,17 @@ export type Persona = {
         incomeLevel: string;
     };
     backstory?: string;
-    personalityTraits?: string[];
+    voice?: {
+        personalityTraits?: string[];
+        linguisticRules?: string[];
+        communicationStyle?: {
+            tone: string;
+            voice: string;
+            preferredChannels: string[];
+        };
+    };
     goalsAndMotivations?: string[];
     painPoints?: string[];
-    communicationStyle?: {
-        tone: string;
-        voice: string;
-        preferredChannels: string[];
-    };
     interestsAndHobbies?: string[];
     knowledgeBase?: string[];
     brandRelationship?: {
