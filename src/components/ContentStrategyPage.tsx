@@ -1,7 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Trend, Idea, Settings, Persona, AffiliateLink } from '../../types';
 import NavigationSidebar from './content-strategy/NavigationSidebar';
 import MainContentArea from './content-strategy/MainContentArea';
+import StandardPageView from './StandardPageView';
+import { LightBulbIcon, SparklesIcon } from './icons';
+import { Button } from './ui';
 
 interface ContentStrategyPageProps {
   language: string;
@@ -25,7 +28,7 @@ interface ContentStrategyPageProps {
   onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
   isSuggestingTrends: boolean;
   isDataLoaded?: boolean;
-  onLoadData?: () => void;
+  onLoadData?: () => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -56,6 +59,9 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
     isLoading
   } = props;
 
+  const [trendType, setTrendType] = useState<'industry' | 'global'>('industry');
+  const [timePeriod, setTimePeriod] = useState('Last Month');
+  
   // State for mobile sidebar
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -71,8 +77,106 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
     );
   }, [trends, searchQuery]);
 
+  const handleSuggestTrends = () => {
+    onSuggestTrends(trendType, timePeriod);
+  };
+
+  // Load data when component mounts if not already loaded
+  useEffect(() => {
+    if (!isDataLoaded && onLoadData) {
+      onLoadData();
+    }
+  }, [isDataLoaded, onLoadData]);
+
+  const T = {
+    'Việt Nam': {
+      autoSuggestTitle: "Gợi ý Xu hướng Tự động",
+      trendType: "Loại Xu hướng",
+      industrySpecific: "Theo Ngành",
+      globalHot: "Xu hướng Toàn cầu",
+      timePeriod: "Thời gian",
+      lastWeek: "Tuần trước",
+      lastMonth: "Tháng trước",
+      last3Months: "3 Tháng trước",
+      suggestTrends: "Gợi ý Xu hướng",
+      suggesting: "Đang gợi ý...",
+    },
+    'English': {
+      autoSuggestTitle: "AI-Powered Trend Suggestion",
+      trendType: "Trend Type",
+      industrySpecific: "Industry Specific",
+      globalHot: "Global Hot Trends",
+      timePeriod: "Time Period",
+      lastWeek: "Last Week",
+      lastMonth: "Last Month",
+      last3Months: "Last 3 Months",
+      suggestTrends: "Suggest Trends",
+      suggesting: "Suggesting...",
+    }
+  };
+  const texts = (T as any)[language] || T['English'];
+
   return (
-    <div className="h-full flex flex-col bg-gray-50/50 relative">
+    <StandardPageView
+      title="Content Strategy"
+      subtitle="Discover trends and generate content ideas"
+      actions={
+        <div className="flex flex-row gap-2">
+          <div className="flex flex-row gap-1">
+            <button
+              onClick={() => setTrendType('industry')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                trendType === 'industry' 
+                  ? 'bg-brand-green text-white' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <span className="hidden sm:inline">{texts.industrySpecific}</span>
+              <span className="sm:hidden">Ind</span>
+            </button>
+            <button
+              onClick={() => setTrendType('global')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                trendType === 'global' 
+                  ? 'bg-brand-green text-white' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <span className="hidden sm:inline">{texts.globalHot}</span>
+              <span className="sm:hidden">Glo</span>
+            </button>
+          </div>
+          <select
+            value={timePeriod}
+            onChange={(e) => setTimePeriod(e.target.value)}
+            className="py-1.5 px-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-green"
+          >
+            <option value="Last Week">{texts.lastWeek}</option>
+            <option value="Last Month">{texts.lastMonth}</option>
+            <option value="Last 3 Months">{texts.last3Months}</option>
+          </select>
+          <Button 
+            onClick={handleSuggestTrends} 
+            disabled={isSuggestingTrends}
+            className="flex items-center gap-2 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium"
+          >
+            {isSuggestingTrends ? (
+              <>
+                <span className="text-xs">{texts.suggesting}</span>
+                <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              </>
+            ) : (
+              <>
+                <SparklesIcon className="h-4 w-4" />
+                <span className="hidden sm:inline">{texts.suggestTrends}</span>
+                <span className="sm:hidden">Sug</span>
+              </>
+            )}
+          </Button>
+        </div>
+      }
+      onMobileMenuToggle={() => setIsSidebarOpen(true)}
+    >
       {/* Loading indicator */}
       {isLoading && (
         <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
@@ -80,53 +184,54 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
         </div>
       )}
 
-      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-4 sm:p-6 border-b border-gray-200">
-        <div className="flex items-center gap-2">
-          <h2 className="text-2xl sm:text-3xl font-bold font-sans text-gray-900">
-            Content Strategy
-          </h2>
+      {/* Load data on first render if not already loaded */}
+      {!isDataLoaded && onLoadData && (
+        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
+          <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
         </div>
-      </header>
+      )}
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Navigation Sidebar */}
-        <NavigationSidebar
-          language={language}
-          trends={filteredTrends}
-          selectedTrend={selectedTrend}
-          onSelectTrend={onSelectTrend}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          isSidebarOpen={isSidebarOpen}
-          setIsSidebarOpen={setIsSidebarOpen}
-          onSuggestTrends={onSuggestTrends}
-          isSuggestingTrends={isSuggestingTrends}
-          onGenerateFacebookTrends={onGenerateFacebookTrends}
-          isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
-          onSaveTrend={onSaveTrend}
-          onDeleteTrend={onDeleteTrend}
-        />
+      <div className="h-full flex flex-col bg-gray-50/50 relative">
+        <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+          {/* Navigation Sidebar */}
+          <NavigationSidebar
+            language={language}
+            trends={filteredTrends}
+            selectedTrend={selectedTrend}
+            onSelectTrend={onSelectTrend}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            isSidebarOpen={isSidebarOpen}
+            setIsSidebarOpen={setIsSidebarOpen}
+            onSuggestTrends={onSuggestTrends}
+            isSuggestingTrends={isSuggestingTrends}
+            onGenerateFacebookTrends={onGenerateFacebookTrends}
+            isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
+            onSaveTrend={onSaveTrend}
+            onDeleteTrend={onDeleteTrend}
+          />
 
-        {/* Main Content Area */}
-        <MainContentArea
-          language={language}
-          selectedTrend={selectedTrend}
-          ideasForSelectedTrend={ideasForSelectedTrend}
-          personas={personas}
-          affiliateLinks={affiliateLinks}
-          generatedImages={generatedImages}
-          settings={settings}
-          onGenerateIdeas={onGenerateIdeas}
-          onCreatePlanFromIdea={onCreatePlanFromIdea}
-          onGenerateContentPackage={onGenerateContentPackage}
-          isGeneratingIdeas={isGeneratingIdeas}
-          onSaveTrend={onSaveTrend}
-          onDeleteTrend={onDeleteTrend}
-          isDataLoaded={isDataLoaded}
-          onLoadData={onLoadData}
-        />
+          {/* Main Content Area */}
+          <MainContentArea
+            language={language}
+            selectedTrend={selectedTrend}
+            ideasForSelectedTrend={ideasForSelectedTrend}
+            personas={personas}
+            affiliateLinks={affiliateLinks}
+            generatedImages={generatedImages}
+            settings={settings}
+            onGenerateIdeas={onGenerateIdeas}
+            onCreatePlanFromIdea={onCreatePlanFromIdea}
+            onGenerateContentPackage={onGenerateContentPackage}
+            isGeneratingIdeas={isGeneratingIdeas}
+            onSaveTrend={onSaveTrend}
+            onDeleteTrend={onDeleteTrend}
+            isDataLoaded={isDataLoaded}
+            onLoadData={onLoadData}
+          />
+        </div>
       </div>
-    </div>
+    </StandardPageView>
   );
 };
 

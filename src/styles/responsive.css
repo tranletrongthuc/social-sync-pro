@@ -1,0 +1,37 @@
+/* Base mobile-first styles can go here, but we will primarily use Tailwind's responsive prefixes. */
+
+/* Tablet and up */
+@media (min-width: 768px) {
+  /* Add tablet-specific overrides here */
+}
+
+/* Desktop and up */
+@media (min-width: 1024px) {
+  /* Add desktop-specific overrides here */
+}
+
+/* Custom full-screen sheet modal for mobile */
+@media (max-width: 767px) {
+  .sheet-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    max-height: 100vh;
+    overflow-y: auto;
+    border-radius: 0;
+    animation: slide-up 0.3s ease-out;
+  }
+
+  @keyframes slide-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
+}

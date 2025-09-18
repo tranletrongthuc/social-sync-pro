@@ -36,6 +36,7 @@ import PostCard from './PostCard';
 import PostDetailModal from './PostDetailModal';
 import CalendarView from './CalendarView';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
+import StandardPageView from './StandardPageView';
 
 interface MediaPlanDisplayProps {
   plans: MediaPlanGroup[];
@@ -479,28 +480,6 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
 
   const sidebarContent = (
     <div className="p-6 flex flex-col h-full bg-white">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-        <h2 className="text-xl font-bold font-sans text-gray-900 shrink-0">{currentTexts.plans_sidebar_title}</h2>
-        <div className="flex flex-col items-stretch gap-2 shrink-0">
-          {/* New Funnel Campaign button */}
-          <Button 
-            onClick={onOpenFunnelWizard}
-            variant="secondary" 
-            className="w-full whitespace-nowrap flex items-center justify-center gap-2 rounded-md px-3 py-2"
-          >
-            <FunnelIcon className="h-5 w-5" />
-            <span>{currentTexts.newFunnelPlanButton}</span>
-          </Button>
-          <Button 
-            onClick={() => onOpenWizard()}
-            variant="primary" 
-            className="w-full whitespace-nowrap flex items-center justify-center gap-2 rounded-md px-3 py-2"
-          >
-            <PlusIcon className="h-5 w-5" />
-            <span>{currentTexts.newPlanButton}</span>
-          </Button>
-        </div>
-      </div>
       <div className="space-y-2 flex-grow overflow-y-auto">
          {unifiedSidebarItems.map(item => (
           <button
@@ -538,15 +517,40 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
     );
 
     return (
-      <div className="flex flex-col xl:flex-row h-full bg-gray-50/50">
-        {/* Mobile sidebar overlay */}
-        {isPlanSidebarOpen && (
-          <div className="xl:hidden fixed inset-0 bg-black/30 z-30" onClick={() => setIsPlanSidebarOpen(false)}></div>
-        )}
-        {/* Sidebar */}
-        <aside className={`fixed xl:relative inset-y-0 left-0 w-80 md:w-96 border-r border-gray-200 transform transition-transform z-40 ${isPlanSidebarOpen ? 'translate-x-0' : '-translate-x-full'} xl:translate-x-0 shrink-0`}>
-          {sidebarContent}
-        </aside>
+      <StandardPageView
+        title={currentTexts.plans_sidebar_title}
+        subtitle={currentTexts.generate_plan_subtitle}
+        actions={
+          <div className="flex flex-row gap-2">
+            <Button 
+              onClick={onOpenFunnelWizard}
+              variant="secondary" 
+              className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium"
+            >
+              <FunnelIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">{currentTexts.newFunnelPlanButton}</span>
+            </Button>
+            <Button 
+              onClick={() => onOpenWizard()}
+              variant="primary" 
+              className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium"
+            >
+              <PlusIcon className="h-4 w-4" />
+              <span className="hidden sm:inline">{currentTexts.newPlanButton}</span>
+            </Button>
+          </div>
+        }
+        onMobileMenuToggle={() => setIsPlanSidebarOpen(true)}
+      >
+        <div className="flex flex-col xl:flex-row h-full bg-gray-50/50">
+          {/* Mobile sidebar overlay */}
+          {isPlanSidebarOpen && (
+            <div className="xl:hidden fixed inset-0 bg-black/30 z-30" onClick={() => setIsPlanSidebarOpen(false)}></div>
+          )}
+          {/* Sidebar */}
+          <aside className={`fixed xl:relative inset-y-0 left-0 w-80 md:w-96 border-r border-gray-200 transform transition-transform z-40 ${isPlanSidebarOpen ? 'translate-x-0' : '-translate-x-full'} xl:translate-x-0 shrink-0`}>
+            {sidebarContent}
+          </aside>
         
         {/* Main Content Area */}
         <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto">
@@ -555,14 +559,13 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
               <header className="mb-8">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-3xl font-bold font-sans text-gray-900">
+                    <h3 className="text-xl font-bold font-sans text-gray-900">
                       {selectedPlan.name}
                     </h3>
-                    <p className="text-lg text-gray-500 font-serif">
+                    <p className="text-sm text-gray-500 font-serif">
                       {selectedPlan.prompt}
                     </p>
                   </div>
-                  <Button onClick={() => setIsPlanSidebarOpen(true)} className="xl:hidden flex-shrink-0 ml-4" variant="secondary">{currentTexts.select_plan_mobile}</Button>
                 </div>
 
                 <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 text-sm text-gray-600 border-t border-gray-200 pt-4">
@@ -941,6 +944,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
            />
          )}
        </div>
+      </StandardPageView>
      );
    };
 

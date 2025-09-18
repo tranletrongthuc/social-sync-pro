@@ -3,6 +3,7 @@ import type { Persona, BrandFoundation } from '../../types';
 import { Button } from './ui';
 import { PlusIcon, UsersIcon, SparklesIcon, TrashIcon, PencilIcon, DotsVerticalIcon } from './icons';
 import PersonaEditorModal from './PersonaEditorModal';
+import StandardPageView from './StandardPageView';
 
 // A simplified, read-only card to display in the main grid
 const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: () => void; generatedImages: Record<string, string>; language: string; }> = memo(({ persona, onEdit, onDelete, generatedImages, language }) => {
@@ -183,7 +184,28 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
     };
 
     return (
-        <div className="h-full flex flex-col p-6 lg:p-10 bg-gray-50/50">
+        <StandardPageView
+            title={texts.title}
+            subtitle={texts.subtitle}
+            actions={
+                <div className="flex flex-row gap-2">
+                    <Button 
+                        onClick={onAutoGeneratePersona} 
+                        variant="secondary"
+                        disabled={!brandFoundation?.mission || !brandFoundation?.usp}
+                        title={(!brandFoundation?.mission || !brandFoundation?.usp) ? "Please define a mission and USP in the Brand Kit tab first." : "Auto-generate new personas"}
+                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium"
+                    >
+                        <SparklesIcon className="h-4 w-4"/> 
+                        <span className="hidden sm:inline">{texts.autoGenerate}</span>
+                    </Button>
+                    <Button onClick={handleAddNew} className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
+                        <PlusIcon className="h-4 w-4"/> 
+                        <span className="hidden sm:inline">{texts.addPersona}</span>
+                    </Button>
+                </div>
+            }
+        >
             {isLoading && (
                 <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
                     <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
@@ -192,29 +214,8 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                     </div>
                 </div>
             )}
-            
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                 <div>
-                    <h2 className="text-3xl font-bold font-sans text-gray-900 flex items-center gap-3"><UsersIcon className="h-8 w-8 text-brand-green"/> {texts.title}</h2>
-                    <p className="text-lg text-gray-500 font-serif mt-1">{texts.subtitle}</p>
-                </div>
-                <div className="flex-shrink-0 flex items-center gap-2">
-                    <Button 
-                        onClick={onAutoGeneratePersona} 
-                        variant="secondary"
-                        disabled={!brandFoundation?.mission || !brandFoundation?.usp}
-                        title={(!brandFoundation?.mission || !brandFoundation?.usp) ? "Please define a mission and USP in the Brand Kit tab first." : "Auto-generate new personas"}
-                        className="flex items-center gap-2"
-                    >
-                        <SparklesIcon className="h-5 w-5"/> {texts.autoGenerate}
-                    </Button>
-                    <Button onClick={handleAddNew} className="flex items-center gap-2">
-                        <PlusIcon className="h-5 w-5"/> {texts.addPersona}
-                    </Button>
-                </div>
-            </header>
 
-             <main className="flex-grow overflow-y-auto -mx-2">
+            <main className="flex-grow overflow-y-auto -mx-2">
                 {(!personas || personas.length === 0) ? (
                      <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300">
                         <UsersIcon className="mx-auto h-16 w-16 text-gray-400" />
@@ -246,7 +247,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                     language={language}
                 />
             )}
-        </div>
+        </StandardPageView>
     );
 };
 

@@ -14,6 +14,8 @@ import type {
   GenerationOptions
 } from '../../types';
 import { Header, ActiveTab } from './Header';
+import BottomTabBar from './BottomTabBar';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 
 // Lazy load modals and wizards
 const ScheduleModal = lazy(() => import('./ScheduleModal'));
@@ -246,6 +248,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   
   const [loadedTabs, setLoadedTabs] = useState<Set<ActiveTab>>(new Set(['brandKit']));
   const [loadingTabs, setLoadingTabs] = useState<Set<ActiveTab>>(new Set());
+  const breakpoint = useBreakpoint();
 
   const handleOpenWizard = (prompt = '', productId?: string) => {
     setInitialWizardPrompt(prompt);
@@ -431,6 +434,14 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
           )}
         </Suspense>
       </main>
+      
+      {/* Conditionally render BottomTabBar for mobile */}
+      {breakpoint === 'mobile' && (
+        <BottomTabBar 
+          activeTab={activeTab} 
+          setActiveTab={handleSetActiveTab} 
+        />
+      )}
       
       <Suspense fallback={null}>
         <ScheduleModal

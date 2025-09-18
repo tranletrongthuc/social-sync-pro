@@ -505,24 +505,24 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-40 backdrop-blur-sm" onClick={onClose}>
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200 m-4 max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                <header className="p-6 border-b border-gray-200 flex justify-between items-start gap-4">
-                    <div className="flex items-center gap-3">
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-40 backdrop-blur-sm md:items-end md:justify-center" onClick={onClose}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl border border-gray-200 m-4 max-h-[90vh] flex flex-col md:rounded-b-none md:rounded-t-2xl md:m-0 md:w-full md:max-w-none" onClick={(e) => e.stopPropagation()}>
+                <header className="p-4 sm:p-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div className="flex items-center gap-3 w-full">
                         <Icon className="h-8 w-8 text-gray-700 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                             {isEditing && !isPublished ? (
                                 <Input name="title" value={editedPost.title} onChange={handleEditChange} className="text-xl font-bold p-1" />
                             ) : (
-                                <h2 className="text-2xl font-bold font-sans text-gray-900">{editedPost.title}</h2>
+                                <h2 className="text-lg sm:text-2xl font-bold font-sans text-gray-900 truncate">{editedPost.title}</h2>
                             )}
-                            <p className="text-md text-gray-500">{editedPost.platform} - {editedPost.contentType}</p>
+                            <p className="text-sm text-gray-500">{editedPost.platform} - {editedPost.contentType}</p>
                         </div>
                         <div className="ml-auto pl-4 flex-shrink-0">
                             <Select 
                                 value={editedPost.status || 'draft'}
                                 onChange={(e) => handleStatusChange(e.target.value as any)}
-                                className={`text-sm font-bold rounded-full px-3 py-1 border-2 ${ 
+                                className={`text-xs sm:text-sm font-bold rounded-full px-2 py-1 sm:px-3 sm:py-1 border-2 ${ 
                                     {
                                         draft: 'bg-gray-100 border-gray-200 text-gray-800',
                                         needs_review: 'bg-yellow-100 border-yellow-200 text-yellow-800',
@@ -540,14 +540,15 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             </Select>
                         </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center justify-between w-full sm:w-auto">
                          {isPublished && (
-                            <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-sm px-3 py-1.5 rounded-full font-semibold text-white bg-brand-green hover:bg-brand-green-dark transition-colors flex items-center gap-2">
-                                <CheckCircleIcon className="h-5 w-5" />
-                                {texts.viewPost}
+                            <a href={publishedUrl} target="_blank" rel="noopener noreferrer" className="text-xs sm:text-sm px-2 py-1 sm:px-3 sm:py-1.5 rounded-full font-semibold text-white bg-brand-green hover:bg-brand-green-dark transition-colors flex items-center gap-1 sm:gap-2">
+                                <CheckCircleIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                                <span className="hidden sm:inline">{texts.viewPost}</span>
+                                <span className="sm:hidden">View</span>
                             </a>
                         )}
-                        <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-3xl">&times;</button>
+                        <button onClick={onClose} className="text-gray-400 hover:text-gray-900 text-2xl sm:text-3xl ml-auto sm:ml-0">&times;</button>
                     </div>
                 </header>
 

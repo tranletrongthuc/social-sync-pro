@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { GeneratedAssets, BrandFoundation, CoreMediaAssets, ColorInfo, LogoConcept, ColorPalette, FontRecommendations, UnifiedProfileAssets } from '../../types';
 import { Section, CopyableText, Button, HoverCopyWrapper } from './ui';
-import { DownloadIcon, SparklesIcon, ArchiveIcon, UploadIcon } from './icons';
+import { DownloadIcon, SparklesIcon, ArchiveIcon, UploadIcon, TagIcon } from './icons';
+import StandardPageView from './StandardPageView';
 
 interface AssetDisplayProps {
   assets: GeneratedAssets;
@@ -93,61 +94,66 @@ const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
     
     const sharedImageProps = { onGenerateImage, onSetImage, generatedImages, isGeneratingImage, texts: currentImgGenTexts };
 
-    return (
-        <div className="flex flex-col md:flex-row h-[calc(100vh-112px)]">
-            <aside className="hidden md:flex w-64 bg-white md:sticky top-0 p-6 border-r border-gray-200 flex-col shrink-0">
-                <div className="flex-grow">
-                    <h2 className="text-base font-bold text-gray-900 mb-4">Brand Kit Navigation</h2>
-                    <nav>
-                        <ul>
-                            {NAV_ITEMS.map(({id, label}) => (
-                                 <li key={id} className="mb-1">
-                                    <a
-                                        href={`#${id}`}
-                                        onClick={(e) => { e.preventDefault(); handleNavClick(id); }}
-                                        className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium ${activeSection === id ? 'bg-green-50 text-brand-green' : 'text-gray-600 hover:bg-gray-100'}`}
-                                    >
-                                        {label}
-                                    </a>
-                                </li>
+        return (
+        <StandardPageView
+            title="Brand Kit"
+            subtitle="All your brand assets in one place"
+            actions={
+                <Button onClick={onExport} disabled={isExporting} className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
+                    {isExporting ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
+                            <span className="hidden sm:inline">{currentExportTexts.exporting}</span>
+                        </>
+                    ) : (
+                        <>
+                            <ArchiveIcon className="h-4 w-4" />
+                            <span className="hidden sm:inline">{currentExportTexts.export}</span>
+                        </>
+                    )}
+                </Button>
+            }
+        >
+            <div className="flex flex-col md:flex-row h-full">
+                <aside className="hidden md:flex w-64 bg-white md:sticky top-0 p-6 border-r border-gray-200 flex-col shrink-0">
+                    <div className="flex-grow">
+                        <h2 className="text-base font-bold text-gray-900 mb-4">Brand Kit Navigation</h2>
+                        <nav className="space-y-1">
+                            {NAV_ITEMS.map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => handleNavClick(item.id)}
+                                    className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeSection === item.id ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                                >
+                                    {item.label}
+                                </button>
                             ))}
-                        </ul>
-                    </nav>
+                        </nav>
+                    </div>
+                </aside>
+
+                {/* Mobile navigation */}
+                <div className="md:hidden bg-white border-b border-gray-200 p-4">
+                    <div className="flex space-x-1 overflow-x-auto pb-2">
+                        {NAV_ITEMS.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => handleNavClick(item.id)}
+                                className={`px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap ${activeSection === item.id ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <div className="mt-auto pt-4">
-                    <Button onClick={onExport} disabled={isExporting} variant="secondary" className="w-full flex items-center justify-center gap-2">
-                        {isExporting ? (
-                            <>
-                                <div className="w-5 h-5 border-2 border-t-transparent border-brand-green rounded-full animate-spin"></div>
-                                {currentExportTexts.exporting}
-                            </>
-                        ) : (
-                            <>
-                                <ArchiveIcon className="h-5 w-5" />
-                                {currentExportTexts.export}
-                            </>
-                        )}
-                    </Button>
-                </div>
-            </aside>
-            <main ref={mainContentRef} className="flex-1 overflow-y-auto" style={{ scrollPaddingTop: '80px' }}>
-                <div className="md:hidden sticky top-0 bg-white/80 backdrop-blur-lg z-10 border-b border-gray-200 p-3">
-                    <select 
-                        id="asset-nav-mobile"
-                        className="w-full bg-white border border-gray-300 rounded-md py-2 px-3 text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-green focus:border-transparent"
-                        value={activeSection} 
-                        onChange={e => handleNavClick(e.target.value)}
-                    >
-                        {NAV_ITEMS.map(({id, label}) => <option key={id} value={id}>{label}</option>)}
-                    </select>
-                </div>
-                <div className="max-w-4xl mx-auto p-4 sm:p-6 lg:p-10">
+
+                <main ref={mainContentRef} className="flex-grow overflow-y-auto p-6 bg-gray-50/50">
                     <BrandFoundationSection assets={assets.brandFoundation} language={language} />
                     <CoreAssetsSection assets={assets.coreMediaAssets} language={language} {...sharedImageProps} />
-                    <UnifiedProfileAssetsSection assets={assets.unifiedProfileAssets} language={language} {...sharedImageProps}/>
-                </div>
-            </main>
-        </div>
+                    <UnifiedProfileAssetsSection assets={assets.unifiedProfileAssets} language={language} {...sharedImageProps} />
+                </main>
+            </div>
+        </StandardPageView>
     );
 };
 

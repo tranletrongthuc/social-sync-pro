@@ -4,6 +4,7 @@ import type { AffiliateLink } from '../../types';
 import { Button, Input, Select } from './ui';
 import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, ScaleIcon, CollectionIcon, LinkIcon } from './icons';
 import ProductCard from './ProductCard';
+import StandardPageView from './StandardPageView';
 
 interface AffiliateVaultDisplayProps {
   affiliateLinks: AffiliateLink[];
@@ -216,35 +217,39 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
     const totalPages = Math.ceil(processedLinks.length / productsPerPage);
 
     return (
-        <div className="h-full flex flex-col p-4 lg:px-8 lg:py-6 bg-gray-50/50 relative">
+        <StandardPageView
+            title={texts.title}
+            subtitle={texts.subtitle}
+            actions={
+                <div className="flex flex-row gap-2">
+                    <Button onClick={onReloadLinks} variant="secondary" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
+                        <ArrowPathIcon className="h-4 w-4" /> 
+                        <span className="hidden sm:inline">{texts.reload}</span>
+                    </Button>
+                    <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
+                        <UploadIcon className="h-4 w-4" /> 
+                        <span className="hidden sm:inline">{texts.importFromFile}</span>
+                    </Button>
+                    <Button onClick={() => setIsAddingNewLink(true)} className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
+                        <PlusIcon className="h-4 w-4" /> 
+                        <span className="hidden sm:inline">{texts.addLink}</span>
+                    </Button>
+                </div>
+            }
+        >
             {isLoading && (
-                <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
-                    <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
+                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-gray-700 font-medium">Loading affiliate links data...</p>
+                    </div>
                 </div>
             )}
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
-                <div>
-                    <h2 className="text-2xl font-bold font-sans text-gray-900 flex items-center gap-2"><LinkIcon className="h-7 w-7 text-brand-green"/> {texts.title}</h2>
-                    <p className="text-md text-gray-500 font-serif">{texts.subtitle}</p>
-                </div>
-                <div className="flex gap-2 flex-shrink-0">
-                    <Button variant="secondary" onClick={onReloadLinks} className="flex items-center gap-2">
-                        <ArrowPathIcon className="h-5 w-5"/> {texts.reload}
-                    </Button>
-                    <Button variant="secondary" onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2">
-                        <UploadIcon className="h-5 w-5"/> {texts.importFromFile}
-                    </Button>
-                    <input type="file" ref={fileInputRef} onChange={handleFileImport} className="hidden" accept=".xlsx, .csv" />
-                    <Button onClick={() => setIsAddingNewLink(true)} className="flex items-center gap-2">
-                        <PlusIcon className="h-5 w-5"/> {texts.addLink}
-                    </Button>
-                </div>
-            </header>
-
-            <div className="bg-white p-3 rounded-lg border border-gray-200 shadow-sm mb-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            
+            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6">
+                <div className="grid grid-cols-2 gap-4">
                     <div className="p-1 text-center">
-                        <CollectionIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
+                        <CollectionIcon className="h-6 w-6 text-blue-600 mx-auto mb-1"/>
                         <p className="text-xs font-medium text-gray-500">{texts.totalLinks}</p>
                         <p className="text-lg font-bold text-gray-900">{kpiData.totalLinks}</p>
                     </div>
@@ -353,7 +358,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                     </div>
                 )}
             </main>
-        </div>
+        </StandardPageView>
     );
 };
 

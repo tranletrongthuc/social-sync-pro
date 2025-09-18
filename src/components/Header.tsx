@@ -167,7 +167,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
                     </div>
                 </div>
             )}
-            <div className="border-b border-gray-200">
+            <div className="border-b border-gray-200 hidden md:block">
                 <div className="px-4 sm:px-6 lg:px-8">
                     <nav className="flex items-center gap-8 overflow-x-auto whitespace-nowrap -mb-px">
                          <TabButton tabId="brandKit" text={currentTexts.brandKit.text} icon={currentTexts.brandKit.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />

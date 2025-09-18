@@ -38,8 +38,6 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   onDeleteTrend
 }) => {
   // State for trend suggestion
-  const [trendType, setTrendType] = useState<'industry' | 'global'>('industry');
-  const [timePeriod, setTimePeriod] = useState('Last Month');
   const [industryForSearch, setIndustryForSearch] = useState('');
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   
@@ -72,17 +70,6 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     'Việt Nam': {
       trends: "Xu hướng",
       addTrend: "Thêm Xu hướng",
-      autoSuggestTitle: "Gợi ý Xu hướng Tự động",
-      autoSuggestSubtitle: "Tự động phát hiện các xu hướng phù hợp với thương hiệu hoặc xu hướng toàn cầu.",
-      trendType: "Loại Xu hướng",
-      industrySpecific: "Theo Ngành",
-      globalHot: "Xu hướng Toàn cầu",
-      timePeriod: "Thời gian",
-      lastWeek: "Tuần trước",
-      lastMonth: "Tháng trước",
-      last3Months: "3 Tháng trước",
-      suggestTrends: "Gợi ý Xu hướng",
-      suggesting: "Đang gợi ý...",
       trendSearchTitle: "Tự động hóa Chiến lược Facebook",
       trendSearchSubtitle: "Tự động tìm kiếm và lưu lại các Xu hướng từ Facebook bằng công cụ tìm kiếm của Google.",
       industryPlaceholder: "Nhập ngành của bạn (ví dụ: Thời trang, Công nghệ, Ẩm thực)",
@@ -92,17 +79,6 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     'English': {
       trends: "Trends",
       addTrend: "Add Trend",
-      autoSuggestTitle: "AI-Powered Trend Suggestion",
-      autoSuggestSubtitle: "Automatically discover relevant industry trends or global hot trends.",
-      trendType: "Trend Type",
-      industrySpecific: "Industry Specific",
-      globalHot: "Global Hot Trends",
-      timePeriod: "Time Period",
-      lastWeek: "Last Week",
-      lastMonth: "Last Month",
-      last3Months: "Last 3 Months",
-      suggestTrends: "Suggest Trends",
-      suggesting: "Suggesting...",
       trendSearchTitle: "Facebook Strategy Automation",
       trendSearchSubtitle: "Automatically search and save Trends from Facebook using Google Search engine.",
       industryPlaceholder: "Enter your industry (e.g., Fashion, Tech, Food)",
@@ -118,11 +94,6 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     const globalTrends = trends.filter(trend => trend.industry === 'Global');
     return { industryTrends, globalTrends };
   }, [trends]);
-
-  const handleSuggestTrends = () => {
-    onSuggestTrends(trendType, timePeriod);
-    setIsSidebarOpen(false);
-  };
 
   const handleGenerateFacebookTrends = () => {
     if (industryForSearch) {
@@ -176,71 +147,10 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
           />
         </div>
 
-        {/* Auto Suggest Trends Section */}
-        <div className="space-y-4">
-          <h3 className="text-base sm:text-lg font-bold text-gray-800">{texts.autoSuggestTitle}</h3>
-          <p className="text-gray-500 font-serif text-xs sm:text-sm">
-            {texts.autoSuggestSubtitle}
-          </p>
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{texts.trendType}</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setTrendType('industry')}
-                  className={`flex-1 py-2 px-3 text-xs sm:text-sm rounded-md transition-colors ${
-                    trendType === 'industry' 
-                      ? 'bg-brand-green text-white' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {texts.industrySpecific}
-                </button>
-                <button
-                  onClick={() => setTrendType('global')}
-                  className={`flex-1 py-2 px-3 text-xs sm:text-sm rounded-md transition-colors ${
-                    trendType === 'global' 
-                      ? 'bg-brand-green text-white' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                >
-                  {texts.globalHot}
-                </button>
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">{texts.timePeriod}</label>
-              <select
-                value={timePeriod}
-                onChange={(e) => setTimePeriod(e.target.value)}
-                className="w-full py-2 px-3 text-xs sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-brand-green"
-              >
-                <option value="Last Week">{texts.lastWeek}</option>
-                <option value="Last Month">{texts.lastMonth}</option>
-                <option value="Last 3 Months">{texts.last3Months}</option>
-              </select>
-            </div>
-            <Button 
-              onClick={handleSuggestTrends} 
-              disabled={isSuggestingTrends}
-              className="w-full flex items-center justify-center"
-            >
-              {isSuggestingTrends ? (
-                <>
-                  <span className="mr-2 text-xs sm:text-sm">{texts.suggesting}</span>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                </>
-              ) : (
-                <span className="text-xs sm:text-sm">{texts.suggestTrends}</span>
-              )}
-            </Button>
-          </div>
-        </div>
-        
         {/* Trends List */}
         <div className="space-y-2">
           <div className="flex justify-between items-center">
-            <h4 className="text-base font-semibold text-gray-700">{texts.trends}</h4>
+            <h4 className="text-base font-semibold text-gray-700">Trends</h4>
             <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
               {trends.length}
             </span>

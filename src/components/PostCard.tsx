@@ -136,14 +136,14 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                 <p className="mt-1 text-sm text-gray-600 font-serif line-clamp-2 cursor-pointer" onClick={handleCardClick}>
                     {Array.isArray(post.content) ? post.content.join(' ') : post.content}
                 </p>
-                <div className="mt-4 flex justify-between items-end">
+                <div className="mt-4 flex flex-wrap justify-between items-end gap-2">
                     <div className="flex flex-wrap gap-2">
                         {post.status === 'draft' && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-700">{texts.draft}</span>}
                         {hasPromo && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 flex items-center gap-1"><KhongMinhIcon className="h-3 w-3" /> {texts.promoted}</span>}
                         {hasComment && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-100 text-blue-800 flex items-center gap-1"><ChatBubbleLeftIcon className="h-3 w-3" /> {texts.commented}</span>}
                         {hasVideo && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-800 flex items-center gap-1"><VideoCameraIcon className="h-3 w-3" /> {texts.video}</span>}
                     </div>
-                    <div className="text-xs text-gray-400 text-right">
+                    <div className="text-xs text-gray-400 text-right min-w-max">
                         {publishedAt ? (
                             <a href={publishedUrl || '#'} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-green-600 hover:underline no-expand">
                                 <CheckCircleIcon className="h-4 w-4" />
