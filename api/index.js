@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
 import mongodbHandler from './mongodb.js';
+import jobsHandler from './jobs.js';
 
 // Initialize AI services
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
@@ -39,6 +40,8 @@ async function handler(request, response) {
       return handleCloudinaryRequest(request, response, action);
     case 'facebook':
       return handleFacebookRequest(request, response, action);
+    case 'jobs':
+      return handleJobsRequest(request, response, action);
     case 'health':
       return handleHealthRequest(request, response);
     default:
@@ -471,6 +474,11 @@ async function handleHealthRequest(request, response) {
       mongodb: !!process.env.MONGODB_URI
     }
   });
+}
+
+// Jobs handler
+async function handleJobsRequest(request, response, action) {
+  return jobsHandler(request, response);
 }
 
 export default allowCors(handler);

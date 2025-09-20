@@ -16,6 +16,7 @@ import {
 import { textGenerationService } from '../services/textGenerationService';
 import { AiModelConfig } from '../services/configService';
 import { ActiveTab } from '../components/Header';
+import { taskService } from '../services/taskService';
 
 interface useStrategyManagementProps {
     mongoBrandId: string | null;
@@ -123,183 +124,192 @@ export const useStrategyManagement = ({
     }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError, selectedTrend]);
 
     const handleGenerateIdeas = useCallback(async (trend: Trend, useSearch: boolean) => {
-        console.log('[Generate Ideas Debug] 1. Starting generation for trend:', trend);
+        console.log('[BackgroundTask] handleGenerateIdeas called with:', { trend, useSearch });
+        
         setLoaderContent({ title: "Generating Viral Ideas...", steps: ["Analyzing trend...", "Brainstorming concepts...", "Finalizing ideas..."] });
+        
         try {
             if (!aiModelConfig || !mongoBrandId) {
+                console.error('[BackgroundTask] AI Model configuration not loaded or no brand selected.');
                 throw new Error("AI Model configuration not loaded or no brand selected.");
             }
             
-            console.log('[Generate Ideas Debug] 2. Calling textGenerationService.generateViralIdeas');
-            const newIdeaData = await textGenerationService.generateViralIdeas(
-                {
-                    trend: { topic: trend.topic, keywords: trend.keywords },
-                    language: settings.language,
-                    useSearch: useSearch,
-                    settings: settings
-                },
-                aiModelConfig
-            );
-            console.log('[Generate Ideas Debug] 3. Received raw data from AI service:', newIdeaData);
+            // Create a background task for idea generation
+            const taskPayload = {
+                trend: { topic: trend.topic, keywords: trend.keywords },
+                language: settings.language,
+                useSearch: useSearch,
+                settings: settings
+            };
 
-            if (!Array.isArray(newIdeaData) || newIdeaData.length === 0) {
-                console.error('[Generate Ideas Debug] 4a. AI response is not a valid array or is empty.');
-                throw new Error("AI failed to generate valid ideas. The response was empty or not an array.");
-            }
-
-            // Check for the specific placeholder content
-            if (newIdeaData[0].title === 'title here') {
-                console.error('[Generate Ideas Debug] 4b. AI returned placeholder data.');
-                throw new Error("AI returned placeholder data. Please check the prompt configuration.");
-            }
-
-            const newIdeasWithTrendId: Partial<Idea>[] = newIdeaData.map(idea => ({
-                ...idea,
-                trendId: trend.id,
-            }));
-            console.log('[Generate Ideas Debug] 5. Mapped ideas with trendId:', newIdeasWithTrendId);
+            console.log('[BackgroundTask] Creating background task for idea generation with payload:', taskPayload);
             
-            const savedIdeas = await saveIdeasToDatabase(newIdeasWithTrendId, mongoBrandId);
-            console.log('[Generate Ideas Debug] 6. Ideas saved to database:', savedIdeas);
+            const { taskId } = await taskService.createBackgroundTask(
+                'GENERATE_VIRAL_IDEAS',
+                taskPayload,
+                mongoBrandId,
+                'normal'
+            );
 
-            dispatchAssets({ type: 'ADD_IDEAS', payload: savedIdeas });
-            console.log('[Generate Ideas Debug] 7. Dispatched ADD_IDEAS to reducer.');
+            console.log('[BackgroundTask] Background task created successfully for idea generation with ID:', taskId);
 
-            setIdeasForSelectedTrend(prevIdeas => [...prevIdeas, ...savedIdeas]);
-            console.log('[Generate Ideas Debug] 8. Updated component state with new ideas.');
+            // Notify user that the task has been started
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Đang tạo ý tưởng viral trong nền..." 
+                : "Generating viral ideas in the background...");
 
         } catch (err) {
-            console.error('[Generate Ideas Debug] CRASH! An error occurred:', err);
-            setError(err instanceof Error ? err.message : "Failed to generate ideas.");
+            console.error('[BackgroundTask] Error creating background task for idea generation:', err);
+            setError(err instanceof Error ? err.message : "Failed to start idea generation task.");
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, mongoBrandId, aiModelConfig, setError, setLoaderContent, dispatchAssets]);
+    }, [aiModelConfig, mongoBrandId, settings, setLoaderContent, setError, setSuccessMessage]);
     
     const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
-        setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
+        console.log('[BackgroundTask] handleGenerateIdeasFromProduct called with:', { product });
+        
+        setLoaderContent({ title: "Generating Ideas from Product...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
+        
         try {
             if (!aiModelConfig || !mongoBrandId) {
+                console.error('[BackgroundTask] AI Model configuration not loaded or no brand selected.');
                 throw new Error("AI Model configuration not loaded or no brand selected.");
             }
             
-            const newIdeaData = await textGenerationService.generateIdeasFromProduct(
-                {
-                    product: product,
-                    language: settings.language,
-                    settings: settings
+            // Create a background task for product idea generation
+            const taskPayload = {
+                // Extract only the necessary fields from the product
+                product: {
+                    id: product.id,
+                    productName: product.productName,
+                    productLink: product.productLink,
+                    providerName: product.providerName,
+                    commissionRate: product.commissionRate,
+                    notes: product.notes,
+                    brandId: product.brandId,
+                    productId: product.productId,
+                    price: product.price,
+                    salesVolume: product.salesVolume,
+                    promotionLink: product.promotionLink,
+                    product_description: product.product_description,
+                    features: product.features,
+                    use_cases: product.use_cases,
+                    customer_reviews: product.customer_reviews,
+                    product_rating: product.product_rating,
+                    product_avatar: product.product_avatar,
+                    product_image_links: product.product_image_links,
                 },
-                aiModelConfig
+                language: settings.language,
+                settings: {
+                    language: settings.language,
+                    totalPostsPerMonth: settings.totalPostsPerMonth,
+                    mediaPromptSuffix: settings.mediaPromptSuffix,
+                    affiliateContentKit: settings.affiliateContentKit,
+                    textGenerationModel: settings.textGenerationModel,
+                    imageGenerationModel: settings.imageGenerationModel,
+                    textModelFallbackOrder: settings.textModelFallbackOrder,
+                    visionModels: settings.visionModels,
+                    contentPillars: settings.contentPillars,
+                    prompts: settings.prompts,
+                    cloudinaryCloudName: settings.cloudinaryCloudName,
+                    cloudinaryUploadPreset: settings.cloudinaryUploadPreset,
+                }
+            };
+
+            console.log('[BackgroundTask] Creating background task for product idea generation with payload:', taskPayload);
+            
+            const { taskId } = await taskService.createBackgroundTask(
+                'GENERATE_IDEAS_FROM_PRODUCT',
+                taskPayload,
+                mongoBrandId,
+                'normal'
             );
 
-            if (!Array.isArray(newIdeaData) || newIdeaData.length === 0 || !newIdeaData[0].title) {
-                throw new Error("Failed to generate ideas: No valid ideas returned from AI service.");
-            }
+            console.log('[BackgroundTask] Background task created successfully for product idea generation with ID:', taskId);
 
-            let productTrend: Trend | undefined = (generatedAssets?.trends || []).find(t => t.topic === `Ideas for: ${product.productName}`);
-            
-            if (!productTrend) {
-                const newTrendPayload: Omit<Trend, 'id'> = {
-                    topic: `Ideas for: ${product.productName}`,
-                    keywords: [product.productName, product.providerName],
-                    links: [{ title: 'Product Link', url: product.productLink }],
-                    notes: `Generated ideas for affiliate product: ${product.productName}`,
-                    analysis: `Affiliate product ideas for ${product.productName}`,
-                    createdAt: new Date().toISOString(),
-                    brandId: mongoBrandId,
-                    industry: 'Affiliate Marketing',
-                };
-                const newId = await saveTrendToDatabase(newTrendPayload, mongoBrandId);
-                productTrend = { ...newTrendPayload, id: newId };
-                dispatchAssets({ type: 'SAVE_TREND', payload: productTrend });
-            }
-            
-            const finalTrend = productTrend;
-            const ideasWithTrendId: Partial<Idea>[] = newIdeaData.map(idea => ({
-                ...idea,
-                trendId: finalTrend.id, 
-                productId: product.id,
-            }));
-
-            const savedIdeas = await saveIdeasToDatabase(ideasWithTrendId, mongoBrandId);
-            
-            setSuccessMessage(`Generated ${savedIdeas.length} ideas from ${product.productName}`);
-            setActiveTab('strategy');
-            dispatchAssets({ type: 'ADD_IDEAS', payload: savedIdeas });
-            handleSelectTrend(finalTrend);
+            // Notify user that the task has been started
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Đang tạo ý tưởng từ sản phẩm trong nền..." 
+                : "Generating ideas from product in the background...");
 
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to generate ideas from product.");
+            console.error('[BackgroundTask] Error creating background task for product idea generation:', err);
+            setError(err instanceof Error ? err.message : "Failed to start product idea generation task.");
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, mongoBrandId, generatedAssets, setActiveTab, aiModelConfig, dispatchAssets, setError, setLoaderContent, setSuccessMessage, handleSelectTrend]);
+    }, [aiModelConfig, mongoBrandId, settings, setLoaderContent, setError, setSuccessMessage, setActiveTab, dispatchAssets, handleSelectTrend]);
 
-    const handleSuggestTrends = useCallback(async (trendType: 'industry' | 'global', timePeriod: string) => {
+        const handleSuggestTrends = useCallback(async (trendType: 'industry' | 'global', timePeriod: string) => {
+        console.log('[BackgroundTask] handleSuggestTrends called with:', { trendType, timePeriod });
+        
         setLoaderContent({ 
-            title: trendType === 'industry' ? "Finding Industry Trends..." : "Finding Global Trends...", 
-            steps: ["Analyzing trends...", "Generating insights...", "Finalizing trends..."] 
+            title: trendType === 'industry' 
+                ? "Suggesting Industry Trends..." 
+                : "Suggesting Global Trends...",
+            steps: ["Analyzing current trends...", "Researching new topics...", "Finalizing suggestions..."] 
         });
         
         try {
-            if (!aiModelConfig || !mongoBrandId || !generatedAssets) {
-                throw new Error("AI Model configuration not loaded, no brand selected, or assets not loaded.");
+            if (!aiModelConfig || !mongoBrandId || !generatedAssets?.brandFoundation) {
+                console.error('[BackgroundTask] Missing required data for trend suggestion.');
+                throw new Error("Missing required data for trend suggestion.");
             }
             
-            let newTrendData: Omit<Trend, 'id' | 'brandId'>[];
+            // Create a background task for trend suggestion
+            const taskPayload = {
+                trendType: trendType,
+                timePeriod: timePeriod,
+                // Extract only the necessary fields from brandFoundation
+                brandFoundation: generatedAssets.brandFoundation ? {
+                    brandName: generatedAssets.brandFoundation.brandName,
+                    mission: generatedAssets.brandFoundation.mission,
+                    usp: generatedAssets.brandFoundation.usp,
+                    targetAudience: generatedAssets.brandFoundation.targetAudience,
+                    personality: generatedAssets.brandFoundation.personality,
+                    values: generatedAssets.brandFoundation.values,
+                    keyMessaging: generatedAssets.brandFoundation.keyMessaging,
+                } : null,
+                settings: {
+                    language: settings.language,
+                    totalPostsPerMonth: settings.totalPostsPerMonth,
+                    mediaPromptSuffix: settings.mediaPromptSuffix,
+                    affiliateContentKit: settings.affiliateContentKit,
+                    textGenerationModel: settings.textGenerationModel,
+                    imageGenerationModel: settings.imageGenerationModel,
+                    textModelFallbackOrder: settings.textModelFallbackOrder,
+                    visionModels: settings.visionModels,
+                    contentPillars: settings.contentPillars,
+                    prompts: settings.prompts,
+                    cloudinaryCloudName: settings.cloudinaryCloudName,
+                    cloudinaryUploadPreset: settings.cloudinaryUploadPreset,
+                }
+            };
+
+            console.log('[BackgroundTask] Creating background task for trend suggestion with payload:', taskPayload);
             
-            if (trendType === 'industry') {
-                // Industry-specific trends WITH INTERNET SEARCH ENABLED
-                newTrendData = await textGenerationService.suggestTrends(
-                    {
-                        brandFoundation: generatedAssets.brandFoundation,
-                        timePeriod: timePeriod,
-                        settings: settings
-                    },
-                    aiModelConfig
-                );
-            } else {
-                // Global hot trends WITH INTERNET SEARCH ENABLED
-                newTrendData = await textGenerationService.suggestGlobalTrends(
-                    {
-                        timePeriod: timePeriod,
-                        settings: settings
-                    },
-                    aiModelConfig
-                );
-            }
-            
-            if (!Array.isArray(newTrendData) || newTrendData.length === 0) {
-                throw new Error("AI failed to generate valid trends. The response was empty or not an array.");
-            }
-            
-            // Prepare trends with brand information for bulk save
-            const trendsWithBrand = newTrendData.map(trend => ({ 
-                ...trend, 
-                brandId: mongoBrandId,
-                industry: trendType === 'industry' ? generatedAssets.brandFoundation.brandName || 'General' : 'Global'
-            }));
-            
-            // Save all trends at once using bulk operation
-            const savedTrends = await saveTrendsToDatabase(trendsWithBrand, mongoBrandId);
-            
-            // Update the UI with new trends PREPENDED to existing trends
-            dispatchAssets({ 
-                type: 'SET_STRATEGY_DATA', 
-                payload: { 
-                    trends: [...savedTrends, ...(generatedAssets?.trends || [])], 
-                    ideas: [] 
-                } 
-            });
-            
-            setSuccessMessage(`Generated ${savedTrends.length} ${trendType} trends`);
+            const { taskId } = await taskService.createBackgroundTask(
+                trendType === 'industry' ? 'GENERATE_TRENDS' : 'GENERATE_GLOBAL_TRENDS',
+                taskPayload,
+                mongoBrandId,
+                'normal'
+            );
+
+            console.log('[BackgroundTask] Background task created successfully for trend suggestion with ID:', taskId);
+
+            // Notify user that the task has been started
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Đang đề xuất xu hướng trong nền..." 
+                : "Suggesting trends in the background...");
+
         } catch (err) {
-            console.error('Error in handleSuggestTrends:', err);
-            setError(err instanceof Error ? err.message : "Failed to suggest trends.");
+            console.error('[BackgroundTask] Error creating background task for trend suggestion:', err);
+            setError(err instanceof Error ? err.message : "Failed to start trend suggestion task.");
         } finally {
             setLoaderContent(null);
         }
-    }, [settings, mongoBrandId, generatedAssets, aiModelConfig, dispatchAssets, setError, setLoaderContent, setSuccessMessage]);
+    }, [aiModelConfig, mongoBrandId, settings, generatedAssets, setLoaderContent, setError, setSuccessMessage]);
 
     const handleSaveAffiliateLink = useCallback(async (links: Partial<AffiliateLink>[]) => {
         if (mongoBrandId) {

@@ -11,6 +11,7 @@ import { AiModelConfig } from '../services/configService';
 import { textGenerationService } from '../services/textGenerationService';
 import { saveMediaPlanGroupToDatabase as saveMediaPlanGroup } from '../services/databaseService';
 import { uploadMediaToCloudinary } from '../services/cloudinaryService';
+import { taskService } from '../services/taskService';
 
 interface useMediaPlanManagementProps {
     generatedAssets: GeneratedAssets | null;
@@ -63,129 +64,110 @@ export const useMediaPlanManagement = ({
         pillar: string
     ) => {
         (async () => {
+            console.log('[BackgroundTask] handleGenerateMediaPlanGroup called with:', {
+                objective,
+                keywords,
+                useSearch,
+                selectedPlatforms,
+                options,
+                selectedProductId,
+                personaId,
+                pillar
+            });
+            
             if (!generatedAssets?.brandFoundation || !adminSettings) {
+                console.error('[BackgroundTask] Cannot generate plan without Brand Foundation or Admin Settings');
                 setError("Cannot generate plan without a Brand Foundation or Admin Settings.");
                 return;
             }
 
-            const totalPosts = settings.totalPostsPerMonth;
-            const userPrompt = `${objective}${keywords.length > 0 ? `\n\nKeywords to include: ${keywords.join(', ')}` : ''}`;
-            
-            const planSteps = settings?.language === 'Việt Nam' ? [
-                `Phân tích mục tiêu của bạn: "${objective.substring(0, 50)}"...`, 
-                "Thiết lập chủ đề hàng tuần...",
-                "Soạn thảo bài đăng...",
-                "Tạo các hashtag hấp dẫn và CTA...",
-                "Hoàn thiện kế hoạch..."
-            ] : [
-                `Analyzing your goal: "${objective.substring(0, 50)}"...`, 
-                "Establishing weekly themes...",
-                "Drafting posts...",
-                "Generating engaging hashtags and CTAs...",
-                "Finalizing plan..."
-            ];
-
-            setLoaderContent({ title: settings?.language === 'Việt Nam' ? "Đang tạo kế hoạch truyền thông..." : "Generating media plan...", steps: planSteps });
-            setError(null);
             try {
-                const persona = personaId ? generatedAssets.personas?.find(p => p.id === personaId) ?? null : null;
-                const selectedProduct = selectedProductId ? generatedAssets.affiliateLinks?.find(link => link.id === selectedProductId) ?? null : null;
-                
-                if (!aiModelConfig) {
-                    throw new Error("AI Model configuration not loaded.");
-                }
-                
-                const newGroup = await textGenerationService.generateMediaPlanGroup(
-                    {
-                        brandFoundation: generatedAssets.brandFoundation!,
-                        userPrompt: userPrompt,
-                        language: settings.language,
-                        totalPosts: totalPosts,
-                        useSearch: useSearch,
-                        selectedPlatforms: selectedPlatforms,
-                        options: options,
-                        brandSettings: settings,
-                        adminSettings: adminSettings,
-                        persona: persona,
-                        selectedProduct: selectedProduct,
-                        pillar: pillar
+                // Create a background task for media plan generation
+                // Only send the necessary data instead of the entire generatedAssets object
+                const taskPayload = {
+                    objective,
+                    keywords,
+                    useSearch,
+                    selectedPlatforms,
+                    generationOptions: {
+                        tone: options.tone,
+                        style: options.style,
+                        length: options.length,
+                        includeEmojis: options.includeEmojis,
                     },
-                    aiModelConfig
-                );
-                
-                const updatedPlan = newGroup.plan.map(week => ({
-                    ...week,
-                    posts: week.posts.map(post => {
-                        if (post.mediaPrompt) {
-                            const processPrompt = (p: any) => {
-                                const suffix = settings.mediaPromptSuffix || '';
-                                let promptText;
-
-                                if (typeof p === 'object' && p !== null) {
-                                    promptText = JSON.stringify(p, null, 2);
-                                } else {
-                                    promptText = String(p);
-                                }
-                                
-                                return suffix ? `${promptText}, ${suffix}` : promptText;
-                            };
-
-                            if (Array.isArray(post.mediaPrompt)) {
-                                return {
-                                    ...post,
-                                    mediaPrompt: post.mediaPrompt.map(processPrompt)
-                                };
-                            } else {
-                                return {
-                                    ...post,
-                                    mediaPrompt: processPrompt(post.mediaPrompt)
-                                };
-                            }
-                        }
-                        return post;
-                    })
-                }));
-
-                const updatedGroup = {
-                    ...newGroup,
-                    plan: updatedPlan
+                    selectedProductId,
+                    personaId,
+                    pillar,
+                    // Extract only the necessary fields from brandFoundation
+                    brandFoundation: generatedAssets.brandFoundation ? {
+                        brandName: generatedAssets.brandFoundation.brandName,
+                        mission: generatedAssets.brandFoundation.mission,
+                        usp: generatedAssets.brandFoundation.usp,
+                        targetAudience: generatedAssets.brandFoundation.targetAudience,
+                        personality: generatedAssets.brandFoundation.personality,
+                        values: generatedAssets.brandFoundation.values,
+                        keyMessaging: generatedAssets.brandFoundation.keyMessaging,
+                    } : null,
+                    language: settings.language,
+                    totalPosts: settings.totalPostsPerMonth,
+                    // Extract only the necessary fields from settings
+                    brandSettings: {
+                        language: settings.language,
+                        totalPostsPerMonth: settings.totalPostsPerMonth,
+                        mediaPromptSuffix: settings.mediaPromptSuffix,
+                        affiliateContentKit: settings.affiliateContentKit,
+                        textGenerationModel: settings.textGenerationModel,
+                        imageGenerationModel: settings.imageGenerationModel,
+                        textModelFallbackOrder: settings.textModelFallbackOrder,
+                        visionModels: settings.visionModels,
+                        contentPillars: settings.contentPillars,
+                        prompts: settings.prompts,
+                        cloudinaryCloudName: settings.cloudinaryCloudName,
+                        cloudinaryUploadPreset: settings.cloudinaryUploadPreset,
+                    },
+                    // Extract only the necessary fields from adminSettings
+                    adminSettings: adminSettings ? {
+                        language: adminSettings.language,
+                        totalPostsPerMonth: adminSettings.totalPostsPerMonth,
+                        mediaPromptSuffix: adminSettings.mediaPromptSuffix,
+                        affiliateContentKit: adminSettings.affiliateContentKit,
+                        textGenerationModel: adminSettings.textGenerationModel,
+                        imageGenerationModel: adminSettings.imageGenerationModel,
+                        textModelFallbackOrder: adminSettings.textModelFallbackOrder,
+                        visionModels: adminSettings.visionModels,
+                        contentPillars: adminSettings.contentPillars,
+                        prompts: adminSettings.prompts,
+                    } : null,
                 };
+
+                console.log('[BackgroundTask] Creating background task with payload:', taskPayload);
                 
+                const { taskId } = await taskService.createBackgroundTask(
+                    'GENERATE_MEDIA_PLAN',
+                    taskPayload,
+                    mongoBrandId || '',
+                    'normal'
+                );
 
-                updateAutoSaveStatus('saving');
-                const brandId = await ensureMongoProject();
-                if (!brandId) {
-                    updateAutoSaveStatus('idle');
-                    setLoaderContent(null); 
-                    setError("MongoDB credentials not configured. Media plan not saved.");
-                    return;
-                }
+                console.log('[BackgroundTask] Background task created successfully with ID:', taskId);
 
-                const newPublicUrls = await uploadMediaToCloudinary(generatedImages, settings);
-                const allImageUrls = { ...generatedImages, ...newPublicUrls };
-
-                const { savedPlan } = await saveMediaPlanGroup(updatedGroup, allImageUrls, brandId, settings);
-
-                if (!savedPlan) {
-                    throw new Error("Failed to save media plan group. Received no plan from server.");
-                }
-
-                dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: savedPlan });
-                setMediaPlanGroupsList(prev => [...prev, { id: savedPlan.id, name: savedPlan.name, prompt: savedPlan.prompt, productImages: savedPlan.productImages }]);
-                setActivePlanId(savedPlan.id);
-                setKhongMinhSuggestions({});
+                // Notify user that the task has been started
+                setSuccessMessage(settings?.language === 'Việt Nam' 
+                    ? "Đang tạo kế hoạch truyền thông trong nền..." 
+                    : "Generating media plan in the background...");
                 
-                setGeneratedImages(allImageUrls); 
-                updateAutoSaveStatus('saved');
-                setLoaderContent(null); 
-
+                // Close the modal
+                setLoaderContent(null);
+                
+                // In a real implementation, you would add the taskId to a global task tracking system
+                console.log(`[BackgroundTask] Media plan generation task started with ID: ${taskId}`);
             } catch (err) {
-                setError(err instanceof Error ? err.message : "Failed to generate media plan.");
-                updateAutoSaveStatus('error');
-                setLoaderContent(null); 
+                console.error('[BackgroundTask] Error creating background task:', err);
+                setError(err instanceof Error ? err.message : "Failed to start media plan generation task.");
+                setLoaderContent(null);
             }
         })();  
-    }, [generatedAssets, settings, adminSettings, ensureMongoProject, generatedImages, updateAutoSaveStatus, aiModelConfig, dispatchAssets, setLoaderContent, setError, setMediaPlanGroupsList, setActivePlanId, setKhongMinhSuggestions, setGeneratedImages]);
+    }, [generatedAssets, settings, adminSettings, mongoBrandId, setLoaderContent, setError, setSuccessMessage]);
 
     const handleCreateFunnelCampaignPlan = useCallback(async (planShell: MediaPlanGroup & { wizardData?: any }) => {
         if (!generatedAssets?.brandFoundation || !adminSettings) {
@@ -224,85 +206,74 @@ export const useMediaPlanManagement = ({
             ? `Generate a full ${campaignDuration} marketing funnel campaign to promote the product "${selectedProduct.productName}".` 
             : `Generate a full ${campaignDuration} marketing funnel campaign for the general goal: "${generalGoal}".`;
 
-        setLoaderContent({
-            title: "Generating Funnel Campaign...",
-            steps: [
-                "Analyzing campaign goals...",
-                "Structuring funnel stages (Awareness, Consideration, Decision)...",
-                "Generating content for each stage...",
-                "Finalizing campaign plan..."
-            ]
-        });
-        setError(null);
-
         try {
-            if (!aiModelConfig) {
-                throw new Error("AI Model configuration not loaded.");
-            }
-            
-            const newGeneratedPlan = await textGenerationService.generateMediaPlanGroup(
-                {
-                    brandFoundation: generatedAssets.brandFoundation,
-                    userPrompt: prompt,
-                    language: settings.language,
-                    totalPosts: totalPosts,
-                    useSearch: true,
-                    selectedPlatforms: ['Facebook', 'Instagram', 'TikTok', 'YouTube'],
-                    options: { tone: 'persuasive', style: 'storytelling', length: 'medium', includeEmojis: true },
-                    brandSettings: settings,
-                    adminSettings: adminSettings,
-                    persona: persona,
-                    selectedProduct: selectedProduct,
-                    pillar: 'funnel'
+            // Create a background task for funnel campaign generation
+            const taskPayload = {
+                planName: planShell.name,
+                wizardData,
+                brandFoundation: {
+                    brandName: generatedAssets.brandFoundation.brandName,
+                    mission: generatedAssets.brandFoundation.mission,
+                    usp: generatedAssets.brandFoundation.usp,
+                    targetAudience: generatedAssets.brandFoundation.targetAudience,
+                    personality: generatedAssets.brandFoundation.personality,
+                    values: generatedAssets.brandFoundation.values,
+                    keyMessaging: generatedAssets.brandFoundation.keyMessaging,
                 },
-                aiModelConfig
+                language: settings.language,
+                totalPosts: totalPosts,
+                useSearch: true,
+                selectedPlatforms: ['Facebook', 'Instagram', 'TikTok', 'YouTube'],
+                options: { tone: 'persuasive', style: 'storytelling', length: 'medium', includeEmojis: true },
+                brandSettings: {
+                    language: settings.language,
+                    totalPostsPerMonth: settings.totalPostsPerMonth,
+                    mediaPromptSuffix: settings.mediaPromptSuffix,
+                    affiliateContentKit: settings.affiliateContentKit,
+                    textGenerationModel: settings.textGenerationModel,
+                    imageGenerationModel: settings.imageGenerationModel,
+                    textModelFallbackOrder: settings.textModelFallbackOrder,
+                    visionModels: settings.visionModels,
+                    contentPillars: settings.contentPillars,
+                    prompts: settings.prompts,
+                },
+                adminSettings: adminSettings ? {
+                    language: adminSettings.language,
+                    totalPostsPerMonth: adminSettings.totalPostsPerMonth,
+                    mediaPromptSuffix: adminSettings.mediaPromptSuffix,
+                    affiliateContentKit: adminSettings.affiliateContentKit,
+                    textGenerationModel: adminSettings.textGenerationModel,
+                    imageGenerationModel: adminSettings.imageGenerationModel,
+                    textModelFallbackOrder: adminSettings.textModelFallbackOrder,
+                    visionModels: adminSettings.visionModels,
+                    contentPillars: adminSettings.contentPillars,
+                    prompts: adminSettings.prompts,
+                } : null,
+                personaId: persona?.id ?? null,
+                selectedProductId: selectedProduct?.id ?? null,
+                pillar: 'funnel'
+            };
+
+            const { taskId } = await taskService.createBackgroundTask(
+                'GENERATE_FUNNEL_CAMPAIGN',
+                taskPayload,
+                mongoBrandId || '',
+                'normal'
             );
 
-            const finalPlan: MediaPlanGroup = {
-                ...planShell,
-                prompt: prompt,
-                plan: newGeneratedPlan.plan,
-                name: newGeneratedPlan.name || planShell.name, 
-            };
-            delete (finalPlan as any).wizardData;
-
-            dispatchAssets({ type: 'ADD_MEDIA_PLAN', payload: finalPlan });
+            // Notify user that the task has been started
+            setSuccessMessage("Generating funnel campaign in the background...");
             
-            setMediaPlanGroupsList(prev => [...prev, { 
-                id: finalPlan.id, 
-                name: finalPlan.name, 
-                prompt: finalPlan.prompt, 
-                productImages: finalPlan.productImages,
-                source: finalPlan.source
-            }]);
+            // Close the modal
+            setLoaderContent(null);
             
-            setActivePlanId(finalPlan.id);
-            
-            updateAutoSaveStatus('saving');
-            const brandId = await ensureMongoProject();
-            if (brandId) {
-                const newPublicUrls = await uploadMediaToCloudinary(generatedImages, settings);
-                const allImageUrls = { ...generatedImages, ...newPublicUrls };
-                
-                await saveMediaPlanGroup(finalPlan, allImageUrls, brandId, settings);
-                setGeneratedImages(allImageUrls);
-                updateAutoSaveStatus('saved');
-            } else {
-                updateAutoSaveStatus('idle');
-            }
-            
-            setSuccessMessage(settings.language === 'Việt Nam' 
-                ? "Chiến dịch funnel đã được tạo thành công!" 
-                : "Funnel campaign created successfully!");
-            setTimeout(() => setSuccessMessage(null), 3000);
-            
+            // In a real implementation, you would add the taskId to a global task tracking system
+            console.log(`Funnel campaign generation task started with ID: ${taskId}`);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to create funnel campaign plan.");
-            updateAutoSaveStatus('error');
-        } finally {
+            setError(err instanceof Error ? err.message : "Failed to start funnel campaign generation task.");
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, adminSettings, ensureMongoProject, generatedImages, updateAutoSaveStatus, aiModelConfig, dispatchAssets, setLoaderContent, setError, setMediaPlanGroupsList, setActivePlanId, setSuccessMessage]);
+    }, [generatedAssets, settings, adminSettings, mongoBrandId, setLoaderContent, setError, setSuccessMessage]);
 
     const handleGenerateContentPackage = useCallback(async ( 
         idea: Idea,
@@ -326,78 +297,61 @@ export const useMediaPlanManagement = ({
             selectedProduct = null;
         }
         
-        setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "Đang tạo Gói Nội Dung..." : "Generating Content Package...",
-            steps: [
-                "Crafting pillar content...",
-                "Generating image prompts...",
-                "Finalizing content package..."
-            ]
-        });
-
         try {
-            if (!aiModelConfig) {
-                throw new Error("AI Model configuration not loaded.");
-            }
-            
-            const newPackage = await textGenerationService.generateContentPackage(
-                {
-                    idea: idea,
-                    brandFoundation: generatedAssets.brandFoundation,
-                    language: settings.language,
-                    settings: settings,
-                    persona: personaId ? (generatedAssets.personas || []).find(p => p.id === personaId) ?? null : null,
-                    pillarPlatform: 'YouTube',
-                    options: options,
-                    selectedProduct: selectedProduct,
-                    repurposedPlatforms: ['Facebook', 'Instagram', 'TikTok', 'Pinterest'] // Added missing property
+            // Create a background task for content package generation
+            const taskPayload = {
+                idea,
+                brandFoundation: {
+                    brandName: generatedAssets.brandFoundation.brandName,
+                    mission: generatedAssets.brandFoundation.mission,
+                    usp: generatedAssets.brandFoundation.usp,
+                    targetAudience: generatedAssets.brandFoundation.targetAudience,
+                    personality: generatedAssets.brandFoundation.personality,
+                    values: generatedAssets.brandFoundation.values,
+                    keyMessaging: generatedAssets.brandFoundation.keyMessaging,
                 },
-                aiModelConfig
+                language: settings.language,
+                brandSettings: {
+                    language: settings.language,
+                    totalPostsPerMonth: settings.totalPostsPerMonth,
+                    mediaPromptSuffix: settings.mediaPromptSuffix,
+                    affiliateContentKit: settings.affiliateContentKit,
+                    textGenerationModel: settings.textGenerationModel,
+                    imageGenerationModel: settings.imageGenerationModel,
+                    textModelFallbackOrder: settings.textModelFallbackOrder,
+                    visionModels: settings.visionModels,
+                    contentPillars: settings.contentPillars,
+                    prompts: settings.prompts,
+                },
+                personaId: personaId,
+                pillarPlatform: 'YouTube',
+                options: options,
+                selectedProductId: selectedProduct?.id ?? null,
+                repurposedPlatforms: ['Facebook', 'Instagram', 'TikTok', 'Pinterest']
+            };
+
+            const { taskId } = await taskService.createBackgroundTask(
+                'GENERATE_CONTENT_PACKAGE',
+                taskPayload,
+                mongoBrandId || '',
+                'normal'
             );
 
-            updateAutoSaveStatus('saving');
-            const brandId = await ensureMongoProject();
-            if (!brandId) {
-                updateAutoSaveStatus('idle');
-                setLoaderContent(null);
-                setError("MongoDB credentials not configured. Content package not saved.");
-                return;
-            }
-
-            const newPublicUrls = await uploadMediaToCloudinary(generatedImages, settings);
-            const allImageUrls = { ...generatedImages, ...newPublicUrls };
-
-            const { savedPlan } = await saveMediaPlanGroup(newPackage, allImageUrls, brandId, settings);
-
-            if (!savedPlan) {
-                throw new Error("Failed to save content package. Received no plan from server.");
-            }
-
-            const finalPlan = savedPlan;
-            updateAutoSaveStatus('saved');
-            setSuccessMessage(`Successfully created and saved content package: ${finalPlan.name}`);
-            setTimeout(() => setSuccessMessage(null), 4000);
-
-            dispatchAssets({ type: 'ADD_CONTENT_PACKAGE', payload: finalPlan });
-            setMediaPlanGroupsList(prev => [...prev, { id: finalPlan.id, name: finalPlan.name, prompt: finalPlan.prompt, productImages: finalPlan.productImages, source: finalPlan.source }]);
-            setActivePlanId(finalPlan.id);
-            setActiveTab('mediaPlan');
-
-            if (mongoBrandId) {
-                const newPublicUrls = await uploadMediaToCloudinary(generatedImages, settings);
-                const allImageUrls = { ...generatedImages, ...newPublicUrls };
-                setGeneratedImages(allImageUrls);
-            }
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to generate content package.");
+            // Notify user that the task has been started
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Đang tạo Gói Nội Dung trong nền..." 
+                : "Generating Content Package in the background...");
             
-            if (mongoBrandId) {
-                updateAutoSaveStatus('error');
-            }
-        } finally {
+            // Close the modal
+            setLoaderContent(null);
+            
+            // In a real implementation, you would add the taskId to a global task tracking system
+            console.log(`Content package generation task started with ID: ${taskId}`);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to start content package generation task.");
             setLoaderContent(null);
         }
-    }, [generatedAssets, settings, mongoBrandId, updateAutoSaveStatus, setLoaderContent, setError, setSuccessMessage, dispatchAssets, setMediaPlanGroupsList, setActivePlanId, setActiveTab, generatedImages, aiModelConfig]);
+    }, [generatedAssets, settings, mongoBrandId, setLoaderContent, setError, setSuccessMessage]);
 
     return {
         handleGenerateMediaPlanGroup,

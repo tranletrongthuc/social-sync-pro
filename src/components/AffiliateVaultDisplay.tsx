@@ -246,21 +246,6 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 </div>
             )}
             
-            <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6">
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="p-1 text-center">
-                        <CollectionIcon className="h-6 w-6 text-blue-600 mx-auto mb-1"/>
-                        <p className="text-xs font-medium text-gray-500">{texts.totalLinks}</p>
-                        <p className="text-lg font-bold text-gray-900">{kpiData.totalLinks}</p>
-                    </div>
-                    <div className="p-1 text-center">
-                        <ScaleIcon className="h-6 w-6 text-green-600 mx-auto mb-1"/>
-                        <p className="text-xs font-medium text-gray-500">{texts.avgRate}</p>
-                        <p className="text-lg font-bold text-gray-900">{kpiData.avgRate}</p>
-                    </div>
-                </div>
-            </div>
-
             <div className="mb-4 flex flex-col md:flex-row gap-3">
                 <div className="relative flex-grow">
                     <Input

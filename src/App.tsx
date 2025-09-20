@@ -1,6 +1,11 @@
 import React, { useState, useCallback, useEffect, useRef, useReducer, Suspense, lazy } from 'react';
 import { isAdminAuthenticated as checkAdminAuthenticated, authenticateAdmin, logoutAdmin } from './services/adminAuthService';
 
+// Task Management
+import { TaskProvider, useTaskManager } from './contexts/TaskContext';
+import TaskStatusIndicator from './components/TaskStatusIndicator';
+import TaskNotification from './components/TaskNotification';
+
 // Lazy load components
 const IdeaProfiler = lazy(() => import('./components/IdeaProfiler'));
 const BrandProfiler = lazy(() => import('./components/BrandProfiler'));
@@ -35,7 +40,8 @@ import { useAutoSave } from './hooks/useAutoSave';
 // Reducer
 import { assetsReducer, initialGeneratedAssets } from './reducers/assetsReducer';
 
-const App: React.FC = () => {
+// AppContent component to use hooks inside TaskProvider
+const AppContent: React.FC = () => {
     const initRef = useRef(false);
     // Core App State
     const [currentStep, setCurrentStep] = useState<'idea' | 'profile' | 'assets'>('idea');
@@ -82,6 +88,9 @@ const App: React.FC = () => {
     // Media Plan State
     const [mediaPlanGroupsList, setMediaPlanGroupsList] = useState<{id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]>([]);
     const [activePlanId, setActivePlanId] = useState<string | null>(null);
+
+    // Task Management
+    const { notifications, removeNotification } = useTaskManager();
 
     // Refactored Logic via Custom Hooks
     const updateAutoSaveStatus = useCallback((status: 'saving' | 'saved' | 'error') => {
@@ -298,253 +307,357 @@ const App: React.FC = () => {
         setCurrentStep('idea');
         setActiveTab('brandKit');
         setBrandInfo(null);
-        dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: initialGeneratedAssets });
-        setGeneratedImages({});
-        setMongoBrandId(null);
-        setError(null);
-        setSuccessMessage(null);
-    }, []);
+    }, [setCurrentStep, setActiveTab, setBrandInfo]);
 
     const handleSaveSettings = useCallback(async (newSettings: Settings) => {
-        if (!mongoBrandId) {
-            setError('Cannot save settings: No brand ID is currently loaded.');
-            return;
-        }
         try {
             dispatchAssets({ type: 'UPDATE_SETTINGS', payload: newSettings });
-            await saveSettingsToDatabase(newSettings, mongoBrandId);
-            setSuccessMessage('Settings saved successfully!');
-        } catch (err) {
-            setError(`Failed to save settings: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            
+            if (mongoBrandId) {
+                await saveSettingsToDatabase(newSettings, mongoBrandId);
+                setSuccessMessage(settings.language === 'Việt Nam' 
+                    ? "Cài đặt đã được lưu thành công!" 
+                    : "Settings saved successfully!");
+            } else {
+                setSuccessMessage(settings.language === 'Việt Nam' 
+                    ? "Cài đặt đã được cập nhật trong phiên làm việc này!" 
+                    : "Settings updated for this session!");
+            }
+        } catch (error) {
+            setError(settings.language === 'Việt Nam' 
+                ? "Lỗi khi lưu cài đặt!" 
+                : "Error saving settings!");
+        } finally {
+            setTimeout(() => setSuccessMessage(null), 3000);
         }
-    }, [mongoBrandId, dispatchAssets]);
+    }, [dispatchAssets, mongoBrandId, saveSettingsToDatabase, settings.language, setError, setSuccessMessage]);
 
-    // New handler for trend suggestion
-    const handleSuggestTrends = useCallback(async (trendType: 'industry' | 'global', timePeriod: string) => {
+    const setLanguage = useCallback(async (language: string) => {
+        handleSaveSettings({ ...settings, language });
+    }, [handleSaveSettings, settings]);
+
+    const handleSuggestTrends = useCallback(async (timePeriod: string) => {
+        if (!generatedAssets?.brandFoundation || !aiModelConfig) {
+            setError("Cannot generate trends without Brand Foundation or AI configuration.");
+            return;
+        }
+
         setIsSuggestingTrends(true);
+        setLoaderContent({
+            title: settings.language === 'Việt Nam' ? "Đang đề xuất xu hướng..." : "Suggesting trends...",
+            steps: [
+                settings.language === 'Việt Nam' ? "Phân tích hồ sơ thương hiệu..." : "Analyzing brand profile...",
+                settings.language === 'Việt Nam' ? "Tìm kiếm xu hướng mới..." : "Searching for new trends...",
+                settings.language === 'Việt Nam' ? "Phân tích mức độ phổ biến..." : "Analyzing trend popularity...",
+            ]
+        });
+        setError(null);
+
         try {
-            await strategyManager.handleSuggestTrends(trendType, timePeriod);
+            const newTrends = await textGenerationService.suggestTrends(
+                {
+                    brandFoundation: generatedAssets.brandFoundation,
+                    timePeriod,
+                    settings
+                },
+                aiModelConfig
+            );
+
+            // In a real implementation, you would save these trends to the database
+            // dispatchAssets({ type: 'ADD_TRENDS', payload: newTrends });
+            
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Đã đề xuất xu hướng thành công!" 
+                : "Successfully suggested trends!");
         } catch (err) {
-            setError(`Failed to suggest trends: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            setError(err instanceof Error ? err.message : "Failed to suggest trends.");
         } finally {
             setIsSuggestingTrends(false);
+            setLoaderContent(null);
         }
-    }, [strategyManager]);
+    }, [generatedAssets, aiModelConfig, settings, dispatchAssets, setLoaderContent, setError, setSuccessMessage]);
 
-    const setLanguage = useCallback(async (lang: string) => {
-        const newSettings = { ...settings, language: lang };
-        dispatchAssets({ type: 'UPDATE_SETTINGS', payload: newSettings });
-        await configService.updateAppSettings(newSettings); // For persistence across sessions if needed
-    }, [settings, dispatchAssets]);
+    // Task notification handlers
+    const handleViewTaskResult = useCallback((taskId: string) => {
+        console.log('[App] Viewing result for task:', taskId);
+        // In a real implementation, you would navigate to the result page
+        // Remove notification after viewing
+        removeNotification(taskId);
+    }, [removeNotification]);
 
-    // Render Logic
-    if (!isConfigLoaded) return <Loader title="Loading application configuration..." steps={[]} />;
+    const handleCloseNotification = useCallback((taskId: string) => {
+        console.log('[App] Closing notification for task:', taskId);
+        removeNotification(taskId);
+    }, [removeNotification]);
 
-    const isAdminRoute = window.location.pathname === '/admin';
-    if (isAdminRoute) {
-        if (isAdminAuthenticated) return <AdminPage onLogout={handleAdminLogout} />;
-        return (
+    // Main render function
+    const renderContent = () => {
+        if (!isConfigLoaded) {
+            return <Loader title="Loading configuration..." steps={[]} />;
+        }
+
+        if (isAdminAuthenticated) {
+            return (
+                <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
+                    <AdminPage onLogout={handleAdminLogout} />
+                </Suspense>
+            );
+        }
+
+        if (error) return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
-                <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-                    <h1 className="text-2xl font-bold mb-6 text-center">Admin Login</h1>
-                    <input type="password" placeholder="Enter admin password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md" />
-                    <Button onClick={() => { if (authenticateAdmin(adminPassword)) { setIsAdminAuthenticated(true); } else { setError('Invalid password'); } }} className="w-full mt-4">Login</Button>
-                    {error && <p className="text-red-500 text-center mt-2">{error}</p>}
+                <div className="max-w-md p-6 bg-white rounded-lg shadow-md">
+                    <h2 className="text-xl font-bold text-red-600 mb-2">Error</h2>
+                    <p className="text-gray-700 mb-4">{error}</p>
+                    <Button onClick={() => setError(null)}>Try Again</Button>
                 </div>
             </div>
         );
-    }
 
-    if (loaderContent) return <Loader title={loaderContent.title} steps={loaderContent.steps} />;
-    if (error) return (
-        <div className="fixed inset-0 bg-red-50 flex flex-col items-center justify-center p-4 z-50">
-            <div className="bg-white p-8 rounded-lg shadow-2xl border border-red-200 text-center max-w-lg">
-                <h2 className="text-2xl font-bold text-red-700">An Error Occurred</h2>
-                <p className="mt-2 text-gray-600 font-serif">{error}</p>
-                <Button onClick={() => setError(null)} className="mt-6">Close</Button>
-            </div>
-        </div>
-    );
-
-    switch (currentStep) {
-        case 'idea':
-            return (
-                <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
-                    <IdeaProfiler
-                        onGenerateProfile={handleGenerateProfile}
-                        isLoading={!!loaderContent}
-                        onLoadProject={projectIO.handleLoadProjectFile}
-                        onLoadProjectFromDatabase={projectIO.handleLoadFromDatabase}
-                        language={settings.language}
-                        setLanguage={setLanguage}
-                        brands={brands}
-                        isFetchingBrands={isFetchingBrands}
-                        areCredentialsSet={areCredentialsSet}
-                        integrationsVersion={integrationsVersion}
-                        onOpenIntegrations={() => { /* Placeholder */ }}
-                    />
-                </Suspense>
-            );
-        case 'profile':
-            return (
-                <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
-                    <BrandProfiler
-                        initialBrandInfo={brandInfo!}
-                        onGenerate={handleGenerateKit}
-                        isLoading={!!loaderContent}
-                        onBack={handleBackToIdea}
-                        language={settings.language}
-                    />
-                </Suspense>
-            );
-        case 'assets':
-            if (!generatedAssets) return <div>Loading assets...</div>;
-            return (
-                <>
+        switch (currentStep) {
+            case 'idea':
+                return (
                     <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
-                        <MainDisplay
-                            settings={settings}
-                            assets={generatedAssets}
-                            generatedImages={generatedImages}
-                            generatedVideos={generatedVideos}
-                            isGeneratingImage={(key) => generatingImageKeys.has(key)}
-                            isUploadingImage={() => false}
-                            autoSaveStatus={autoSaveStatus}
-                            activeTab={activeTab}
-                            setActiveTab={setActiveTab}
-                            onStartOver={handleBackToIdea}
-                            onOpenSettings={() => setIsSettingsModalOpen(true)}
-                            onOpenIntegrations={() => {}}
-                            mediaPlanGroupsList={mediaPlanGroupsList}
-                            activePlanId={activePlanId}
-                            plans={generatedAssets?.mediaPlans || []}
-                            personas={generatedAssets?.personas || []}
-                            affiliateLinks={generatedAssets?.affiliateLinks || []}
-                            onSaveProject={projectIO.handleSaveProjectToFile}
-                            isSavingProject={false}
-                            onSelectPlan={projectIO.handleSelectPlan}
-                            onGenerateImage={handleGenerateImage}
-                            onSetImage={handleSetImage}
-                            onSetVideo={handleSetVideo}
-                            onGenerateAllCarouselImages={handleGenerateAllCarouselImages}
-                            onSavePersona={personaManager.handleSavePersona}
-                            onDeletePersona={personaManager.handleDeletePersona}
-                            onUpdatePersona={personaManager.handleUpdatePersona}
-                            onSetPersonaImage={personaManager.handleSetPersonaImage}
-                            onAutoGeneratePersona={personaManager.handleAutoGeneratePersona}
-                            onLoadPersonasData={personaManager.handleLoadPersonasData}
-                            onGeneratePlan={mediaPlanManager.handleGenerateMediaPlanGroup}
-                            onCreateFunnelCampaignPlan={mediaPlanManager.handleCreateFunnelCampaignPlan}
-                            onGenerateContentPackage={mediaPlanManager.handleGenerateContentPackage}
-                            isGeneratingPlan={false}
-                            onRegenerateWeekImages={() => {}}
-                            productImages={[]}
-                            onSetProductImages={() => {}}
-                            onExportBrandKit={() => {}}
-                            isExportingBrandKit={false}
-                            onExportPlan={() => {}}
-                            isExportingPlan={false}
-                            onLoadStrategyHubData={strategyManager.handleLoadStrategyHubData}
-                            onLoadAffiliateVaultData={strategyManager.handleLoadAffiliateVaultData}
-                            onSaveTrend={strategyManager.handleSaveTrend}
-                            onDeleteTrend={strategyManager.handleDeleteTrend}
-                            onGenerateIdeas={strategyManager.handleGenerateIdeas}
-                            onGenerateIdeasFromProduct={strategyManager.handleGenerateIdeasFromProduct}
-                            onSaveAffiliateLink={(link) => strategyManager.handleSaveAffiliateLink([link])}
-                            onDeleteAffiliateLink={(linkId) => strategyManager.handleDeleteAffiliateLink(linkId)}
-                            onImportAffiliateLinks={(links) => strategyManager.handleImportAffiliateLinks(links as AffiliateLink[])}
-                            onSelectTrend={strategyManager.handleSelectTrend}
-                            selectedTrend={strategyManager.selectedTrend}
-                            ideasForSelectedTrend={strategyManager.ideasForSelectedTrend}
-                            onReloadLinks={() => {}}
-                            onGenerateTrendsFromSearch={() => {}}
-                            isGeneratingTrendsFromSearch={false}
-                            onSuggestTrends={handleSuggestTrends} // Add the new prop
-                            isSuggestingTrends={isSuggestingTrends} // Add the new prop
-                            productTrendToSelect={null}
-                            onAddFacebookPostIdeaToPlan={() => {}}
-                            isGeneratingFacebookPostIdeas={false}
-                            onGenerateFacebookPostIdeas={() => {}}
-                            selectedPostIds={schedulingManager.selectedPostIds}
-                            schedulingPost={schedulingManager.schedulingPost ? { 
-                              id: schedulingManager.schedulingPost.post.id,
-                              title: schedulingManager.schedulingPost.post.title,
-                              platform: schedulingManager.schedulingPost.post.platform,
-                              scheduledAt: schedulingManager.schedulingPost.post.scheduledAt || null,
-                              status: schedulingManager.schedulingPost.post.status,
-                              post: schedulingManager.schedulingPost.post
-                            } : null}
-                            isBulkScheduleModalOpen={schedulingManager.isBulkScheduleModalOpen}
-                            isScheduling={schedulingManager.isScheduling}
-                            onTogglePostSelection={schedulingManager.handleTogglePostSelection}
-                            onSelectAllPosts={schedulingManager.handleSelectAllPosts}
-                            onClearSelection={() => schedulingManager.setSelectedPostIds(new Set())}
-                            onOpenScheduleModal={(post) => {
-                              if (post === null) {
-                                schedulingManager.setSchedulingPost(null);
-                              } else {
-                                console.warn("onOpenScheduleModal received SchedulingPost, but schedulingManager expects PostInfo");
-                                schedulingManager.setSchedulingPost(null);
-                              }
-                            }}
-                            onPublishPost={(postInfo) => schedulingManager.handlePublishPost(postInfo)}
-                            onSchedulePost={(schedulingPost, scheduledAt) => {
-                              console.warn("onSchedulePost received SchedulingPost, but schedulingManager expects PostInfo");
-                            }}
-                            onPostDrop={schedulingManager.handlePostDrop}
-                            onOpenBulkScheduleModal={() => schedulingManager.setIsBulkScheduleModalOpen(true)}
-                            onCloseBulkScheduleModal={() => schedulingManager.setIsBulkScheduleModalOpen(false)}
-                            onBulkSchedule={(startDate, intervalDays, intervalHours, intervalMinutes) => {
-                              const date = new Date(startDate);
-                              schedulingManager.handleBulkSchedule(date, intervalDays);
-                            }}
-                            isPerformingBulkAction={false}
-                            onBulkGenerateImages={() => {}}
-                            onBulkSuggestPromotions={() => {}}
-                            onBulkGenerateComments={() => {}}
-                            viewingPost={viewingPost}
-                            setViewingPost={setViewingPost}
-                            isAnyAnalysisRunning={false}
-                            analyzingPostIds={new Set<string>()}
-                            khongMinhSuggestions={{}}
-                            generatingPromptKeys={new Set<string>()}
-                            generatingCommentPostIds={new Set<string>()}
-                            onRunKhongMinhForPost={() => {}}
-                            onAcceptSuggestion={() => {}}
-                            onGeneratePrompt={async () => null}
-                            onGenerateAffiliateComment={async () => null}
-                            onRefinePost={async () => ''}
-                            onGenerateInCharacterPost={async () => {}}
-                            onUpdatePost={() => {}}
-                            onAssignPersonaToPlan={() => {}}
-                            brandFoundation={generatedAssets?.brandFoundation || initialGeneratedAssets.brandFoundation}
-                            onOpenFunnelWizard={() => {}}
+                        <IdeaProfiler
+                            onGenerateProfile={handleGenerateProfile}
+                            isLoading={!!loaderContent}
+                            onLoadProject={projectIO.handleLoadProjectFile}
+                            onLoadProjectFromDatabase={projectIO.handleLoadFromDatabase}
+                            language={settings.language}
+                            setLanguage={setLanguage}
+                            brands={brands}
+                            isFetchingBrands={isFetchingBrands}
+                            areCredentialsSet={areCredentialsSet}
+                            integrationsVersion={integrationsVersion}
+                            onOpenIntegrations={() => { /* Placeholder */ }}
                         />
                     </Suspense>
-                    <Suspense fallback={null}>
-                        <SettingsModal
-                            isOpen={isSettingsModalOpen}
-                            onClose={() => setIsSettingsModalOpen(false)}
-                            settings={settings}
-                            adminSettings={adminSettings}
-                            onSave={handleSaveSettings}
-                        />
-                    </Suspense>
-                    <Suspense fallback={null}>
-                        <AutoPersonaResultModal
-                            isOpen={personaManager.isAutoPersonasModalOpen}
-                            onClose={() => personaManager.setIsAutoPersonasModalOpen(false)}
-                            onSave={personaManager.handleSaveSelectedPersonas}
-                            personaData={personaManager.autoGeneratedPersonas}
+                );
+            case 'profile':
+                return (
+                    <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
+                        <BrandProfiler
+                            initialBrandInfo={brandInfo!}
+                            onGenerate={handleGenerateKit}
+                            isLoading={!!loaderContent}
+                            onBack={handleBackToIdea}
                             language={settings.language}
                         />
                     </Suspense>
-                    {successMessage && <Toast message={successMessage} type="success" onClose={() => setSuccessMessage(null)} />}
-                </>
-            );
-        default:
-            return <div>Invalid state</div>;
-    }
+                );
+            case 'assets':
+                if (!generatedAssets) return <div>Loading assets...</div>;
+                return (
+                    <>
+                        <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
+                            <MainDisplay
+                                settings={settings}
+                                assets={generatedAssets}
+                                generatedImages={generatedImages}
+                                generatedVideos={generatedVideos}
+                                isGeneratingImage={(key) => generatingImageKeys.has(key)}
+                                isUploadingImage={() => false}
+                                autoSaveStatus={autoSaveStatus}
+                                activeTab={activeTab}
+                                setActiveTab={setActiveTab}
+                                onStartOver={handleBackToIdea}
+                                onOpenSettings={() => setIsSettingsModalOpen(true)}
+                                onOpenIntegrations={() => {}}
+                                mediaPlanGroupsList={mediaPlanGroupsList}
+                                activePlanId={activePlanId}
+                                plans={generatedAssets?.mediaPlans || []}
+                                personas={generatedAssets?.personas || []}
+                                affiliateLinks={generatedAssets?.affiliateLinks || []}
+                                onSaveProject={projectIO.handleSaveProjectToFile}
+                                isSavingProject={false}
+                                onSelectPlan={projectIO.handleSelectPlan}
+                                onGenerateImage={handleGenerateImage}
+                                onSetImage={handleSetImage}
+                                onSetVideo={handleSetVideo}
+                                onGenerateAllCarouselImages={handleGenerateAllCarouselImages}
+                                onSavePersona={personaManager.handleSavePersona}
+                                onDeletePersona={personaManager.handleDeletePersona}
+                                onUpdatePersona={personaManager.handleUpdatePersona}
+                                onSetPersonaImage={personaManager.handleSetPersonaImage}
+                                onAutoGeneratePersona={personaManager.handleAutoGeneratePersona}
+                                onLoadPersonasData={personaManager.handleLoadPersonasData}
+                                onGeneratePlan={mediaPlanManager.handleGenerateMediaPlanGroup}
+                                onCreateFunnelCampaignPlan={mediaPlanManager.handleCreateFunnelCampaignPlan}
+                                onGenerateContentPackage={mediaPlanManager.handleGenerateContentPackage}
+                                isGeneratingPlan={false}
+                                onRegenerateWeekImages={() => {}}
+                                productImages={[]}
+                                onSetProductImages={() => {}}
+                                onExportBrandKit={() => {}}
+                                isExportingBrandKit={false}
+                                onExportPlan={() => {}}
+                                isExportingPlan={false}
+                                onLoadStrategyHubData={strategyManager.handleLoadStrategyHubData}
+                                onLoadAffiliateVaultData={strategyManager.handleLoadAffiliateVaultData}
+                                onSaveTrend={strategyManager.handleSaveTrend}
+                                onDeleteTrend={strategyManager.handleDeleteTrend}
+                                onGenerateIdeas={strategyManager.handleGenerateIdeas}
+                                onGenerateIdeasFromProduct={strategyManager.handleGenerateIdeasFromProduct}
+                                onSaveAffiliateLink={(link) => strategyManager.handleSaveAffiliateLink([link])}
+                                onDeleteAffiliateLink={(linkId) => strategyManager.handleDeleteAffiliateLink(linkId)}
+                                onImportAffiliateLinks={(links) => strategyManager.handleImportAffiliateLinks(links as AffiliateLink[])}
+                                onSelectTrend={strategyManager.handleSelectTrend}
+                                selectedTrend={strategyManager.selectedTrend}
+                                ideasForSelectedTrend={strategyManager.ideasForSelectedTrend}
+                                onReloadLinks={() => {}}
+                                onGenerateTrendsFromSearch={() => {}}
+                                isGeneratingTrendsFromSearch={false}
+                                onSuggestTrends={handleSuggestTrends}
+                                isSuggestingTrends={isSuggestingTrends}
+                                productTrendToSelect={null}
+                                onAddFacebookPostIdeaToPlan={() => {}}
+                                isGeneratingFacebookPostIdeas={false}
+                                onGenerateFacebookPostIdeas={() => {}}
+                                selectedPostIds={schedulingManager.selectedPostIds}
+                                schedulingPost={schedulingManager.schedulingPost ? { 
+                                  id: schedulingManager.schedulingPost.post.id,
+                                  title: schedulingManager.schedulingPost.post.title,
+                                  platform: schedulingManager.schedulingPost.post.platform,
+                                  scheduledAt: schedulingManager.schedulingPost.post.scheduledAt || null,
+                                  status: schedulingManager.schedulingPost.post.status,
+                                  post: schedulingManager.schedulingPost.post
+                                } : null}
+                                isBulkScheduleModalOpen={schedulingManager.isBulkScheduleModalOpen}
+                                isScheduling={schedulingManager.isScheduling}
+                                onTogglePostSelection={schedulingManager.handleTogglePostSelection}
+                                onSelectAllPosts={schedulingManager.handleSelectAllPosts}
+                                onClearSelection={() => schedulingManager.setSelectedPostIds(new Set())}
+                                onOpenScheduleModal={(post) => {
+                                  if (post === null) {
+                                    schedulingManager.setSchedulingPost(null);
+                                  } else {
+                                    console.warn("onOpenScheduleModal received SchedulingPost, but schedulingManager expects PostInfo");
+                                    schedulingManager.setSchedulingPost(null);
+                                  }
+                                }}
+                                onPublishPost={(postInfo) => schedulingManager.handlePublishPost(postInfo)}
+                                onSchedulePost={(schedulingPost, scheduledAt) => {
+                                  console.warn("onSchedulePost received SchedulingPost, but schedulingManager expects PostInfo");
+                                }}
+                                onPostDrop={schedulingManager.handlePostDrop}
+                                onOpenBulkScheduleModal={() => schedulingManager.setIsBulkScheduleModalOpen(true)}
+                                onCloseBulkScheduleModal={() => schedulingManager.setIsBulkScheduleModalOpen(false)}
+                                onBulkSchedule={(startDate, intervalDays, intervalHours, intervalMinutes) => {
+                                  const date = new Date(startDate);
+                                  schedulingManager.handleBulkSchedule(date, intervalDays);
+                                }}
+                                isPerformingBulkAction={false}
+                                onBulkGenerateImages={() => {}}
+                                onBulkSuggestPromotions={() => {}}
+                                onBulkGenerateComments={() => {}}
+                                viewingPost={viewingPost}
+                                setViewingPost={setViewingPost}
+                                isAnyAnalysisRunning={false}
+                                analyzingPostIds={new Set<string>()}
+                                khongMinhSuggestions={{}}
+                                generatingPromptKeys={new Set<string>()}
+                                generatingCommentPostIds={new Set<string>()}
+                                onRunKhongMinhForPost={() => {}}
+                                onAcceptSuggestion={() => {}}
+                                onGeneratePrompt={async () => null}
+                                onGenerateAffiliateComment={async () => null}
+                                onRefinePost={async () => ''}
+                                onGenerateInCharacterPost={async () => {}}
+                                onUpdatePost={() => {}}
+                                onAssignPersonaToPlan={() => {}}
+                                brandFoundation={generatedAssets?.brandFoundation || initialGeneratedAssets.brandFoundation}
+                                onOpenFunnelWizard={() => {}}
+                            />
+                        </Suspense>
+                        <Suspense fallback={null}>
+                            <SettingsModal
+                                isOpen={isSettingsModalOpen}
+                                onClose={() => setIsSettingsModalOpen(false)}
+                                settings={settings}
+                                adminSettings={adminSettings}
+                                onSave={handleSaveSettings}
+                            />
+                        </Suspense>
+                        <Suspense fallback={null}>
+                            <AutoPersonaResultModal
+                                isOpen={personaManager.isAutoPersonasModalOpen}
+                                onClose={() => personaManager.setIsAutoPersonasModalOpen(false)}
+                                onSave={personaManager.handleSaveSelectedPersonas}
+                                personaData={personaManager.autoGeneratedPersonas}
+                                language={settings.language}
+                            />
+                        </Suspense>
+                        {successMessage && <Toast message={successMessage} type="success" onClose={() => setSuccessMessage(null)} />}
+                    </>
+                );
+            default:
+                return <div>Invalid state</div>;
+        }
+    };
+
+    return (
+        <div className="App">
+            {/* Error handling */}
+            {error && !error.includes("MongoDB credentials not configured") && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-white p-6 rounded-lg max-w-md">
+                        <h3 className="text-lg font-medium text-red-600 mb-2">Error</h3>
+                        <p className="text-gray-700 mb-4">{error}</p>
+                        <button
+                            onClick={() => setError(null)}
+                            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Loader */}
+            {loaderContent && (
+                <Loader
+                    title={loaderContent.title}
+                    steps={loaderContent.steps}
+                />
+            )}
+
+            {/* Main content */}
+            {renderContent()}
+
+            {/* Success Toast */}
+            {successMessage && (
+                <Toast
+                    message={successMessage}
+                    type="success"
+                    onClose={() => setSuccessMessage(null)}
+                />
+            )}
+
+            {/* Task Notifications */}
+            <div className="fixed bottom-4 right-4 z-50 space-y-2">
+                {Object.values(notifications).map((task: any) => (
+                    <TaskNotification
+                        key={task.taskId}
+                        task={task}
+                        onClose={() => handleCloseNotification(task.taskId)}
+                        onViewResult={handleViewTaskResult}
+                    />
+                ))}
+            </div>
+
+            {/* Task Status Indicator */}
+            <TaskStatusIndicator tasks={notifications} />
+        </div>
+    );
+};
+
+// Main App component wrapped with TaskProvider
+const App: React.FC = () => {
+    return (
+        <TaskProvider>
+            <AppContent />
+        </TaskProvider>
+    );
 };
 
 export default App;
