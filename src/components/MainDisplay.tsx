@@ -74,6 +74,7 @@ interface MainDisplayProps {
   onImportAffiliateLinks: (links: AffiliateLink[]) => void;
   onReloadLinks: () => void;
   onGenerateIdeasFromProduct: (product: AffiliateLink) => void;
+  generatingIdeasForProductId?: string | null;
   // KhongMinh Props
   analyzingPostIds: Set<string>;
   isAnyAnalysisRunning: boolean;
@@ -115,15 +116,15 @@ interface MainDisplayProps {
   onUpdatePersona: (persona: Persona) => void;
   onAutoGeneratePersona: () => void;
   // Strategy Hub
+  isGeneratingStrategyIdeas?: boolean;
+  isSuggestingTrends?: boolean;
+  isSelectingTrend?: boolean;
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
   onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
   onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
   onGenerateTrendsFromSearch: (industry: string) => void;
-  isGeneratingTrendsFromSearch: boolean;
-  // New props for AI-powered trend suggestion
   onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
-  isSuggestingTrends: boolean;
   onSelectTrend: (trend: Trend) => void;
   selectedTrend: Trend | null;
   ideasForSelectedTrend: Idea[];
@@ -190,6 +191,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onImportAffiliateLinks,
     onReloadLinks,
     onGenerateIdeasFromProduct,
+    generatingIdeasForProductId,
     productTrendToSelect,
     brandFoundation,
     analyzingPostIds,
@@ -222,14 +224,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onDeletePersona,
     onSetPersonaImage,
     onAutoGeneratePersona,
+    isGeneratingStrategyIdeas,
+    isSuggestingTrends,
+    isSelectingTrend,
     onSaveTrend,
     onDeleteTrend,
     onGenerateIdeas,
     onGenerateContentPackage,
     onGenerateTrendsFromSearch,
-    isGeneratingTrendsFromSearch,
-    onSuggestTrends, // Add this line
-    isSuggestingTrends, // Add this line
+    onSuggestTrends,
     onSelectTrend,
     selectedTrend,
     ideasForSelectedTrend,
@@ -392,18 +395,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                 onGenerateIdeas={onGenerateIdeas}
                 onCreatePlanFromIdea={handleOpenWizard}
                 onGenerateContentPackage={onGenerateContentPackage}
-                isGeneratingIdeas={isGeneratingPlan}
                 onGenerateFacebookTrends={onGenerateTrendsFromSearch}
-                isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
                 productTrendToSelect={productTrendToSelect}
                 selectedTrend={selectedTrend}
                 ideasForSelectedTrend={ideasForSelectedTrend}
                 onSelectTrend={onSelectTrend}
                 onSuggestTrends={onSuggestTrends}
-                isSuggestingTrends={isSuggestingTrends}
                 isDataLoaded={loadedTabs.has('strategy')}
                 onLoadData={props.onLoadStrategyHubData}
-                isLoading={loadingTabs.has('strategy')}
+                isLoading={isSelectingTrend || isSuggestingTrends || isGeneratingStrategyIdeas || loadingTabs.has('strategy')}
               />
             </div>
           )}
@@ -415,6 +415,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onImportLinks={onImportAffiliateLinks}
               onReloadLinks={onReloadLinks}
               onGenerateIdeasFromProduct={onGenerateIdeasFromProduct}
+              generatingIdeasForProductId={generatingIdeasForProductId}
               language={settings.language}
               isDataLoaded={loadedTabs.has('affiliateVault')}
               onLoadData={props.onLoadAffiliateVaultData}

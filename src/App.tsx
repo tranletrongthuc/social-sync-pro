@@ -72,8 +72,6 @@ const App: React.FC = () => {
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
     const [areCredentialsSet, setAreCredentialsSet] = useState(false);
     const [integrationsVersion, setIntegrationsVersion] = useState(0);
-    // New state for trend suggestion
-    const [isSuggestingTrends, setIsSuggestingTrends] = useState(false);
 
     // Admin Auth State
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => checkAdminAuthenticated());
@@ -161,7 +159,7 @@ const App: React.FC = () => {
     });
 
     const strategyManager = useStrategyManagement({
-        mongoBrandId, dispatchAssets, setError, setLoaderContent, updateAutoSaveStatus, settings, aiModelConfig,
+        mongoBrandId, dispatchAssets, setError, updateAutoSaveStatus, settings, aiModelConfig,
         generatedAssets, setActiveTab, setProductTrendToSelect, setSuccessMessage
     });
 
@@ -319,18 +317,6 @@ const App: React.FC = () => {
         }
     }, [mongoBrandId, dispatchAssets]);
 
-    // New handler for trend suggestion
-    const handleSuggestTrends = useCallback(async (trendType: 'industry' | 'global', timePeriod: string) => {
-        setIsSuggestingTrends(true);
-        try {
-            await strategyManager.handleSuggestTrends(trendType, timePeriod);
-        } catch (err) {
-            setError(`Failed to suggest trends: ${err instanceof Error ? err.message : 'Unknown error'}`);
-        } finally {
-            setIsSuggestingTrends(false);
-        }
-    }, [strategyManager]);
-
     const setLanguage = useCallback(async (lang: string) => {
         const newSettings = { ...settings, language: lang };
         dispatchAssets({ type: 'UPDATE_SETTINGS', payload: newSettings });
@@ -444,6 +430,10 @@ const App: React.FC = () => {
                             isExportingBrandKit={false}
                             onExportPlan={() => {}}
                             isExportingPlan={false}
+                            isSelectingTrend={strategyManager.isSelectingTrend}
+                            isGeneratingStrategyIdeas={strategyManager.isGeneratingIdeas}
+                            generatingIdeasForProductId={strategyManager.generatingIdeasForProductId}
+                            isSuggestingTrends={strategyManager.isSuggestingTrends}
                             onLoadStrategyHubData={strategyManager.handleLoadStrategyHubData}
                             onLoadAffiliateVaultData={strategyManager.handleLoadAffiliateVaultData}
                             onSaveTrend={strategyManager.handleSaveTrend}
@@ -458,9 +448,7 @@ const App: React.FC = () => {
                             ideasForSelectedTrend={strategyManager.ideasForSelectedTrend}
                             onReloadLinks={() => {}}
                             onGenerateTrendsFromSearch={() => {}}
-                            isGeneratingTrendsFromSearch={false}
-                            onSuggestTrends={handleSuggestTrends} // Add the new prop
-                            isSuggestingTrends={isSuggestingTrends} // Add the new prop
+                            onSuggestTrends={strategyManager.handleSuggestTrends}
                             productTrendToSelect={null}
                             onAddFacebookPostIdeaToPlan={() => {}}
                             isGeneratingFacebookPostIdeas={false}

@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Button, Carousel } from './ui';
 import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, CheckCircleIcon, PencilIcon, CopyIcon, CheckSolidIcon, DotsVerticalIcon, KhongMinhIcon, ChatBubbleLeftIcon, VideoCameraIcon, TagIcon, PhotographIcon, CalendarIcon } from './icons';
 import type { MediaPlanPost, PostInfo } from '../../types';
+import { renderPostContent } from '../services/utils';
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
@@ -134,7 +135,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                     {post.title}
                 </h3>
                 <p className="mt-1 text-sm text-gray-600 font-serif line-clamp-2 cursor-pointer" onClick={handleCardClick}>
-                    {Array.isArray(post.content) ? post.content.join(' ') : post.content}
+                    {renderPostContent(post.content)}
                 </p>
                 <div className="mt-4 flex flex-wrap justify-between items-end gap-2">
                     <div className="flex flex-wrap gap-2">

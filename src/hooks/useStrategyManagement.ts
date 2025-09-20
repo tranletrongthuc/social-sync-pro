@@ -11,7 +11,7 @@ import {
     saveAffiliateLinksToDatabase as saveAffiliateLinks,
     deleteAffiliateLinkFromDatabase,
     loadIdeasForTrendFromDatabase,
-    saveTrendsToDatabase // Add the new import
+    saveTrendsToDatabase
 } from '../services/databaseService';
 import { textGenerationService } from '../services/textGenerationService';
 import { AiModelConfig } from '../services/configService';
@@ -21,7 +21,6 @@ interface useStrategyManagementProps {
     mongoBrandId: string | null;
     dispatchAssets: Dispatch<any>;
     setError: Dispatch<React.SetStateAction<string | null>>;
-    setLoaderContent: Dispatch<React.SetStateAction<{ title: string; steps: string[]; } | null>>;
     updateAutoSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
     settings: Settings;
     aiModelConfig: AiModelConfig | null;
@@ -35,7 +34,6 @@ export const useStrategyManagement = ({
     mongoBrandId,
     dispatchAssets,
     setError,
-    setLoaderContent,
     updateAutoSaveStatus,
     settings,
     aiModelConfig,
@@ -44,6 +42,12 @@ export const useStrategyManagement = ({
     setProductTrendToSelect,
     setSuccessMessage
 }: useStrategyManagementProps) => {
+    const [isSelectingTrend, setIsSelectingTrend] = useState(false);
+    const [isGeneratingIdeas, setIsGeneratingIdeas] = useState(false);
+    const [generatingIdeasForProductId, setGeneratingIdeasForProductId] = useState<string | null>(null);
+    const [isSuggestingTrends, setIsSuggestingTrends] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+
     const [selectedTrend, setSelectedTrend] = useState<Trend | null>(null);
     const [ideasForSelectedTrend, setIdeasForSelectedTrend] = useState<Idea[]>([]);
     const isStrategyHubLoaded = useRef(false);
@@ -52,37 +56,44 @@ export const useStrategyManagement = ({
     const handleSelectTrend = useCallback(async (trend: Trend) => {
         if (!mongoBrandId || selectedTrend?.id === trend.id) return;
         setSelectedTrend(trend);
-        setIdeasForSelectedTrend([]); // Clear previous ideas immediately
+        setIdeasForSelectedTrend([]);
+        setIsSelectingTrend(true);
         try {
             const newIdeas = await loadIdeasForTrendFromDatabase(trend.id, mongoBrandId);
             setIdeasForSelectedTrend(newIdeas);
         } catch (error) {
             setError(error instanceof Error ? error.message : `Could not load ideas for trend ${trend.topic}.`);
-            setIdeasForSelectedTrend([]); // Ensure ideas are cleared on error
+            setIdeasForSelectedTrend([]);
+        } finally {
+            setIsSelectingTrend(false);
         }
     }, [mongoBrandId, setError, selectedTrend]);
 
     const handleLoadStrategyHubData = useCallback(async () => {
         if (!mongoBrandId || isStrategyHubLoaded.current) return;
         isStrategyHubLoaded.current = true;
+        setIsSelectingTrend(true); // Use this for initial load of the tab
         try {
             const { trends } = await loadStrategyHub(mongoBrandId);
             dispatchAssets({ type: 'SET_STRATEGY_DATA', payload: { trends, ideas: [] } });
-            // DO NOT automatically select the first trend.
-            // Let the user click to load ideas.
         } catch (error) {
             setError(error instanceof Error ? error.message : "Could not load strategy hub data.");
+        } finally {
+            setIsSelectingTrend(false);
         }
     }, [mongoBrandId, dispatchAssets, setError]);
 
     const handleLoadAffiliateVaultData = useCallback(async () => {
         if (!mongoBrandId || isAffiliateVaultLoaded.current) return;
         isAffiliateVaultLoaded.current = true;
+        setIsSaving(true); // Use general saving for this tab load
         try {
             const affiliateLinks = await loadAffiliateVault(mongoBrandId);
             dispatchAssets({ type: 'SET_AFFILIATE_LINKS', payload: affiliateLinks });
         } catch (error) {
             setError(error instanceof Error ? error.message : "Could not load affiliate vault data.");
+        } finally {
+            setIsSaving(false);
         }
     }, [mongoBrandId, dispatchAssets, setError]);
 
@@ -92,6 +103,7 @@ export const useStrategyManagement = ({
             return;
         }
         updateAutoSaveStatus('saving');
+        setIsSaving(true);
         try {
             const trendWithBrand = { ...trend, brandId: mongoBrandId };
             const savedId = await saveTrendToDatabase(trendWithBrand, mongoBrandId);
@@ -103,34 +115,38 @@ export const useStrategyManagement = ({
         } catch (e) {
             setError(e instanceof Error ? e.message : "Failed to save trend.");
             updateAutoSaveStatus('error');
+        } finally {
+            setIsSaving(false);
         }
     }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError, handleSelectTrend]);
 
-    const handleDeleteTrend = useCallback((trendId: string) => {
+    const handleDeleteTrend = useCallback(async (trendId: string) => {
+        if (!mongoBrandId) return;
         dispatchAssets({ type: 'DELETE_TREND', payload: trendId });
-        if (mongoBrandId) {
-            updateAutoSaveStatus('saving');
-            deleteTrendFromDatabase(trendId, mongoBrandId)
-                .then(() => {
-                    updateAutoSaveStatus('saved');
-                    if (selectedTrend?.id === trendId) {
-                        setSelectedTrend(null);
-                        setIdeasForSelectedTrend([]);
-                    }
-                })
-                .catch(e => { setError(e.message); updateAutoSaveStatus('error'); });
+        updateAutoSaveStatus('saving');
+        setIsSaving(true);
+        try {
+            await deleteTrendFromDatabase(trendId, mongoBrandId);
+            updateAutoSaveStatus('saved');
+            if (selectedTrend?.id === trendId) {
+                setSelectedTrend(null);
+                setIdeasForSelectedTrend([]);
+            }
+        } catch (e) {
+            setError(e.message);
+            updateAutoSaveStatus('error');
+        } finally {
+            setIsSaving(false);
         }
     }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError, selectedTrend]);
 
     const handleGenerateIdeas = useCallback(async (trend: Trend, useSearch: boolean) => {
-        console.log('[Generate Ideas Debug] 1. Starting generation for trend:', trend);
-        setLoaderContent({ title: "Generating Viral Ideas...", steps: ["Analyzing trend...", "Brainstorming concepts...", "Finalizing ideas..."] });
+        setIsGeneratingIdeas(true);
         try {
             if (!aiModelConfig || !mongoBrandId) {
                 throw new Error("AI Model configuration not loaded or no brand selected.");
             }
             
-            console.log('[Generate Ideas Debug] 2. Calling textGenerationService.generateViralIdeas');
             const newIdeaData = await textGenerationService.generateViralIdeas(
                 {
                     trend: { topic: trend.topic, keywords: trend.keywords },
@@ -140,16 +156,12 @@ export const useStrategyManagement = ({
                 },
                 aiModelConfig
             );
-            console.log('[Generate Ideas Debug] 3. Received raw data from AI service:', newIdeaData);
 
             if (!Array.isArray(newIdeaData) || newIdeaData.length === 0) {
-                console.error('[Generate Ideas Debug] 4a. AI response is not a valid array or is empty.');
                 throw new Error("AI failed to generate valid ideas. The response was empty or not an array.");
             }
 
-            // Check for the specific placeholder content
             if (newIdeaData[0].title === 'title here') {
-                console.error('[Generate Ideas Debug] 4b. AI returned placeholder data.');
                 throw new Error("AI returned placeholder data. Please check the prompt configuration.");
             }
 
@@ -157,27 +169,22 @@ export const useStrategyManagement = ({
                 ...idea,
                 trendId: trend.id,
             }));
-            console.log('[Generate Ideas Debug] 5. Mapped ideas with trendId:', newIdeasWithTrendId);
             
             const savedIdeas = await saveIdeasToDatabase(newIdeasWithTrendId, mongoBrandId);
-            console.log('[Generate Ideas Debug] 6. Ideas saved to database:', savedIdeas);
 
             dispatchAssets({ type: 'ADD_IDEAS', payload: savedIdeas });
-            console.log('[Generate Ideas Debug] 7. Dispatched ADD_IDEAS to reducer.');
 
             setIdeasForSelectedTrend(prevIdeas => [...prevIdeas, ...savedIdeas]);
-            console.log('[Generate Ideas Debug] 8. Updated component state with new ideas.');
 
         } catch (err) {
-            console.error('[Generate Ideas Debug] CRASH! An error occurred:', err);
             setError(err instanceof Error ? err.message : "Failed to generate ideas.");
         } finally {
-            setLoaderContent(null);
+            setIsGeneratingIdeas(false);
         }
-    }, [settings, mongoBrandId, aiModelConfig, setError, setLoaderContent, dispatchAssets]);
+    }, [settings, mongoBrandId, aiModelConfig, setError, dispatchAssets]);
     
     const handleGenerateIdeasFromProduct = useCallback(async (product: AffiliateLink) => {
-        setLoaderContent({ title: "Generating Content Ideas...", steps: ["Analyzing product...", "Brainstorming concepts...", "Finalizing ideas..."] });
+        setGeneratingIdeasForProductId(product.id);
         try {
             if (!aiModelConfig || !mongoBrandId) {
                 throw new Error("AI Model configuration not loaded or no brand selected.");
@@ -231,16 +238,12 @@ export const useStrategyManagement = ({
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to generate ideas from product.");
         } finally {
-            setLoaderContent(null);
+            setGeneratingIdeasForProductId(null);
         }
-    }, [settings, mongoBrandId, generatedAssets, setActiveTab, aiModelConfig, dispatchAssets, setError, setLoaderContent, setSuccessMessage, handleSelectTrend]);
+    }, [settings, mongoBrandId, generatedAssets, setActiveTab, aiModelConfig, dispatchAssets, setError, setSuccessMessage, handleSelectTrend]);
 
     const handleSuggestTrends = useCallback(async (trendType: 'industry' | 'global', timePeriod: string) => {
-        setLoaderContent({ 
-            title: trendType === 'industry' ? "Finding Industry Trends..." : "Finding Global Trends...", 
-            steps: ["Analyzing trends...", "Generating insights...", "Finalizing trends..."] 
-        });
-        
+        setIsSuggestingTrends(true);
         try {
             if (!aiModelConfig || !mongoBrandId || !generatedAssets) {
                 throw new Error("AI Model configuration not loaded, no brand selected, or assets not loaded.");
@@ -249,7 +252,6 @@ export const useStrategyManagement = ({
             let newTrendData: Omit<Trend, 'id' | 'brandId'>[];
             
             if (trendType === 'industry') {
-                // Industry-specific trends WITH INTERNET SEARCH ENABLED
                 newTrendData = await textGenerationService.suggestTrends(
                     {
                         brandFoundation: generatedAssets.brandFoundation,
@@ -259,7 +261,6 @@ export const useStrategyManagement = ({
                     aiModelConfig
                 );
             } else {
-                // Global hot trends WITH INTERNET SEARCH ENABLED
                 newTrendData = await textGenerationService.suggestGlobalTrends(
                     {
                         timePeriod: timePeriod,
@@ -273,17 +274,14 @@ export const useStrategyManagement = ({
                 throw new Error("AI failed to generate valid trends. The response was empty or not an array.");
             }
             
-            // Prepare trends with brand information for bulk save
             const trendsWithBrand = newTrendData.map(trend => ({ 
                 ...trend, 
                 brandId: mongoBrandId,
                 industry: trendType === 'industry' ? generatedAssets.brandFoundation.brandName || 'General' : 'Global'
             }));
             
-            // Save all trends at once using bulk operation
             const savedTrends = await saveTrendsToDatabase(trendsWithBrand, mongoBrandId);
             
-            // Update the UI with new trends PREPENDED to existing trends
             dispatchAssets({ 
                 type: 'SET_STRATEGY_DATA', 
                 payload: { 
@@ -297,13 +295,14 @@ export const useStrategyManagement = ({
             console.error('Error in handleSuggestTrends:', err);
             setError(err instanceof Error ? err.message : "Failed to suggest trends.");
         } finally {
-            setLoaderContent(null);
+            setIsSuggestingTrends(false);
         }
-    }, [settings, mongoBrandId, generatedAssets, aiModelConfig, dispatchAssets, setError, setLoaderContent, setSuccessMessage]);
+    }, [settings, mongoBrandId, generatedAssets, aiModelConfig, dispatchAssets, setError, setSuccessMessage]);
 
     const handleSaveAffiliateLink = useCallback(async (links: Partial<AffiliateLink>[]) => {
         if (mongoBrandId) {
             updateAutoSaveStatus('saving');
+            setIsSaving(true);
             try {
                 const savedLinks = await saveAffiliateLinks(links as AffiliateLink[], mongoBrandId);
                 dispatchAssets({ type: 'ADD_OR_UPDATE_AFFILIATE_LINKS', payload: savedLinks });
@@ -311,21 +310,49 @@ export const useStrategyManagement = ({
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'Could not save affiliate links.');
                 updateAutoSaveStatus('error');
+            } finally {
+                setIsSaving(false);
             }
         }
     }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError]);
 
-    const handleDeleteAffiliateLink = useCallback((linkId: string) => {
+    const handleDeleteAffiliateLink = useCallback(async (linkId: string) => {
         if (mongoBrandId) {
-            deleteAffiliateLinkFromDatabase(linkId, mongoBrandId);
+            setIsSaving(true);
+            try {
+                await deleteAffiliateLinkFromDatabase(linkId, mongoBrandId);
+            } catch (e) {
+                setError(e.message);
+            } finally {
+                setIsSaving(false);
+            }
         }
-    }, [mongoBrandId]);
+    }, [mongoBrandId, setError]);
 
-    const handleImportAffiliateLinks = useCallback((links: AffiliateLink[]) => {
-        dispatchAssets({ type: 'IMPORT_AFFILIATE_LINKS', payload: links });
-    }, [dispatchAssets]);
+    const handleImportAffiliateLinks = useCallback(async (links: Partial<AffiliateLink>[]) => {
+        if (mongoBrandId) {
+            updateAutoSaveStatus('saving');
+            setIsSaving(true);
+            try {
+                const savedLinks = await saveAffiliateLinks(links as AffiliateLink[], mongoBrandId);
+                dispatchAssets({ type: 'ADD_OR_UPDATE_AFFILIATE_LINKS', payload: savedLinks });
+                setSuccessMessage(`${savedLinks.length} links imported successfully.`);
+                updateAutoSaveStatus('saved');
+            } catch (e) {
+                setError(e instanceof Error ? e.message : 'Could not import affiliate links.');
+                updateAutoSaveStatus('error');
+            } finally {
+                setIsSaving(false);
+            }
+        }
+    }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError, setSuccessMessage]);
 
     return {
+        isSelectingTrend,
+        isGeneratingIdeas,
+        generatingIdeasForProductId,
+        isSuggestingTrends,
+        isSaving,
         selectedTrend,
         ideasForSelectedTrend,
         handleSelectTrend,
@@ -335,7 +362,7 @@ export const useStrategyManagement = ({
         handleDeleteTrend,
         handleGenerateIdeas,
         handleGenerateIdeasFromProduct,
-        handleSuggestTrends, // Add the new function
+        handleSuggestTrends,
         handleSaveAffiliateLink,
         handleDeleteAffiliateLink,
         handleImportAffiliateLinks,

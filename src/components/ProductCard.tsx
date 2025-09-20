@@ -11,9 +11,10 @@ interface ProductCardProps {
     isNew?: boolean;
     language: string;
     onGenerateIdeas?: (product: AffiliateLink) => void;
+    generatingIdeasForProductId?: string | null;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, onGenerateIdeas }) => {
+const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, onGenerateIdeas, generatingIdeasForProductId }) => {
     const [isEditing, setIsEditing] = useState(isNew);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [editedLink, setEditedLink] = useState<AffiliateLink>(link);
@@ -27,7 +28,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
         'Việt Nam': {
             edit: "Sửa", delete: "Xóa", save: "Lưu", cancel: "Hủy",
             productName: "Tên sản phẩm", providerName: "Nhà cung cấp", notes: "Ghi chú",
-            commissionRate: "Tỷ lệ HH", productLink: "Link sản phẩm", generateIdeas: "Tạo ý tưởng",
+            commissionRate: "Tỷ lệ HH", productLink: "Link sản phẩm", generateIdeas: "Tạo ý tưởng", generating: "Đang tạo...",
             price: "Giá", salesVolume: "Doanh số", promotionLink: "Link KM",
             productDescription: "Mô tả sản phẩm", features: "Tính năng (phân cách bằng dấu phẩy)",
             useCases: "Trường hợp SD (phân cách bằng dấu phẩy)", customerReviews: "Đánh giá của khách hàng",
@@ -36,7 +37,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
         'English': {
             edit: "Edit", delete: "Delete", save: "Save", cancel: "Cancel",
             productName: "Product Name", providerName: "Provider", notes: "Notes",
-            commissionRate: "Comm. Rate", productLink: "Product Link", generateIdeas: "Generate Ideas",
+            commissionRate: "Comm. Rate", productLink: "Product Link", generateIdeas: "Generate Ideas", generating: "Generating...",
             price: "Price", salesVolume: "Sales Volume", promotionLink: "Promo Link",
             productDescription: "Product Description", features: "Features (comma-separated)",
             useCases: "Use Cases (comma-separated)", customerReviews: "Customer Reviews",
@@ -69,6 +70,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    const isGenerating = generatingIdeasForProductId === link.id;
 
     const renderDisplayMode = () => (
         <>
@@ -150,8 +153,17 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                 ) : (
                     <>
                         {onGenerateIdeas && (
-                            <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onGenerateIdeas(link); }} className="text-xs py-1 px-2 flex items-center gap-1">
-                                <SparklesIcon className="h-4 w-4"/> {texts.generateIdeas}
+                            <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onGenerateIdeas(link); }} className="text-xs py-1 px-2 flex items-center gap-1" disabled={isGenerating}>
+                                {isGenerating ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
+                                        <span className="ml-1">{texts.generating}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <SparklesIcon className="h-4 w-4"/> {texts.generateIdeas}
+                                    </>
+                                )}
                             </Button>
                         )}
                         <div className="flex items-center gap-3">

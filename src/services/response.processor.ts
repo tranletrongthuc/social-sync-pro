@@ -462,28 +462,37 @@ export const processIdeasFromProductResponse = (jsonText: string, product: Affil
         return [];
     }
 
-    let ideas = sanitizeAndParseJson(jsonText);
-    
-    if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.ideas) {
-        ideas = ideas.ideas;
+    let parsedData = sanitizeAndParseJson(jsonText);
+    let ideasArray: any[];
+
+    if (parsedData && typeof parsedData === 'object' && !Array.isArray(parsedData)) {
+        const ideasKey = Object.keys(parsedData).find(key => key.toLowerCase() === 'productideas' || key.toLowerCase() === 'ideas');
+        if (ideasKey && Array.isArray(parsedData[ideasKey])) {
+            ideasArray = parsedData[ideasKey];
+        } else if (parsedData.title) {
+            // Handle case where a single idea object is returned
+            ideasArray = [parsedData];
+        } else {
+            throw new Error("Expected an array of ideas, but received an object with unexpected keys: " + JSON.stringify(parsedData));
+        }
+    } else if (Array.isArray(parsedData)) {
+        ideasArray = parsedData;
+    } else {
+        throw new Error("Expected an array of ideas, but received: " + JSON.stringify(parsedData));
+    }
+
+    if (!Array.isArray(ideasArray)) {
+        throw new Error("Failed to extract a valid array of ideas.");
     }
     
-    if (ideas && typeof ideas === 'object' && !Array.isArray(ideas) && ideas.title) {
-        ideas = [ideas];
-    }
-    
-    if (!Array.isArray(ideas)) {
-        throw new Error("Expected an array of ideas, but received: " + JSON.stringify(ideas));
-    }
-    
-    for (let i = 0; i < ideas.length; i++) {
-        const idea = ideas[i];
+    for (let i = 0; i < ideasArray.length; i++) {
+        const idea = ideasArray[i];
         if (!idea.title || !idea.description || !idea.targetAudience) {
             throw new Error(`Idea at index ${i} is missing required fields.`);
         }
     }
     
-    return ideas.map((idea: any) => ({
+    return ideasArray.map((idea: any) => ({
         ...idea,
         productId: product.id
     }));

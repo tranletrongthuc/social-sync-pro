@@ -8,21 +8,16 @@ export const sanitizeAndParseJson = (jsonText: string): any => {
 
     let sanitized = jsonText.trim();
 
-    // ALWAYS check for markdown block first and extract content.
-    const markdownRegex = /```(?:json)?\s*\n?([\s\S]*?)(?:\n?\s*```|$)/i;
-    const markdownMatch = sanitized.match(markdownRegex);
-    if (markdownMatch && markdownMatch[1]) {
-        sanitized = markdownMatch[1].trim();
-    }
-    // Now, 'sanitized' is either the content of the markdown block or the original trimmed string.
+    // More robustly find the JSON object within the text
+    const firstBrace = sanitized.indexOf('{');
+    const lastBrace = sanitized.lastIndexOf('}');
 
-    // Try to parse this potentially clean JSON.
-    try {
-        return JSON.parse(sanitized);
-    } catch (e) {
-        // If it fails, it might have other issues, so proceed to more specific fixes.
-        console.warn("Initial parse failed, attempting further sanitization.");
+    if (firstBrace === -1 || lastBrace === -1 || lastBrace < firstBrace) {
+        console.error("Could not find a valid JSON object within the AI response:", jsonText);
+        throw new Error("The AI response did not contain a recognizable JSON object.");
     }
+
+    sanitized = sanitized.substring(firstBrace, lastBrace + 1);
 
     // Fix: trailing commas in objects and arrays
     sanitized = sanitized.replace(/,(\s*[\}\]])/g, '$1');
@@ -37,4 +32,19 @@ export const sanitizeAndParseJson = (jsonText: string): any => {
             "The AI returned a malformed or unexpected response. This may be a temporary issue with the model. Please try again later or configure a different model in Settings."
         );
     }
+};
+
+export const renderPostContent = (content: string | string[] | any): string => {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (Array.isArray(content)) {
+        return content.join('\n\n');
+    }
+    if (typeof content === 'object' && content !== null) {
+        return Object.entries(content)
+            .map(([key, value]) => `**${key.charAt(0).toUpperCase() + key.slice(1)}:**\n${value}`)
+            .join('\n\n');
+    }
+    return '';
 };

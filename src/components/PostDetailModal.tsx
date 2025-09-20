@@ -5,6 +5,7 @@ import { Button, Input, TextArea, HoverCopyWrapper, Select, Carousel } from './u
 import TagInput from './TagInput';
 import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon, DocumentTextIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
+import { renderPostContent } from '../services/utils';
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
@@ -12,21 +13,6 @@ const platformIcons: Record<string, React.FC<any>> = {
     Instagram: InstagramIcon,
     TikTok: TikTokIcon,
     Pinterest: PinterestIcon
-};
-
-const renderPostContent = (content: string | string[] | any): string => {
-    if (typeof content === 'string') {
-        return content;
-    }
-    if (Array.isArray(content)) {
-        return content.join('\n\n');
-    }
-    if (typeof content === 'object' && content !== null) {
-        return Object.entries(content)
-            .map(([key, value]) => `**${key.charAt(0).toUpperCase() + key.slice(1)}:**\n${value}`)
-            .join('\n\n');
-    }
-    return '';
 };
 
 
@@ -87,21 +73,9 @@ const ImagePostHandler: React.FC<PostDetailModalProps> = (props) => {
             <div className="flex-grow overflow-y-auto pr-2">
                 <h5 className="font-semibold font-sans text-gray-700 text-sm mb-2">{texts.prompt}</h5>
                 <div className="text-gray-500 text-xs font-mono bg-gray-50 p-2 rounded-md whitespace-pre-wrap break-words">
-                    {Array.isArray(postInfo.post.mediaPrompt) ? (
-                        <div className="space-y-2">
-                            {postInfo.post.mediaPrompt.map((prompt, index) => (
-                                <HoverCopyWrapper key={index} textToCopy={prompt}>
-                                    <div className="p-1 rounded hover:bg-gray-200 cursor-pointer">
-                                        {prompt}
-                                    </div>
-                                </HoverCopyWrapper>
-                            ))}
-                        </div>
-                    ) : (
-                        <HoverCopyWrapper textToCopy={postInfo.post.mediaPrompt as string}>
-                            <div>{postInfo.post.mediaPrompt as string}</div>
-                        </HoverCopyWrapper>
-                    )}
+                    <HoverCopyWrapper textToCopy={renderPostContent(postInfo.post.mediaPrompt)}>
+                        <div>{renderPostContent(postInfo.post.mediaPrompt)}</div>
+                    </HoverCopyWrapper>
                 </div>
             </div>
 
@@ -125,21 +99,9 @@ const VideoPostHandler: React.FC<PostDetailModalProps> = (props) => {
         <div className="bg-white border border-gray-200 p-4 rounded-lg flex flex-col">
             <h5 className="font-semibold font-sans text-gray-700 text-sm mb-2">{texts.scriptPrompt}</h5>
             <div className="text-gray-500 text-xs font-mono bg-gray-50 p-2 rounded-md whitespace-pre-wrap break-words mb-4 flex-grow">
-                {Array.isArray(postInfo.post.mediaPrompt) ? (
-                    <div className="space-y-2">
-                        {postInfo.post.mediaPrompt.map((prompt, index) => (
-                            <HoverCopyWrapper key={index} textToCopy={prompt}>
-                                <div className="p-1 rounded hover:bg-gray-200 cursor-pointer">
-                                    {prompt}
-                                </div>
-                            </HoverCopyWrapper>
-                        ))}
-                    </div>
-                ) : (
-                    <HoverCopyWrapper textToCopy={postInfo.post.mediaPrompt as string}>
-                        <div>{postInfo.post.mediaPrompt as string}</div>
-                    </HoverCopyWrapper>
-                )}
+                <HoverCopyWrapper textToCopy={renderPostContent(postInfo.post.mediaPrompt)}>
+                    <div>{renderPostContent(postInfo.post.mediaPrompt)}</div>
+                </HoverCopyWrapper>
             </div>
             <Button disabled className="w-full flex items-center justify-center gap-2 mt-auto cursor-not-allowed">
                 <VideoCameraIcon /> {texts.generateVideo}
