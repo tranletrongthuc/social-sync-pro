@@ -2,11 +2,12 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import ExcelJS, { Cell } from 'exceljs';
 import type { AffiliateLink } from '../../types';
 import { Button, Input, Select } from './ui';
-import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, ScaleIcon, CollectionIcon, LinkIcon } from './icons';
+import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, ScaleIcon, CollectionIcon, LinkIcon, RefreshIcon } from './icons';
 import ProductCard from './ProductCard';
 import StandardPageView from './StandardPageView';
 
 interface AffiliateVaultDisplayProps {
+  mongoBrandId: string | null;
   affiliateLinks: AffiliateLink[];
   onSaveLink: (link: AffiliateLink) => void;
   onDeleteLink: (linkId: string) => void;
@@ -16,7 +17,7 @@ interface AffiliateVaultDisplayProps {
   generatingIdeasForProductId?: string | null;
   language: string;
   isDataLoaded?: boolean;
-  onLoadData?: () => void;
+  onLoadData?: (brandId: string) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -28,13 +29,19 @@ const emptyLink: Omit<AffiliateLink, 'id' | 'brandId'> = {
     notes: '',
 };
 
-const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, generatingIdeasForProductId, language, isDataLoaded, onLoadData, isLoading }) => {
+const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBrandId, affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, generatingIdeasForProductId, language, isDataLoaded, onLoadData, isLoading }) => {
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
     const [currentPage, setCurrentPage] = useState(1);
     const [productsPerPage, setProductsPerPage] = useState(20);
     const fileInputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (!isDataLoaded && onLoadData && mongoBrandId) {
+            onLoadData(mongoBrandId);
+        }
+    }, [isDataLoaded, onLoadData, mongoBrandId]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -242,6 +249,14 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                         <PlusIcon className="h-4 w-4" /> 
                         <span className="hidden sm:inline">{texts.addLink}</span>
                     </Button>
+                    <button 
+                        onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+                        className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+                        aria-label="Refresh data"
+                        disabled={isLoading}
+                    >
+                        <RefreshIcon className={`h-4 w-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
             }
         >
@@ -266,7 +281,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0">
                      <div className="flex items-center gap-2">
-                        <label htmlFor="products-per-page" className="text-sm font-medium text-gray-700 whitespace-nowrap">{texts.productsPerPage}:</label>
+                        <label htmlFor="products-per-page" className="text-sm font-medium text-gray-700 whitespace-nowrap">Products/page:</label>
                         <Select id="products-per-page" value={productsPerPage} onChange={(e) => setProductsPerPage(Number(e.target.value))}>
                             <option value={10}>10</option>
                             <option value={20}>20</option>
@@ -275,12 +290,12 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                         </Select>
                     </div>
                     <div className="flex items-center gap-2">
-                        <label htmlFor="sort-by" className="text-sm font-medium text-gray-700 whitespace-nowrap">{texts.sortBy}:</label>
+                        <label htmlFor="sort-by" className="text-sm font-medium text-gray-700 whitespace-nowrap">Sort by:</label>
                         <Select id="sort-by" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                            <option value="productName-asc">{language === 'Việt Nam' ? 'Tên sản phẩm (A-Z)' : 'Product Name (A-Z)'}</option>
-                            <option value="productName-desc">{language === 'Việt Nam' ? 'Tên sản phẩm (Z-A)' : 'Product Name (Z-A)'}</option>
-                            <option value="commissionRate-desc">{language === 'Việt Nam' ? 'Tỷ lệ HH (Cao-Thấp)' : 'Comm. Rate (High-Low)'}</option>
-                            <option value="commissionRate-asc">{language === 'Việt Nam' ? 'Tỷ lệ HH (Thấp-Cao)' : 'Comm. Rate (Low-High)'}</option>
+                            <option value="productName-asc">Product Name (A-Z)</option>
+                            <option value="productName-desc">Product Name (Z-A)</option>
+                            <option value="commissionRate-desc">Comm. Rate (High-Low)</option>
+                            <option value="commissionRate-asc">Comm. Rate (Low-High)</option>
                         </Select>
                     </div>
                 </div>
@@ -318,8 +333,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                             ) : (
                                 <div className="text-center py-20">
                                     <SearchIcon className="mx-auto h-16 w-16 text-gray-400" />
-                                    <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">{texts.noResults}</h3>
-                                    <p className="mt-1 text-md text-gray-500 font-serif">{texts.noResultsDesc}</p>
+                                    <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">No results found</h3>
+                                    <p className="mt-1 text-md text-gray-500 font-serif">Try a different search or add a new link.</p>
                                 </div>
                             )}
                         </div>
@@ -330,17 +345,17 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                     disabled={currentPage === 1}
                                     variant="tertiary"
                                 >
-                                    {language === 'Việt Nam' ? 'Trước' : 'Previous'}
+                                    Previous
                                 </Button>
                                 <span className="text-sm font-medium text-gray-700">
-                                    {language === 'Việt Nam' ? `Trang ${currentPage} / ${totalPages}` : `Page ${currentPage} of ${totalPages}`}
+                                    Page {currentPage} of {totalPages}
                                 </span>
                                 <Button
                                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                                     disabled={currentPage === totalPages}
                                     variant="tertiary"
                                 >
-                                    {language === 'Việt Nam' ? 'Sau' : 'Next'}
+                                    Next
                                 </Button>
                             </div>
                         )}
@@ -348,8 +363,8 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 ) : (
                     <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300">
                         <LinkIcon className="mx-auto h-16 w-16 text-gray-400" />
-                        <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">{texts.noLinks}</h3>
-                        <p className="mt-1 text-md text-gray-500 font-serif">{texts.addFirstLink}</p>
+                        <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">No affiliate links yet.</h3>
+                        <p className="mt-1 text-md text-gray-500 font-serif">Add your first link to get started.</p>
                     </div>
                 )}
             </main>

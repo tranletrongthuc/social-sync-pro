@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect, memo } from 'react';
 import type { Persona, BrandFoundation } from '../../types';
 import { Button } from './ui';
-import { PlusIcon, UsersIcon, SparklesIcon, TrashIcon, PencilIcon, DotsVerticalIcon } from './icons';
+import { PlusIcon, UsersIcon, SparklesIcon, TrashIcon, PencilIcon, DotsVerticalIcon, RefreshIcon } from './icons';
 import PersonaEditorModal from './PersonaEditorModal';
 import StandardPageView from './StandardPageView';
+import ModelLabel from './ModelLabel';
 
 // A simplified, read-only card to display in the main grid
 const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: () => void; generatedImages: Record<string, string>; language: string; }> = memo(({ persona, onEdit, onDelete, generatedImages, language }) => {
@@ -41,16 +42,17 @@ const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: ()
                 <MenuDropDown onEdit={onEdit} onDelete={onDelete} texts={texts} />
             </div>
             <div className="flex-grow">
-                <p className="text-sm text-gray-700 line-clamp-3">{persona.backstory || persona.background}</p>
-            </div>
-            <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                {(persona.voice?.personalityTraits || []).slice(0, 3).map(trait => (
-                    <span key={trait} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{trait}</span>
-                ))}
-                {(persona.interestsAndHobbies || []).slice(0, 3).map(interest => (
-                    <span key={interest} className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">{interest}</span>
-                ))}
-            </div>
+                        <p className="text-sm text-gray-700 line-clamp-3">{persona.backstory || persona.background}</p>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
+                        {(persona.voice?.personalityTraits || []).slice(0, 3).map(trait => (
+                            <span key={trait} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{trait}</span>
+                        ))}
+                        {(persona.interestsAndHobbies || []).slice(0, 3).map(interest => (
+                            <span key={interest} className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">{interest}</span>
+                        ))}
+                        {persona.modelUsed && <ModelLabel model={persona.modelUsed} size="small" />}
+                    </div>
         </div>
     );
 });
@@ -81,6 +83,7 @@ const MenuDropDown: React.FC<{onEdit: () => void, onDelete: () => void, texts: a
 };
 
 interface PersonasDisplayProps {
+    mongoBrandId: string | null;
     personas: Persona[];
     generatedImages: Record<string, string>;
     onSavePersona: (persona: Persona) => void;
@@ -89,11 +92,19 @@ interface PersonasDisplayProps {
     brandFoundation?: BrandFoundation;
     onAutoGeneratePersona: () => void;
     isLoading?: boolean;
+    isDataLoaded?: boolean;
+    onLoadData?: (brandId: string) => Promise<void>;
 }
 
-const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedImages, onSavePersona, onDeletePersona, language, brandFoundation, onAutoGeneratePersona, isLoading }) => {
+const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, personas, generatedImages, onSavePersona, onDeletePersona, language, brandFoundation, onAutoGeneratePersona, isLoading, isDataLoaded, onLoadData }) => {
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+
+    useEffect(() => {
+        if (!isDataLoaded && onLoadData && mongoBrandId) {
+            onLoadData(mongoBrandId);
+        }
+    }, [isDataLoaded, onLoadData, mongoBrandId]);
 
     const T = {
         'Việt Nam': {
@@ -203,6 +214,14 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ personas, generatedIm
                         <PlusIcon className="h-4 w-4"/> 
                         <span className="hidden sm:inline">{texts.addPersona}</span>
                     </Button>
+                    <button 
+                        onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+                        className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+                        aria-label="Refresh data"
+                        disabled={isLoading}
+                    >
+                        <RefreshIcon className={`h-4 w-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
+                    </button>
                 </div>
             }
         >

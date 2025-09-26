@@ -1,5 +1,6 @@
 import React from 'react';
 import { BackgroundTask } from '../types/task.types';
+import ModelLabel from './ModelLabel';
 
 interface TaskStatusIndicatorProps {
   tasks: Record<string, any>;
@@ -30,15 +31,18 @@ const TaskStatusIndicator: React.FC<TaskStatusIndicatorProps> = ({ tasks, onTask
                 <span className="text-sm font-medium text-gray-700">
                   {task.type?.replace(/_/g, ' ') || 'Task'}
                 </span>
-                <span className={`text-xs px-2 py-1 rounded ${
-                  task.status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
-                  task.status === 'processing' ? 'bg-blue-100 text-blue-800' :
-                  task.status === 'completed' ? 'bg-green-100 text-green-800' :
-                  task.status === 'failed' ? 'bg-red-100 text-red-800' :
-                  'bg-gray-100 text-gray-800'
-                }`}>
-                  {task.status}
-                </span>
+                <div className="flex items-center gap-2">
+                  {task.payload?.modelUsed && <ModelLabel model={task.payload.modelUsed} size="small" />}
+                  <span className={`text-xs px-2 py-1 rounded ${
+                    task.status === 'queued' ? 'bg-yellow-100 text-yellow-800' :
+                    task.status === 'processing' ? 'bg-blue-100 text-blue-800' :
+                    task.status === 'completed' ? 'bg-green-100 text-green-800' :
+                    task.status === 'failed' ? 'bg-red-100 text-red-800' :
+                    'bg-gray-100 text-gray-800'
+                  }`}>
+                    {task.status}
+                  </span>
+                </div>
               </div>
               
               {task.progress > 0 && (

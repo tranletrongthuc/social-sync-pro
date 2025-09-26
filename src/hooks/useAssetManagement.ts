@@ -167,9 +167,32 @@ export const useAssetManagement = ({
                             currentKeys[carouselImageIndex] = newImageKey;
                             updates.imageUrlsArray = currentUrls;
                             updates.imageKeys = currentKeys;
+                            
+                            // Update the main state with the new carousel image URL and key
+                            dispatchAssets({
+                                type: 'UPDATE_POST_CAROUSEL',
+                                payload: {
+                                    planId: postInfo.planId,
+                                    weekIndex: postInfo.weekIndex,
+                                    postIndex: postInfo.postIndex,
+                                    imageUrlsArray: currentUrls,
+                                    imageKeys: currentKeys,
+                                }
+                            });
                         } else {
                             updates.imageUrl = publicUrl;
                             updates.imageKey = newImageKey;
+                            
+                            // Update the main state with the new image URL
+                            dispatchAssets({
+                                type: 'UPDATE_POST',
+                                payload: {
+                                    planId: postInfo.planId,
+                                    weekIndex: postInfo.weekIndex,
+                                    postIndex: postInfo.postIndex,
+                                    updates: { imageUrl: publicUrl, imageKey: newImageKey }
+                                }
+                            });
                         }
                         await updateMediaPlanPostInDatabase(postInfo.post.id, mongoBrandId, updates);
 

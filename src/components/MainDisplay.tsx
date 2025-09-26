@@ -13,6 +13,7 @@ import type {
   FacebookPostIdea,
   GenerationOptions
 } from '../../types';
+import type { BackgroundTask } from '../types/task.types';
 import { Header, ActiveTab } from './Header';
 import BottomTabBar from './BottomTabBar';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -28,8 +29,11 @@ const MediaPlanDisplay = React.lazy(() => import('./MediaPlanDisplay'));
 const AffiliateVaultDisplay = React.lazy(() => import('./AffiliateVaultDisplay'));
 const PersonasDisplay = React.lazy(() => import('./PersonasDisplay'));
 const ContentStrategyPage = React.lazy(() => import('./ContentStrategyPage'));
+const TaskManagerDisplay = React.lazy(() => import('./TaskManagerDisplay'));
 
 interface MainDisplayProps {
+  onLoadMediaPlanData?: (brandId: string) => Promise<void>;
+  mongoBrandId: string | null;
   assets: GeneratedAssets;
   onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo) => void;
   onGenerateAllCarouselImages: (postInfo: PostInfo) => Promise<void>;
@@ -116,14 +120,14 @@ interface MainDisplayProps {
   onUpdatePersona: (persona: Persona) => void;
   onAutoGeneratePersona: () => void;
   // Strategy Hub
-  isGeneratingStrategyIdeas?: boolean;
+  isGeneratingIdeas?: boolean;
   isSuggestingTrends?: boolean;
   isSelectingTrend?: boolean;
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
   onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
   onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
-  onGenerateTrendsFromSearch: (industry: string) => void;
+
   onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
   onSelectTrend: (trend: Trend) => void;
   selectedTrend: Trend | null;
@@ -140,19 +144,26 @@ interface MainDisplayProps {
   onCreateFunnelCampaignPlan: (plan: MediaPlanGroup) => void;
   // Lazy loading props
   isStrategyHubDataLoaded?: boolean;
-  onLoadStrategyHubData?: () => Promise<void>;
+  onLoadStrategyHubData?: (brandId: string) => Promise<void>;
   isLoadingStrategyHubData?: boolean;
   isAffiliateVaultDataLoaded?: boolean;
-  onLoadAffiliateVaultData?: () => Promise<void>;
+  onLoadAffiliateVaultData?: (brandId: string) => Promise<void>;
   isLoadingAffiliateVaultData?: boolean;
   isPersonasDataLoaded?: boolean;
-  onLoadPersonasData?: () => Promise<void>;
+  onLoadPersonasData?: (brandId: string) => Promise<void>;
   isLoadingPersonasData?: boolean;
+  // Task Manager props
+  tasks: BackgroundTask[];
+  isLoadingTasks: boolean;
+  onLoadTasks: (brandId: string) => Promise<void>;
+  // Brand Kit props
+  onLoadBrandKitData?: (brandId: string) => Promise<void>;
 }
 
 const MainDisplay: React.FC<MainDisplayProps> = (props) => {
   const {
     assets,
+    mongoBrandId,
     onGenerateImage,
     onGenerateAllCarouselImages,
     onSetImage,
@@ -224,14 +235,14 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onDeletePersona,
     onSetPersonaImage,
     onAutoGeneratePersona,
-    isGeneratingStrategyIdeas,
+    isGeneratingIdeas,
     isSuggestingTrends,
     isSelectingTrend,
     onSaveTrend,
     onDeleteTrend,
     onGenerateIdeas,
     onGenerateContentPackage,
-    onGenerateTrendsFromSearch,
+
     onSuggestTrends,
     onSelectTrend,
     selectedTrend,
@@ -241,6 +252,9 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
     onCreateFunnelCampaignPlan, // New prop
     viewingPost,
     setViewingPost,
+    tasks,
+    isLoadingTasks,
+    onLoadTasks,
   } = props;
   
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -269,7 +283,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
       return;
     }
 
-    let loadFn: (() => Promise<void>) | undefined;
+    let loadFn: ((brandId: string) => Promise<void>) | undefined;
     switch (tab) {
       case 'strategy':
         loadFn = props.onLoadStrategyHubData;
@@ -280,11 +294,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
       case 'personas':
         loadFn = props.onLoadPersonasData;
         break;
+      case 'taskManager':
+        loadFn = props.onLoadTasks;
+        break;
     }
 
     if (loadFn) {
       setLoadingTabs(prev => new Set(prev).add(tab));
-      loadFn().then(() => {
+      // Pass mongoBrandId to loadFn
+      loadFn(mongoBrandId!).then(() => {
         setLoadedTabs(prev => new Set(prev).add(tab));
       }).catch((error) => {
         console.error(`Failed to load data for tab ${tab}:`, error);
@@ -328,6 +346,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               language={settings.language}
               onExport={onExportBrandKit}
               isExporting={isExportingBrandKit}
+              mongoBrandId={props.mongoBrandId}
+              onLoadData={props.onLoadBrandKitData}
             />
           )}
           {activeTab === 'mediaPlan' && (
@@ -368,8 +388,8 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onSelectAllPosts={onSelectAllPosts}
               onClearSelection={onClearSelection}
               onOpenScheduleModal={onOpenScheduleModal}
-              onOpenBulkScheduleModal={onOpenBulkScheduleModal}
               onPostDrop={onPostDrop}
+              onOpenBulkScheduleModal={onOpenBulkScheduleModal}
               onPublishPost={onPublishPost}
               isPerformingBulkAction={isPerformingBulkAction}
               onBulkGenerateImages={onBulkGenerateImages}
@@ -379,13 +399,18 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               onOpenFunnelWizard={handleOpenFunnelWizard}
               viewingPost={viewingPost}
               setViewingPost={setViewingPost}
+              mongoBrandId={props.mongoBrandId}
+              onLoadData={props.onLoadMediaPlanData}
+              isLoading={loadingTabs.has('mediaPlan')}
             />
           )}
           {activeTab === 'strategy' && (
             <div className="h-full overflow-hidden">
               <ContentStrategyPage
+                mongoBrandId={props.mongoBrandId}
                 language={settings.language}
                 trends={assets.trends || []}
+
                 personas={assets.personas || []}
                 affiliateLinks={assets.affiliateLinks || []}
                 generatedImages={generatedImages}
@@ -395,7 +420,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                 onGenerateIdeas={onGenerateIdeas}
                 onCreatePlanFromIdea={handleOpenWizard}
                 onGenerateContentPackage={onGenerateContentPackage}
-                onGenerateFacebookTrends={onGenerateTrendsFromSearch}
+
                 productTrendToSelect={productTrendToSelect}
                 selectedTrend={selectedTrend}
                 ideasForSelectedTrend={ideasForSelectedTrend}
@@ -403,12 +428,15 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                 onSuggestTrends={onSuggestTrends}
                 isDataLoaded={loadedTabs.has('strategy')}
                 onLoadData={props.onLoadStrategyHubData}
-                isLoading={isSelectingTrend || isSuggestingTrends || isGeneratingStrategyIdeas || loadingTabs.has('strategy')}
+                isSelectingTrend={isSelectingTrend}
+                isSuggestingTrends={isSuggestingTrends}
+                isGeneratingIdeas={isGeneratingIdeas}
               />
             </div>
           )}
           {activeTab === 'affiliateVault' && (
             <AffiliateVaultDisplay 
+              mongoBrandId={props.mongoBrandId}
               affiliateLinks={assets.affiliateLinks || []}
               onSaveLink={onSaveAffiliateLink}
               onDeleteLink={onDeleteAffiliateLink}
@@ -424,6 +452,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
           )}
           {activeTab === 'personas' && (
             <PersonasDisplay
+              mongoBrandId={props.mongoBrandId}
               personas={assets.personas || []}
               generatedImages={generatedImages}
               onSavePersona={onSavePersona}
@@ -431,6 +460,18 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
               language={settings.language}
               brandFoundation={brandFoundation}
               onAutoGeneratePersona={onAutoGeneratePersona}
+              isDataLoaded={loadedTabs.has('personas')}
+              onLoadData={props.onLoadPersonasData}
+              isLoading={loadingTabs.has('personas')}
+            />
+          )}
+          {activeTab === 'taskManager' && (
+            <TaskManagerDisplay
+              tasks={tasks}
+              isLoading={isLoadingTasks}
+              language={settings.language}
+              mongoBrandId={props.mongoBrandId}
+              onLoadData={props.onLoadTasks}
             />
           )}
         </Suspense>

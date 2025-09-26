@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useReducer, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useReducer, useCallback, useState } from 'react';
 import { taskService } from '../services/taskService';
 import { useTaskPolling } from '../hooks/useTaskPolling';
 import { BackgroundTask } from '../types/task.types';
@@ -7,6 +7,7 @@ import { BackgroundTask } from '../types/task.types';
 interface TaskState {
   tasks: Record<string, BackgroundTask>;
   notifications: Record<string, BackgroundTask>;
+  taskList: BackgroundTask[];
 }
 
 // Action types
@@ -16,12 +17,14 @@ type TaskAction =
   | { type: 'REMOVE_TASK'; payload: { taskId: string } }
   | { type: 'ADD_NOTIFICATION'; payload: BackgroundTask }
   | { type: 'REMOVE_NOTIFICATION'; payload: { taskId: string } }
+  | { type: 'SET_TASK_LIST'; payload: BackgroundTask[] }
   | { type: 'CLEAR_ALL' };
 
 // Initial state
 const initialState: TaskState = {
   tasks: {},
-  notifications: {}
+  notifications: {},
+  taskList: [],
 };
 
 // Reducer
@@ -71,6 +74,9 @@ function taskReducer(state: TaskState, action: TaskAction): TaskState {
         ...state,
         notifications: remainingNotifications
       };
+
+    case 'SET_TASK_LIST':
+      return { ...state, taskList: action.payload };
       
     case 'CLEAR_ALL':
       return initialState;
@@ -84,6 +90,9 @@ function taskReducer(state: TaskState, action: TaskAction): TaskState {
 interface TaskContextType {
   tasks: Record<string, BackgroundTask>;
   notifications: Record<string, BackgroundTask>;
+  taskList: BackgroundTask[];
+  isLoadingTasks: boolean;
+  loadTasks: (brandId: string) => Promise<void>;
   addTask: (task: BackgroundTask) => void;
   updateTask: (taskId: string, updates: Partial<BackgroundTask>) => void;
   removeTask: (taskId: string) => void;
@@ -98,57 +107,61 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 // Provider component
 export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(taskReducer, initialState);
-  const { tasks: pollingTasks, addTask: addPollingTask, removeTask: removePollingTask } = useTaskPolling();
+  const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const { addTask: addPollingTask, removeTask: removePollingTask } = useTaskPolling();
+
+  const loadTasks = useCallback(async (brandId: string) => {
+    if (!brandId) return;
+    setIsLoadingTasks(true);
+    try {
+        const fetchedTasks = await taskService.listTasks(brandId);
+        dispatch({ type: 'SET_TASK_LIST', payload: fetchedTasks });
+    } catch (err) {
+        console.error("Could not load tasks.", err);
+        // Optionally set an error state here
+    } finally {
+        setIsLoadingTasks(false);
+    }
+  }, []);
   
-  // Add a task
   const addTask = useCallback((task: BackgroundTask) => {
-    console.log('[TaskContext] Adding task:', task);
     dispatch({ type: 'ADD_TASK', payload: task });
-    // Start polling for this task
     addPollingTask(task.taskId);
   }, [addPollingTask]);
   
-  // Update a task
   const updateTask = useCallback((taskId: string, updates: Partial<BackgroundTask>) => {
-    console.log('[TaskContext] Updating task:', taskId, updates);
     dispatch({ type: 'UPDATE_TASK', payload: { taskId, updates } });
   }, []);
   
-  // Remove a task
   const removeTask = useCallback((taskId: string) => {
-    console.log('[TaskContext] Removing task:', taskId);
     dispatch({ type: 'REMOVE_TASK', payload: { taskId } });
-    // Stop polling for this task
     removePollingTask(taskId);
   }, [removePollingTask]);
   
-  // Add a notification
   const addNotification = useCallback((task: BackgroundTask) => {
-    console.log('[TaskContext] Adding notification for task:', task.taskId);
     dispatch({ type: 'ADD_NOTIFICATION', payload: task });
   }, []);
   
-  // Remove a notification
   const removeNotification = useCallback((taskId: string) => {
-    console.log('[TaskContext] Removing notification for task:', taskId);
     dispatch({ type: 'REMOVE_NOTIFICATION', payload: { taskId } });
   }, []);
   
-  // Clear all tasks and notifications
   const clearAll = useCallback(() => {
     dispatch({ type: 'CLEAR_ALL' });
   }, []);
   
-  // Start polling for a task (already handled by addTask)
   const startPolling = useCallback((taskId: string) => {
-    // Polling is automatically started when a task is added
-  }, []);
+    addPollingTask(taskId);
+  }, [addPollingTask]);
   
   return (
     <TaskContext.Provider
       value={{
         tasks: state.tasks,
         notifications: state.notifications,
+        taskList: state.taskList,
+        isLoadingTasks,
+        loadTasks,
         addTask,
         updateTask,
         removeTask,

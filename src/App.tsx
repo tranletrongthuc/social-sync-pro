@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef, useReducer, Suspense, lazy } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useReducer, Suspense, lazy, useMemo } from 'react';
 import { isAdminAuthenticated as checkAdminAuthenticated, authenticateAdmin, logoutAdmin } from './services/adminAuthService';
 
 // Task Management
@@ -8,7 +8,6 @@ import TaskNotification from './components/TaskNotification';
 
 // Lazy load components
 const IdeaProfiler = lazy(() => import('./components/IdeaProfiler'));
-const BrandProfiler = lazy(() => import('./components/BrandProfiler'));
 const MainDisplay = lazy(() => import('./components/MainDisplay'));
 const AdminPage = lazy(() => import('./components/AdminPage'));
 const SettingsModal = lazy(() => import('./components/SettingsModal'));
@@ -22,11 +21,13 @@ import Toast from './components/Toast';
 // Types
 import type { BrandInfo, GeneratedAssets, Settings, PostInfo, MediaPlanGroup, AffiliateLink } from '../types';
 import { ActiveTab } from './components/Header';
+import { BackgroundTask } from './types/task.types';
+
 
 // Services
 import { initializeApp, createOrUpdateBrandRecordInDatabase, saveSettingsToDatabase } from './services/databaseService';
 import { configService, AiModelConfig } from './services/configService';
-import { textGenerationService } from './services/textGenerationService';
+import { taskService } from './services/taskService';
 
 // Hooks
 import { usePersonaManagement } from './hooks/usePersonaManagement';
@@ -49,7 +50,7 @@ const AppContent: React.FC = () => {
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [loaderContent, setLoaderContent] = useState<{ title: string; steps: string[]; } | null>(null);
     const [activeTab, setActiveTab] = useState<ActiveTab>('brandKit');
-    const [productTrendToSelect, setProductTrendToSelect] = useState<string | null>(null); // Add this line
+    const [productTrendToSelect, setProductTrendToSelect] = useState<string | null>(null);
 
     // Brand & Project State
     const [brandInfo, setBrandInfo] = useState<BrandInfo | null>(null);
@@ -63,12 +64,15 @@ const AppContent: React.FC = () => {
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
 
     // DERIVED STATE: Get settings from the main assets reducer
-    const settings = generatedAssets?.settings || initialGeneratedAssets.settings;
+    const settings = useMemo(() => {
+        return generatedAssets?.settings || initialGeneratedAssets.settings;
+    }, [generatedAssets?.settings]);
 
     // Asset State
     const [generatedImages, setGeneratedImages] = useState<Record<string, string>>({});
     const [generatedVideos, setGeneratedVideos] = useState<Record<string, string>>({});
     const [generatingImageKeys, setGeneratingImageKeys] = useState<Set<string>>(new Set());
+    const [khongMinhSuggestions, setKhongMinhSuggestions] = useState<Record<string, AffiliateLink[]>>({});
 
     // UI & Loading State
     const [isConfigLoaded, setIsConfigLoaded] = useState(false);
@@ -87,8 +91,16 @@ const AppContent: React.FC = () => {
     const [mediaPlanGroupsList, setMediaPlanGroupsList] = useState<{id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[]}[]>([]);
     const [activePlanId, setActivePlanId] = useState<string | null>(null);
 
-    // Task Management
-    const { notifications, removeNotification } = useTaskManager();
+    // *** TASK MANAGEMENT (from context) ***
+    const { notifications, removeNotification, taskList, isLoadingTasks, loadTasks } = useTaskManager();
+
+    // This callback is passed to manager hooks. They call it after creating a task.
+    const onTaskCreated = useCallback(() => {
+        if (mongoBrandId) {
+            loadTasks(mongoBrandId);
+        }
+    }, [mongoBrandId, loadTasks]);
+
 
     // Refactored Logic via Custom Hooks
     const updateAutoSaveStatus = useCallback((status: 'saving' | 'saved' | 'error') => {
@@ -152,28 +164,71 @@ const AppContent: React.FC = () => {
     });
 
     const personaManager = usePersonaManagement({
-        mongoBrandId, settings, aiModelConfig, dispatchAssets, updateAutoSaveStatus,
-        setGeneratedImages, setError, setLoaderContent, ensureMongoProject, generatedAssets, setSuccessMessage
-    });
-
-    const { handleGenerateImage, handleSetImage, handleSetVideo, handleGenerateAllCarouselImages } = useAssetManagement({
-        mongoBrandId, generatedAssets, settings, aiModelConfig, dispatchAssets, setGeneratedImages, setGeneratedVideos,
-        setGeneratingImageKeys, updateAutoSaveStatus, setError, setViewingPost
+        mongoBrandId,
+        settings,
+        aiModelConfig,
+        dispatchAssets,
+        updateAutoSaveStatus,
+        setGeneratedImages,
+        setError,
+        setLoaderContent,
+        ensureMongoProject,
+        generatedAssets,
+        setSuccessMessage,
+        onTaskCreated
     });
 
     const mediaPlanManager = useMediaPlanManagement({
-        generatedAssets, settings, adminSettings, aiModelConfig, generatedImages, mongoBrandId, ensureMongoProject, dispatchAssets,
-        setLoaderContent, setError, updateAutoSaveStatus, setMediaPlanGroupsList, setActivePlanId,
-        setKhongMinhSuggestions: () => {}, setGeneratedImages, setSuccessMessage, setActiveTab
+        generatedAssets,
+        settings,
+        adminSettings,
+        aiModelConfig,
+        generatedImages,
+        mongoBrandId,
+        ensureMongoProject,
+        dispatchAssets,
+        setLoaderContent,
+        setError,
+        updateAutoSaveStatus,
+        setMediaPlanGroupsList,
+        setActivePlanId,
+        setKhongMinhSuggestions,
+        setGeneratedImages,
+        setSuccessMessage,
+        setActiveTab,
+        onTaskCreated,
     });
 
     const strategyManager = useStrategyManagement({
-        mongoBrandId, dispatchAssets, setError, updateAutoSaveStatus, settings, aiModelConfig,
-        generatedAssets, setActiveTab, setProductTrendToSelect, setSuccessMessage
+        mongoBrandId,
+        dispatchAssets,
+        setError,
+        updateAutoSaveStatus,
+        settings,
+        aiModelConfig,
+        generatedAssets,
+        setActiveTab,
+        setProductTrendToSelect,
+        setSuccessMessage,
+        onTaskCreated
     });
 
     const schedulingManager = useSchedulingManagement({
         generatedAssets, mongoBrandId, settings, dispatchAssets, updateAutoSaveStatus, setError, setSuccessMessage
+    });
+
+    const assetManager = useAssetManagement({
+        mongoBrandId,
+        generatedAssets,
+        settings,
+        aiModelConfig,
+        dispatchAssets,
+        setGeneratedImages,
+        setGeneratedVideos,
+        setGeneratingImageKeys,
+        updateAutoSaveStatus,
+        setError,
+        setViewingPost,
     });
 
     const projectIO = useProjectIO({
@@ -220,86 +275,35 @@ const AppContent: React.FC = () => {
         setIsAdminAuthenticated(false);
     }, []);
 
-    const handleGenerateProfile = useCallback(async (idea: string) => {
-        if (!aiModelConfig) {
-            setError("AI model configuration not loaded. Please try again.");
+    const handleCreateBrandFromIdea = useCallback(async (idea: string) => {
+        if (!aiModelConfig || !adminSettings) {
+            setError("Configuration not loaded. Please try again.");
             return;
         }
 
-        setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "Đang tạo hồ sơ thương hiệu..." : "Generating brand profile...",
-            steps: [
-                settings.language === 'Việt Nam' ? "Phân tích ý tưởng..." : "Analyzing idea...",
-                settings.language === 'Việt Nam' ? "Xác định sứ mệnh & tầm nhìn..." : "Defining mission & vision...",
-                settings.language === 'Việt Nam' ? "Tạo giá trị cốt lõi..." : "Creating core values...",
-                settings.language === 'Việt Nam' ? "Xác định đối tượng mục tiêu..." : "Identifying target audience...",
-            ]
-        });
-
         try {
-            const brandProfile = await textGenerationService.generateBrandProfile(
-                { idea, language: settings.language, brandSettings: settings, adminSettings: adminSettings! },
-                aiModelConfig!
+            setLoaderContent({
+                title: "Starting Brand Creation...",
+                steps: ["Sending task to background processor..."]
+            });
+
+            await taskService.createBackgroundTask(
+                'CREATE_BRAND_FROM_IDEA',
+                { idea, language: settings.language, brandSettings: settings, adminSettings },
+                'new-brand-creation' // Placeholder brandId
             );
-            setBrandInfo(brandProfile);
-            setCurrentStep('profile');
+            
+            onTaskCreated(); // Manually trigger task list refresh
+
+            setSuccessMessage("Brand creation has started in the background! You can monitor its progress in the Task Manager.");
+            // The UI no longer needs to wait or change steps here.
+
         } catch (error: any) {
-            setError(settings.language === 'Việt Nam' 
-                ? `Lỗi khi tạo hồ sơ thương hiệu: ${error.message || 'Vui lòng thử lại sau.'}` 
-                : `Error generating brand profile: ${error.message || 'Please try again later.'}`);
+            setError(`Failed to start brand creation task: ${error.message}`);
         } finally {
             setLoaderContent(null);
         }
-    }, [aiModelConfig, settings, adminSettings, setBrandInfo, setCurrentStep, setError, setLoaderContent]);
-
-    const handleGenerateKit = useCallback(async (info: BrandInfo) => {
-        if (!aiModelConfig) {
-            setError("AI model configuration not loaded. Please try again.");
-            return;
-        }
-        
-        setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "Đang tạo tài sản thương hiệu..." : "Generating brand assets...",
-            steps: [
-                settings.language === 'Việt Nam' ? "Tạo hồ sơ thương hiệu chi tiết..." : "Generating detailed brand profile...",
-                settings.language === 'Việt Nam' ? "Tạo khái niệm logo..." : "Generating logo concepts...",
-                settings.language === 'Việt Nam' ? "Tạo bảng màu & phông chữ..." : "Generating color palette & fonts...",
-            ]
-        });
-
-        try {
-            const partialAssets = await textGenerationService.generateBrandKit(
-                { brandInfo: info, language: settings.language, brandSettings: settings, adminSettings: adminSettings! },
-                aiModelConfig!
-            );
-
-            const fullAssets: GeneratedAssets = {
-                ...initialGeneratedAssets,
-                ...partialAssets,
-                settings: settings, // Carry over current settings
-            };
-
-            const newBrandId = await projectIO.handleCreateNewBrand(fullAssets);
-
-            if (newBrandId) {
-                syncLastSaved(fullAssets);
-                setMongoBrandId(newBrandId);
-                dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: fullAssets });
-                setMediaPlanGroupsList([]);
-                setActivePlanId(null);
-                setBrandInfo(info);
-                setCurrentStep('assets');
-            } else {
-                console.error("Brand creation failed. Not proceeding.");
-            }
-        } catch (error: any) {
-            setError(settings.language === 'Việt Nam' 
-                ? `Lỗi khi tạo tài sản thương hiệu: ${error.message || 'Vui lòng thử lại sau.'}` 
-                : `Error generating brand assets: ${error.message || 'Please try again later.'}`);
-        } finally {
-            setLoaderContent(null);
-        }
-    }, [aiModelConfig, settings, adminSettings, dispatchAssets, setBrandInfo, setCurrentStep, setError, setLoaderContent, projectIO, syncLastSaved]);
+    }, [aiModelConfig, settings, adminSettings, setError, setSuccessMessage, setLoaderContent, onTaskCreated]);
 
     const handleBackToIdea = useCallback(() => {
         setCurrentStep('idea');
@@ -328,60 +332,63 @@ const AppContent: React.FC = () => {
         } finally {
             setTimeout(() => setSuccessMessage(null), 3000);
         }
-    }, [dispatchAssets, mongoBrandId, saveSettingsToDatabase, settings.language, setError, setSuccessMessage]);
+    }, [dispatchAssets, mongoBrandId, settings.language, setError, setSuccessMessage]);
 
     const setLanguage = useCallback(async (language: string) => {
         handleSaveSettings({ ...settings, language });
     }, [handleSaveSettings, settings]);
 
-    const handleSuggestTrends = useCallback(async (timePeriod: string) => {
-        if (!generatedAssets?.brandFoundation || !aiModelConfig) {
-            setError("Cannot generate trends without Brand Foundation or AI configuration.");
-            return;
+    const handleReloadAllData = useCallback(async (brandId: string) => {
+        if (brandId) {
+            console.log('[App.tsx] Reloading all data for brand:', brandId);
+            personaManager.handleLoadPersonasData();
+            mediaPlanManager.onLoadMediaPlanData();
+            strategyManager.handleLoadStrategyHubData();
+            strategyManager.handleLoadAffiliateVaultData();
+            loadTasks(brandId);
         }
+    }, [personaManager.handleLoadPersonasData, mediaPlanManager.onLoadMediaPlanData, strategyManager.handleLoadStrategyHubData, strategyManager.handleLoadAffiliateVaultData, loadTasks]);
 
-        setIsSuggestingTrends(true);
-        setLoaderContent({
-            title: settings.language === 'Việt Nam' ? "Đang đề xuất xu hướng..." : "Suggesting trends...",
-            steps: [
-                settings.language === 'Việt Nam' ? "Phân tích hồ sơ thương hiệu..." : "Analyzing brand profile...",
-                settings.language === 'Việt Nam' ? "Tìm kiếm xu hướng mới..." : "Searching for new trends...",
-                settings.language === 'Việt Nam' ? "Phân tích mức độ phổ biến..." : "Analyzing trend popularity...",
-            ]
-        });
-        setError(null);
-
-        try {
-            const newTrends = await textGenerationService.suggestTrends(
-                {
-                    brandFoundation: generatedAssets.brandFoundation,
-                    timePeriod,
-                    settings
-                },
-                aiModelConfig
-            );
-
-            // In a real implementation, you would save these trends to the database
-            // dispatchAssets({ type: 'ADD_TRENDS', payload: newTrends });
-            
-            setSuccessMessage(settings.language === 'Việt Nam' 
-                ? "Đã đề xuất xu hướng thành công!" 
-                : "Successfully suggested trends!");
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to suggest trends.");
-        } finally {
-            setIsSuggestingTrends(false);
-            setLoaderContent(null);
+    // Track the previous brand ID to ensure loading only happens on actual changes
+    const prevBrandIdRef = useRef<string | null>(null);
+    
+    useEffect(() => {
+        // Only proceed if the brand ID has actually changed
+        if (mongoBrandId && mongoBrandId !== prevBrandIdRef.current) {
+            prevBrandIdRef.current = mongoBrandId;
+            console.log('[App.tsx] mongoBrandId changed, loading all data for brand:', mongoBrandId);
+            personaManager.handleLoadPersonasData();
+            mediaPlanManager.onLoadMediaPlanData();
+            strategyManager.handleLoadStrategyHubData();
+            strategyManager.handleLoadAffiliateVaultData();
+            loadTasks(mongoBrandId);
         }
-    }, [generatedAssets, aiModelConfig, settings, dispatchAssets, setLoaderContent, setError, setSuccessMessage]);
+    }, [mongoBrandId, personaManager.handleLoadPersonasData, mediaPlanManager.onLoadMediaPlanData, strategyManager.handleLoadStrategyHubData, strategyManager.handleLoadAffiliateVaultData, loadTasks]);
 
     // Task notification handlers
     const handleViewTaskResult = useCallback((taskId: string) => {
-        console.log('[App] Viewing result for task:', taskId);
-        // In a real implementation, you would navigate to the result page
-        // Remove notification after viewing
+        const task = notifications[taskId];
+        if (task) {
+            console.log('[App] Viewing result for task:', taskId, 'Type:', task.type);
+            // Refresh data based on the type of task that completed
+            switch (task.type) {
+                case 'GENERATE_MEDIA_PLAN':
+                    mediaPlanManager.onLoadMediaPlanData();
+                    break;
+                case 'CREATE_BRAND_FROM_IDEA':
+                case 'AUTO_GENERATE_PERSONAS':
+                    personaManager.handleLoadPersonasData();
+                    break;
+                case 'GENERATE_VIRAL_IDEAS':
+                case 'GENERATE_IDEAS_FROM_PRODUCT':
+                case 'GENERATE_TRENDS':
+                case 'GENERATE_GLOBAL_TRENDS':
+                    strategyManager.handleLoadStrategyHubData();
+                    break;
+            }
+        }
         removeNotification(taskId);
-    }, [removeNotification]);
+    }, [notifications, removeNotification, mediaPlanManager, personaManager, strategyManager]);
 
     const handleCloseNotification = useCallback((taskId: string) => {
         console.log('[App] Closing notification for task:', taskId);
@@ -417,7 +424,7 @@ const AppContent: React.FC = () => {
                 return (
                     <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
                         <IdeaProfiler
-                            onGenerateProfile={handleGenerateProfile}
+                            onGenerateProfile={handleCreateBrandFromIdea}
                             isLoading={!!loaderContent}
                             onLoadProject={projectIO.handleLoadProjectFile}
                             onLoadProjectFromDatabase={projectIO.handleLoadFromDatabase}
@@ -431,18 +438,7 @@ const AppContent: React.FC = () => {
                         />
                     </Suspense>
                 );
-            case 'profile':
-                return (
-                    <Suspense fallback={<Loader title="Loading..." steps={[]} />}>
-                        <BrandProfiler
-                            initialBrandInfo={brandInfo!}
-                            onGenerate={handleGenerateKit}
-                            isLoading={!!loaderContent}
-                            onBack={handleBackToIdea}
-                            language={settings.language}
-                        />
-                    </Suspense>
-                );
+
             case 'assets':
                 if (!generatedAssets) return <div>Loading assets...</div>;
                 return (
@@ -451,9 +447,10 @@ const AppContent: React.FC = () => {
                             <MainDisplay
                                 settings={settings}
                                 assets={generatedAssets}
+                                mongoBrandId={mongoBrandId}
                                 generatedImages={generatedImages}
                                 generatedVideos={generatedVideos}
-                                isGeneratingImage={(key) => generatingImageKeys.has(key)}
+                                isGeneratingImage={(key: string) => generatingImageKeys.has(key)}
                                 isUploadingImage={() => false}
                                 autoSaveStatus={autoSaveStatus}
                                 activeTab={activeTab}
@@ -469,16 +466,16 @@ const AppContent: React.FC = () => {
                                 onSaveProject={projectIO.handleSaveProjectToFile}
                                 isSavingProject={false}
                                 onSelectPlan={projectIO.handleSelectPlan}
-                                onGenerateImage={handleGenerateImage}
-                                onSetImage={handleSetImage}
-                                onSetVideo={handleSetVideo}
-                                onGenerateAllCarouselImages={handleGenerateAllCarouselImages}
+                                onGenerateImage={assetManager.handleGenerateImage}
+                                onSetImage={assetManager.handleSetImage}
+                                onSetVideo={assetManager.handleSetVideo}
+                                onGenerateAllCarouselImages={assetManager.handleGenerateAllCarouselImages}
                                 onSavePersona={personaManager.handleSavePersona}
                                 onDeletePersona={personaManager.handleDeletePersona}
                                 onUpdatePersona={personaManager.handleUpdatePersona}
                                 onSetPersonaImage={personaManager.handleSetPersonaImage}
                                 onAutoGeneratePersona={personaManager.handleAutoGeneratePersona}
-                                onLoadPersonasData={personaManager.handleLoadPersonasData}
+                                onLoadPersonasData={personaManager.handleRefreshPersonasData}
                                 onGeneratePlan={mediaPlanManager.handleGenerateMediaPlanGroup}
                                 onCreateFunnelCampaignPlan={mediaPlanManager.handleCreateFunnelCampaignPlan}
                                 onGenerateContentPackage={mediaPlanManager.handleGenerateContentPackage}
@@ -490,8 +487,8 @@ const AppContent: React.FC = () => {
                                 isExportingBrandKit={false}
                                 onExportPlan={() => {}}
                                 isExportingPlan={false}
-                                onLoadStrategyHubData={strategyManager.handleLoadStrategyHubData}
-                                onLoadAffiliateVaultData={strategyManager.handleLoadAffiliateVaultData}
+                                onLoadStrategyHubData={strategyManager.handleRefreshStrategyHubData}
+                                onLoadAffiliateVaultData={strategyManager.handleRefreshAffiliateVaultData}
                                 onSaveTrend={strategyManager.handleSaveTrend}
                                 onDeleteTrend={strategyManager.handleDeleteTrend}
                                 onGenerateIdeas={strategyManager.handleGenerateIdeas}
@@ -503,10 +500,10 @@ const AppContent: React.FC = () => {
                                 selectedTrend={strategyManager.selectedTrend}
                                 ideasForSelectedTrend={strategyManager.ideasForSelectedTrend}
                                 onReloadLinks={() => {}}
-                                onGenerateTrendsFromSearch={() => {}}
-                                isGeneratingTrendsFromSearch={false}
-                                onSuggestTrends={handleSuggestTrends}
-                                isSuggestingTrends={isSuggestingTrends}
+                                onSuggestTrends={strategyManager.handleSuggestTrends}
+                                isSuggestingTrends={strategyManager.isSuggestingTrends}
+                                isGeneratingIdeas={strategyManager.isGeneratingIdeas}
+                                isSelectingTrend={strategyManager.isSelectingTrend}
                                 productTrendToSelect={null}
                                 onAddFacebookPostIdeaToPlan={() => {}}
                                 isGeneratingFacebookPostIdeas={false}
@@ -548,11 +545,12 @@ const AppContent: React.FC = () => {
                                 onBulkGenerateImages={() => {}}
                                 onBulkSuggestPromotions={() => {}}
                                 onBulkGenerateComments={() => {}}
+                                onLoadMediaPlanData={mediaPlanManager.handleRefreshMediaPlanData}
                                 viewingPost={viewingPost}
                                 setViewingPost={setViewingPost}
                                 isAnyAnalysisRunning={false}
                                 analyzingPostIds={new Set<string>()}
-                                khongMinhSuggestions={{}}
+                                khongMinhSuggestions={khongMinhSuggestions}
                                 generatingPromptKeys={new Set<string>()}
                                 generatingCommentPostIds={new Set<string>()}
                                 onRunKhongMinhForPost={() => {}}
@@ -565,6 +563,10 @@ const AppContent: React.FC = () => {
                                 onAssignPersonaToPlan={() => {}}
                                 brandFoundation={generatedAssets?.brandFoundation || initialGeneratedAssets.brandFoundation}
                                 onOpenFunnelWizard={() => {}}
+                                tasks={taskList}
+                                isLoadingTasks={isLoadingTasks}
+                                onLoadTasks={(brandId) => loadTasks(brandId)}
+                                onLoadBrandKitData={handleReloadAllData}
                             />
                         </Suspense>
                         <Suspense fallback={null}>
@@ -633,18 +635,18 @@ const AppContent: React.FC = () => {
 
             {/* Task Notifications */}
             <div className="fixed bottom-4 right-4 z-50 space-y-2">
-                {Object.values(notifications).map((task: any) => (
+                {Object.values(notifications).map((task: BackgroundTask) => (
                     <TaskNotification
                         key={task.taskId}
                         task={task}
                         onClose={() => handleCloseNotification(task.taskId)}
-                        onViewResult={handleViewTaskResult}
+                        onViewResult={() => handleViewTaskResult(task.taskId)}
                     />
                 ))}
             </div>
 
             {/* Task Status Indicator */}
-            <TaskStatusIndicator tasks={notifications} />
+            <TaskStatusIndicator tasks={Object.values(notifications)} />
         </div>
     );
 };

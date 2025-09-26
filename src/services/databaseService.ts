@@ -76,6 +76,13 @@ async function callDatabaseService<T>(
     return result;
   } catch (error) {
     console.error(`callDatabaseService: Error in action '${action}' on '${dataSource}':`, error);
+    
+    // Handle network errors specifically
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      console.error(`Network error when calling ${dataSource} action '${action}':`, error);
+      throw new Error(`Network error: Unable to reach the ${dataSource} service. Please check your connection and try again.`);
+    }
+    
     throw error;
   }
 }
@@ -89,18 +96,67 @@ const handlers = {
    * MongoDB: REST API via /api/mongodb
    */
   mongodb: async (action: string, payload: Record<string, any>, expectsJson: boolean) => {
-    const response = await fetch(`/api/mongodb?action=${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    try {
+      // Use GET for allowed actions, POST for others
+      const GET_ALLOWED_ACTIONS = [
+        'list-media-plan-groups',
+        'fetch-affiliate-links',
+        'fetch-settings',
+        'load-personas',
+        'load-strategy-hub',
+        'load-ideas-for-trend',
+        'load-trend',
+        'load-affiliate-vault',
+        'check-credentials',
+        'check-product-exists',
+        'app-init',
+        'load-settings-data',
+        'load-media-plan',
+        'load-media-plan-posts',
+        'load-complete-project',
+        'load-project'
+      ];
+      
+      const isGetAllowed = GET_ALLOWED_ACTIONS.includes(action);
+      const method = isGetAllowed ? 'GET' : 'POST';
+      
+      let url = `/api/mongodb?action=${action}`;
+      let body = undefined;
+      
+      if (method === 'POST') {
+        body = JSON.stringify(payload);
+      } else if (method === 'GET' && Object.keys(payload).length > 0) {
+        // For GET requests, add payload as query parameters
+        // Build the query string manually to avoid potential URLSearchParams issues
+        const queryParams = [];
+        for (const [key, value] of Object.entries(payload)) {
+          if (value !== undefined && value !== null) {
+            queryParams.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+          }
+        }
+        if (queryParams.length > 0) {
+          // Check if URL already has query parameters
+          const separator = url.includes('?') ? '&' : '?';
+          url += `${separator}${queryParams.join('&')}`;
+        }
+      }
+      
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      return expectsJson ? await response.json() : await response.text();
+    } catch (error) {
+      console.error(`MongoDB handler error for action '${action}':`, error);
+      throw error;
     }
-
-    return expectsJson ? await response.json() : await response.text();
   },
 
   /**
@@ -400,22 +456,55 @@ const loadStrategyHubData = async (brandId: string): Promise<{
   ideas: Idea[];
 }> => {
   console.log('loadStrategyHubData called with brandId:', brandId);
-  const data = await callDatabaseService<{ trends: Trend[]; ideas: Idea[] }>('load-strategy-hub', { brandId });
-  console.log('Strategy hub data received from API:', data);
-  return data;
+  
+  if (!brandId) {
+    console.warn('loadStrategyHubData: Missing brandId');
+    return { trends: [], ideas: [] };
+  }
+  
+  try {
+    const data = await callDatabaseService<{ trends: Trend[]; ideas: Idea[] }>('load-strategy-hub', { brandId });
+    console.log('Strategy hub data received from API:', data);
+    return data || { trends: [], ideas: [] };
+  } catch (error) {
+    console.error('Error loading strategy hub data:', error);
+    return { trends: [], ideas: [] };
+  }
 };
 
 const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]> => {
   console.log('loadAffiliateVaultData called with brandId:', brandId);
-  const result = await callDatabaseService<{ affiliateLinks: AffiliateLink[] }>('load-affiliate-vault', { brandId });
-  return result.affiliateLinks;
+  
+  if (!brandId) {
+    console.warn('loadAffiliateVaultData: Missing brandId');
+    return [];
+  }
+  
+  try {
+    const result = await callDatabaseService<{ affiliateLinks: AffiliateLink[] }>('load-affiliate-vault', { brandId });
+    return result.affiliateLinks || [];
+  } catch (error) {
+    console.error('Error loading affiliate vault data:', error);
+    return [];
+  }
 };
 
 const loadPersonasData = async (brandId: string): Promise<Persona[]> => {
   console.log('loadPersonasData called with brandId:', brandId);
-  const result = await callDatabaseService<{ personas: Persona[] }>('load-personas', { brandId });
-  console.log('Personas data received from API:', result.personas);
-  return result.personas;
+  
+  if (!brandId) {
+    console.warn('loadPersonasData: Missing brandId');
+    return [];
+  }
+  
+  try {
+    const result = await callDatabaseService<{ personas: Persona[] }>('load-personas', { brandId });
+    console.log('Personas data received from API:', result.personas);
+    return result.personas || [];
+  } catch (error) {
+    console.error('Error loading personas data:', error);
+    return [];
+  }
 };
 
 const loadMediaPlanPostsWithPagination = async (

@@ -3,9 +3,9 @@
 
 import React, { useState } from 'react';
 import { Button } from './ui';
-import { SettingsIcon, PlugIcon, ArchiveIcon, MenuIcon, CheckCircleIcon, LinkIcon, CollectionIcon, TagIcon, UsersIcon, LightBulbIcon } from './icons';
+import { SettingsIcon, PlugIcon, ArchiveIcon, MenuIcon, CheckCircleIcon, LinkIcon, CollectionIcon, TagIcon, UsersIcon, LightBulbIcon, ListBulletIcon } from './icons';
 
-export type ActiveTab = 'brandKit' | 'mediaPlan' | 'affiliateVault' | 'personas' | 'strategy';
+export type ActiveTab = 'brandKit' | 'mediaPlan' | 'affiliateVault' | 'personas' | 'strategy' | 'taskManager';
 
 interface HeaderProps {
     activeTab: ActiveTab;
@@ -98,6 +98,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
             strategy: { text: 'Chiến lược Nội dung', icon: <LightBulbIcon className="h-5 w-5"/> },
             affiliateVault: { text: 'Kho Affiliate', icon: <LinkIcon className="h-5 w-5"/> },
             personas: { text: 'KOL/KOC', icon: <UsersIcon className="h-5 w-5"/> },
+            taskManager: { text: 'Quản lý Tác vụ', icon: <ListBulletIcon className="h-5 w-5"/> },
             saveProject: 'Lưu dự án',
             savingProject: 'Đang lưu...',
             startOver: 'Bắt đầu lại',
@@ -109,6 +110,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
             strategy: { text: 'Content Strategy', icon: <LightBulbIcon className="h-5 w-5"/> },
             affiliateVault: { text: 'Affiliate Vault', icon: <LinkIcon className="h-5 w-5"/> },
             personas: { text: 'KOL/KOC', icon: <UsersIcon className="h-5 w-5"/> },
+            taskManager: { text: 'Task Manager', icon: <ListBulletIcon className="h-5 w-5"/> },
             saveProject: 'Save Project',
             savingProject: 'Saving...',
             startOver: 'Start Over',
@@ -175,6 +177,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
                          <TabButton tabId="mediaPlan" text={currentTexts.mediaPlan.text} icon={currentTexts.mediaPlan.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                          <TabButton tabId="affiliateVault" text={currentTexts.affiliateVault.text} icon={currentTexts.affiliateVault.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                          <TabButton tabId="personas" text={currentTexts.personas.text} icon={currentTexts.personas.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                         <TabButton tabId="taskManager" text={currentTexts.taskManager.text} icon={currentTexts.taskManager.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
                     </nav>
                 </div>
             </div>

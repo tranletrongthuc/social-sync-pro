@@ -30,7 +30,8 @@ import {
   ChevronLeftIcon, 
   ChevronRightIcon, 
   UsersIcon,
-  FunnelIcon // New icon import
+  FunnelIcon, // New icon import
+  RefreshIcon
 } from './icons';
 import PostCard from './PostCard';
 import PostDetailModal from './PostDetailModal';
@@ -92,6 +93,10 @@ interface MediaPlanDisplayProps {
   onOpenFunnelWizard: () => void;
   viewingPost: PostInfo | null;
   setViewingPost: (postInfo: PostInfo | null) => void;
+  // Refresh functionality
+  mongoBrandId: string | null;
+  onLoadData?: (brandId: string) => Promise<void>;
+  isLoading?: boolean;
 }
 
 const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
@@ -521,7 +526,7 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
         title={currentTexts.plans_sidebar_title}
         subtitle={currentTexts.generate_plan_subtitle}
         actions={
-          <div className="flex flex-row gap-2">
+          <div className="flex flex-row gap-2 items-center">
             <Button 
               onClick={onOpenFunnelWizard}
               variant="secondary" 
@@ -538,6 +543,14 @@ const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
               <PlusIcon className="h-4 w-4" />
               <span className="hidden sm:inline">{currentTexts.newPlanButton}</span>
             </Button>
+            <button 
+              onClick={() => props.onLoadData && props.mongoBrandId && props.onLoadData(props.mongoBrandId)}
+              className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+              aria-label="Refresh data"
+              disabled={props.isLoading}
+            >
+              <RefreshIcon className={`h-4 w-4 text-gray-600 ${props.isLoading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         }
         onMobileMenuToggle={() => setIsPlanSidebarOpen(true)}

@@ -5,48 +5,89 @@ import FormData from 'form-data';
 import mongodbHandler from './mongodb.js';
 import jobsHandler from './jobs.js';
 
+// Disable Vercel's default body parser to access the raw body
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+// A more stable, event-based helper to read raw body from request
+function getRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', chunk => {
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+    req.on('error', err => {
+      console.error('[API/Index] Error reading request body:', err);
+      reject(err);
+    });
+  });
+}
+
+
 // Initialize AI services
 const genAI = process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
 
 async function handler(request, response) {
-  // Set CORS headers
-  response.setHeader('Access-Control-Allow-Credentials', true);
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
-  response.setHeader(
-    'Access-Control-Allow-Headers',
-    'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
-  );
-
-  // Handle preflight requests
-  if (request.method === 'OPTIONS') {
-    response.status(200).end();
-    return;
-  }
+  // Set CORS headers are now handled by the allowCors wrapper
 
   const { service, action } = request.query;
+
+  // Manually handle body parsing
+  const rawBody = await getRawBody(request);
+  let body = {};
+  if (rawBody.length > 0) {
+    try {
+      body = JSON.parse(rawBody.toString('utf-8'));
+    } catch (e) {
+      return response.status(400).json({ error: 'Invalid JSON body' });
+    }
+  }
+  
+  // Attach parsed body to the request for downstream handlers
+  request.body = body;
+  
+  // For services that need it, attach the raw body as well
+  if (service === 'jobs') {
+    request.rawBody = rawBody;
+  }
+
 
   // Route based on service
   switch (service) {
     case 'mongodb':
-      return handleMongodbRequest(request, response, action);
+      await mongodbHandler(request, response);
+      break;
     case 'gemini':
-      return handleGeminiRequest(request, response, action);
+      await handleGeminiRequest(request, response, action);
+      break;
     case 'openrouter':
-      return handleOpenRouterRequest(request, response, action);
+      await handleOpenRouterRequest(request, response, action);
+      break;
     case 'cloudflare':
-      return handleCloudflareRequest(request, response, action);
+      await handleCloudflareRequest(request, response, action);
+      break;
     case 'cloudinary':
-      return handleCloudinaryRequest(request, response, action);
+      await handleCloudinaryRequest(request, response, action);
+      break;
     case 'facebook':
-      return handleFacebookRequest(request, response, action);
+      await handleFacebookRequest(request, response, action);
+      break;
     case 'jobs':
-      return handleJobsRequest(request, response, action);
+      await jobsHandler(request, response);
+      break;
     case 'health':
-      return handleHealthRequest(request, response);
+      await handleHealthRequest(request, response);
+      break;
     default:
+      console.error(`[API/Index] Unknown service requested: ${service}`);
       response.setHeader('Allow', ['GET', 'POST']);
-      response.status(405).end(`Service ${service} Not Allowed`);
+      response.status(405).json({ error: `Service ${service} Not Allowed` });
   }
 }
 
@@ -481,4 +522,13 @@ async function handleJobsRequest(request, response, action) {
   return jobsHandler(request, response);
 }
 
-export default allowCors(handler);
+const finalHandler = allowCors(handler);
+
+export default async (req, res) => {
+  try {
+    return await finalHandler(req, res);
+  } catch (error) {
+    console.error('[API/Index] Unhandled exception in handler:', error);
+    res.status(500).json({ error: 'An unexpected server error occurred: ' + error.message });
+  }
+};

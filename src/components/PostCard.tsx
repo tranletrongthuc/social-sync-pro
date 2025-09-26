@@ -3,6 +3,7 @@ import { Button, Carousel } from './ui';
 import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, CheckCircleIcon, PencilIcon, CopyIcon, CheckSolidIcon, DotsVerticalIcon, KhongMinhIcon, ChatBubbleLeftIcon, VideoCameraIcon, TagIcon, PhotographIcon, CalendarIcon } from './icons';
 import type { MediaPlanPost, PostInfo } from '../../types';
 import { renderPostContent } from '../services/utils';
+import ModelLabel from './ModelLabel';
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
@@ -113,6 +114,7 @@ const PostCard: React.FC<PostCardProps> = (props) => {
                         <span>{post.platform}</span>
                         <span className="text-gray-300">•</span>
                         <span>{post.contentType}</span>
+                        {post.modelUsed && <ModelLabel model={post.modelUsed} size="small" />}
                     </div>
                     <div className="relative no-expand" ref={menuRef}>
                         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-400 hover:text-gray-600">

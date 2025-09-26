@@ -172,136 +172,6 @@ export const normalizeMediaPlanGroupResponse = (data: any): { name: string; plan
     
     return { name: name || 'Untitled Plan', plan };
 };
-// #endregion
-
-// #region Response Processors
-export const processMediaPlanResponse = (jsonText: string, params: { userPrompt: string, pillar: string, settings: Settings, persona: Persona | null, selectedProduct: AffiliateLink | null }): MediaPlanGroup => {
-  const { userPrompt, pillar, settings, persona, selectedProduct } = params;
-
-  const parsedResult = sanitizeAndParseJson(jsonText);
-  const { name: planName, plan: planWeeks } = normalizeMediaPlanGroupResponse(parsedResult);
-
-  const planWithEnhancements = (planWeeks || []).map(week => ({
-      ...week,
-      posts: (week.posts || []).map((post: any) => {
-          // Validate and correct the post
-          const correctedPost = validateAndCorrectMediaPlanPost(post);
-          
-          return {
-              ...correctedPost,
-              pillar: pillar,
-              promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
-          } as MediaPlanPost;
-      }),
-  }));
-
-  const generateFallbackTitle = (userPrompt: string, selectedProduct: AffiliateLink | null, persona: Persona | null): string => {
-      if (selectedProduct) {
-          let title = `Promotion: ${selectedProduct.productName}`;
-          if (persona) {
-              title += ` ft. ${persona.nickName}`;
-          }
-          return title;
-      }
-      if (persona) {
-          return `Plan for ${persona.nickName}: ${userPrompt.substring(0, 30)}...`;
-      }
-      return userPrompt.substring(0, 50);
-  }
-
-  return {
-      name: (planName && planName !== 'Untitled Plan') ? planName : generateFallbackTitle(userPrompt, selectedProduct, persona),
-      prompt: userPrompt,
-      plan: planWithEnhancements,
-      source: 'wizard',
-      personaId: persona?.id,
-  } as MediaPlanGroup;
-};
-
-export const processBrandKitResponse = (jsonText: string, language: string): Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> => {
-    const parsedJson = sanitizeAndParseJson(jsonText);
-
-    // Normalize keys by checking for both camelCase and snake_case
-    const brandFoundationData = parsedJson.brandFoundation || parsedJson.brand_foundation;
-    const coreMediaAssetsData = parsedJson.coreMediaAssets || parsedJson.core_media_assets;
-    const unifiedProfileAssetsData = parsedJson.unifiedProfileAssets || parsedJson.unified_profile_assets;
-    const planData = parsedJson.mediaPlan || parsedJson.initial1MonthMediaPlan || parsedJson.initialMediaPlan || parsedJson.initial_1_month_media_plan;
-
-    if (!brandFoundationData || !coreMediaAssetsData || !unifiedProfileAssetsData) {
-        console.error("AI response is missing one or more root keys. Parsed JSON:", parsedJson);
-        throw new Error("The AI returned a JSON object with a missing or incorrect structure. Please try again.");
-    }
-    
-    // Fix brandFoundation mapping
-    const brandFoundation: BrandFoundation = {
-        brandName: brandFoundationData.brandName || brandFoundationData.name || '',
-        mission: brandFoundationData.mission || '',
-        usp: brandFoundationData.usp || brandFoundationData.uniqueSellingProposition || '',
-        targetAudience: brandFoundationData.targetAudience || brandFoundationData.audience || '',
-        values: Array.isArray(brandFoundationData.values) 
-            ? brandFoundationData.values 
-            : typeof brandFoundationData.values === 'string'
-                ? brandFoundationData.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
-                : [],
-        personality: brandFoundationData.personality || '',
-        keyMessaging: Array.isArray(brandFoundationData.keyMessaging) 
-            ? brandFoundationData.keyMessaging 
-            : typeof brandFoundationData.keyMessaging === 'string'
-                ? [brandFoundationData.keyMessaging]
-                : []
-    };
-    
-    if (coreMediaAssetsData?.logoConcepts) {
-        coreMediaAssetsData.logoConcepts = coreMediaAssetsData.logoConcepts.map((logo: any) => {
-            const imageKey = `logo_${Math.random().toString(36).substring(2, 9)}`;
-            return {
-                ...logo,
-                prompt: logo.prompt || logo.description || '',
-                imageKey: imageKey
-            };
-        });
-    }
-    if (unifiedProfileAssetsData) {
-        unifiedProfileAssetsData.profilePictureImageKey = `profile_${Math.random().toString(36).substring(2, 9)}`;
-        unifiedProfileAssetsData.coverPhotoImageKey = `cover_${Math.random().toString(36).substring(2, 9)}`;
-    }
-
-    let mediaPlanGroup: MediaPlanGroup | null = null;
-    if (planData && Array.isArray(planData)) {
-        const planWithIds: MediaPlan = (planData as any[]).map(week => ({
-            ...week,
-            posts: (week.posts || []).map((post: any) => {
-                const { status, ...restOfPost } = post;
-                return {
-                    ...restOfPost,
-                    imageKey: post.mediaPrompt ? `media_plan_post_${Math.random().toString(36).substring(2, 9)}` : undefined,
-                    status: 'draft',
-                } as MediaPlanPost;
-            }),
-        }));
-        
-        mediaPlanGroup = {
-            name: language === 'Việt Nam' ? 'Kế hoạch Ra mắt Thương hiệu' : 'Brand Launch Plan',
-            prompt: language === 'Việt Nam' ? 'Kế hoạch ban đầu được tạo cho việc ra mắt thương hiệu.' : 'Initial plan generated for brand launch.',
-            plan: planWithIds,
-            source: 'brand-launch',
-        } as MediaPlanGroup;
-    }
-    
-    const assets: Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> = {
-        brandFoundation,
-        coreMediaAssets: coreMediaAssetsData,
-        unifiedProfileAssets: unifiedProfileAssetsData,
-        mediaPlans: mediaPlanGroup ? [mediaPlanGroup] : [],
-        settings: initialGeneratedAssets.settings,
-    };
-    return assets;
-};
-
-export const processBrandProfileResponse = (jsonText: string): BrandInfo => {
-    const parsed = sanitizeAndParseJson(jsonText);
-    return parsed as BrandInfo;
-};
 
 export const processGenerateMediaPromptForPostResponse = (responseText: string, postContentType: string, settings: Settings): string | string[] => {
     if (postContentType === 'Carousel Post' || postContentType === 'Carousel') {
@@ -498,24 +368,6 @@ export const processIdeasFromProductResponse = (jsonText: string, product: Affil
     }));
 };
 
-export const processAutoGeneratePersonaResponse = (jsonText: string): Partial<Persona>[] => {
-    const parsedData = sanitizeAndParseJson(jsonText);
-
-    let personasArray: any;
-
-    // The AI might return { "Personas": [...] } or just [...]
-    if (Array.isArray(parsedData)) {
-        personasArray = parsedData;
-    } else if (parsedData && typeof parsedData === 'object' && Array.isArray(parsedData.Personas)) {
-        personasArray = parsedData.Personas;
-    }
-
-    if (!personasArray || !Array.isArray(personasArray)) {
-        throw new Error("Received invalid or empty array response from AI when generating persona profiles.");
-    }
-    return personasArray as Partial<Persona>[];
-};
-
 export const processSuggestTrendsResponse = (jsonText: string): Omit<Trend, 'id' | 'brandId'>[] => {
     let trends = sanitizeAndParseJson(jsonText);
     
@@ -553,4 +405,136 @@ export const processSuggestTrendsResponse = (jsonText: string): Omit<Trend, 'id'
 export const processSuggestGlobalTrendsResponse = (jsonText: string): Omit<Trend, 'id' | 'brandId'>[] => {
     return processSuggestTrendsResponse(jsonText);
 };
+// #endregion
+
+// #region Response Processors
+export const processMediaPlanResponse = (jsonText: string, params: { userPrompt: string, pillar: string, settings: Settings, persona: Persona | null, selectedProduct: AffiliateLink | null }): MediaPlanGroup => {
+  const { userPrompt, pillar, settings, persona, selectedProduct } = params;
+
+  const parsedResult = sanitizeAndParseJson(jsonText);
+  const { name: planName, plan: planWeeks } = normalizeMediaPlanGroupResponse(parsedResult);
+
+  const planWithEnhancements = (planWeeks || []).map(week => ({
+      ...week,
+      posts: (week.posts || []).map((post: any) => {
+          // Validate and correct the post
+          const correctedPost = validateAndCorrectMediaPlanPost(post);
+          
+          return {
+              ...correctedPost,
+              pillar: pillar,
+              promotedProductIds: selectedProduct ? [selectedProduct.id] : [],
+          } as MediaPlanPost;
+      }),
+  }));
+
+  const generateFallbackTitle = (userPrompt: string, selectedProduct: AffiliateLink | null, persona: Persona | null): string => {
+      if (selectedProduct) {
+          let title = `Promotion: ${selectedProduct.productName}`;
+          if (persona) {
+              title += ` ft. ${persona.nickName}`;
+          }
+          return title;
+      }
+      if (persona) {
+          return `Plan for ${persona.nickName}: ${userPrompt.substring(0, 30)}...`;
+      }
+      return userPrompt.substring(0, 50);
+  }
+
+  return {
+      name: (planName && planName !== 'Untitled Plan') ? planName : generateFallbackTitle(userPrompt, selectedProduct, persona),
+      prompt: userPrompt,
+      plan: planWithEnhancements,
+      source: 'wizard',
+      personaId: persona?.id,
+  } as MediaPlanGroup;
+};
+
+export const processBrandKitResponse = (jsonText: string, language: string): Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> => {
+    const parsedJson = sanitizeAndParseJson(jsonText);
+
+    // Normalize keys by checking for both camelCase and snake_case
+    const brandFoundationData = parsedJson.brandFoundation || parsedJson.brand_foundation;
+    const coreMediaAssetsData = parsedJson.coreMediaAssets || parsedJson.core_media_assets;
+    const unifiedProfileAssetsData = parsedJson.unifiedProfileAssets || parsedJson.unified_profile_assets;
+    const planData = parsedJson.mediaPlan || parsedJson.initial1MonthMediaPlan || parsedJson.initialMediaPlan || parsedJson.initial_1_month_media_plan;
+
+    if (!brandFoundationData || !coreMediaAssetsData || !unifiedProfileAssetsData) {
+        console.error("AI response is missing one or more root keys. Parsed JSON:", parsedJson);
+        throw new Error("The AI returned a JSON object with a missing or incorrect structure. Please try again.");
+    }
+    
+    // Fix brandFoundation mapping
+    const brandFoundation: BrandFoundation = {
+        brandName: brandFoundationData.brandName || brandFoundationData.name || '',
+        mission: brandFoundationData.mission || '',
+        usp: brandFoundationData.usp || brandFoundationData.uniqueSellingProposition || '',
+        targetAudience: brandFoundationData.targetAudience || brandFoundationData.audience || '',
+        values: Array.isArray(brandFoundationData.values) 
+            ? brandFoundationData.values 
+            : typeof brandFoundationData.values === 'string'
+                ? brandFoundationData.values.split(',').map((v: string) => v.trim()).filter((v: string) => v)
+                : [],
+        personality: brandFoundationData.personality || '',
+        keyMessaging: Array.isArray(brandFoundationData.keyMessaging) 
+            ? brandFoundationData.keyMessaging 
+            : typeof brandFoundationData.keyMessaging === 'string'
+                ? [brandFoundationData.keyMessaging]
+                : []
+    };
+    
+    if (coreMediaAssetsData?.logoConcepts) {
+        coreMediaAssetsData.logoConcepts = coreMediaAssetsData.logoConcepts.map((logo: any) => {
+            const imageKey = `logo_${Math.random().toString(36).substring(2, 9)}`;
+            return {
+                ...logo,
+                prompt: logo.prompt || logo.description || '',
+                imageKey: imageKey
+            };
+        });
+    }
+    if (unifiedProfileAssetsData) {
+        unifiedProfileAssetsData.profilePictureImageKey = `profile_${Math.random().toString(36).substring(2, 9)}`;
+        unifiedProfileAssetsData.coverPhotoImageKey = `cover_${Math.random().toString(36).substring(2, 9)}`;
+    }
+
+    let mediaPlanGroup: MediaPlanGroup | null = null;
+    if (planData && Array.isArray(planData)) {
+        const planWithIds: MediaPlan = (planData as any[]).map(week => ({
+            ...week,
+            posts: (week.posts || []).map((post: any) => {
+                const { status, ...restOfPost } = post;
+                return {
+                    ...restOfPost,
+                    imageKey: post.mediaPrompt ? `media_plan_post_${Math.random().toString(36).substring(2, 9)}` : undefined,
+                    status: 'draft',
+                } as MediaPlanPost;
+            }),
+        }));
+        
+        mediaPlanGroup = {
+            name: language === 'Việt Nam' ? 'Kế hoạch Ra mắt Thương hiệu' : 'Brand Launch Plan',
+            prompt: language === 'Việt Nam' ? 'Kế hoạch ban đầu được tạo cho việc ra mắt thương hiệu.' : 'Initial plan generated for brand launch.',
+            plan: planWithIds,
+            source: 'brand-launch',
+        } as MediaPlanGroup;
+    }
+    
+    const assets: Omit<GeneratedAssets, 'affiliateLinks' | 'personas' | 'trends' | 'ideas' | 'facebookTrends' | 'facebookPostIdeas'> = {
+        brandFoundation,
+        coreMediaAssets: coreMediaAssetsData,
+        unifiedProfileAssets: unifiedProfileAssetsData,
+        mediaPlans: mediaPlanGroup ? [mediaPlanGroup] : [],
+        settings: initialGeneratedAssets.settings,
+    };
+    return assets;
+};
+
+export const processBrandProfileResponse = (jsonText: string): BrandInfo => {
+    const parsed = sanitizeAndParseJson(jsonText);
+    return parsed as BrandInfo;
+};
+
+
 // #endregion

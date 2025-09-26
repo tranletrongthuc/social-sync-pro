@@ -1,4 +1,4 @@
-  import { MongoClient } from 'mongodb';
+  import { MongoClient, ObjectId } from 'mongodb';
   import dotenv from 'dotenv';
 
   // Load environment variables from .env.local
@@ -38,3 +38,113 @@
 
     return cachedDb;
   }
+
+// ========== UTILITY FUNCTIONS ==========
+
+function createIdFilter(id, fieldName = '_id') {
+  if (ObjectId.isValid(id)) {
+    return { [fieldName]: new ObjectId(id) };
+  } else {
+    return { [fieldName === '_id' ? 'id' : fieldName]: id };
+  }
+}
+
+// ========== TEMPLATE FUNCTIONS ==========
+
+class CRUDTemplate {
+  constructor(collectionName, transformFn = null) {
+    this.collectionName = collectionName;
+    this.transformFn = transformFn || ((record) => ({ ...record, id: record._id.toString() }));
+  }
+
+  async create(db, document, generateId = true) {
+    const collection = db.collection(this.collectionName);
+    
+    if (generateId) {
+      const objectId = new ObjectId();
+      const fullDocument = {
+        ...document,
+        _id: objectId,
+        id: objectId.toString(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      await collection.insertOne(fullDocument);
+      return { id: objectId.toString(), document: fullDocument };
+    } else {
+      await collection.insertOne({ ...document, createdAt: new Date(), updatedAt: new Date() });
+      return { id: document._id?.toString(), document };
+    }
+  }
+
+  async update(db, id, document) {
+    const collection = db.collection(this.collectionName);
+    const result = await collection.updateOne(
+      createIdFilter(id),
+      { $set: { ...document, updatedAt: new Date() } },
+      { upsert: true }
+    );
+    return result;
+  }
+
+  async findOne(db, filter) {
+    const collection = db.collection(this.collectionName);
+    const record = await collection.findOne(filter);
+    return record ? this.transformFn(record) : null;
+  }
+}
+
+const brandsTemplate = new CRUDTemplate('brands');
+const adminSettingsTemplate = new CRUDTemplate('adminSettings');
+
+export async function createOrUpdateBrand(db, assets, brandId) {
+    const brandDocument = {
+      name: assets.brandFoundation?.brandName || '',
+      mission: assets.brandFoundation?.mission || '',
+      usp: assets.brandFoundation?.usp || '',
+      targetAudience: assets.brandFoundation?.targetAudience || '',
+      personality: assets.brandFoundation?.personality || '',
+      values: assets.brandFoundation?.values || [],
+      keyMessaging: assets.brandFoundation?.keyMessaging || [],
+      coreMediaAssets: assets.coreMediaAssets || { logoConcepts: [], colorPalette: [], fontRecommendations: [] },
+      unifiedProfileAssets: assets.unifiedProfileAssets || {},
+      settings: assets.settings || {},
+      // Include modelUsed if available
+      modelUsed: assets.modelUsed
+    };
+
+    if (brandId) {
+      await brandsTemplate.update(db, brandId, brandDocument);
+      return { brandId };
+    } else {
+      const adminSettings = await adminSettingsTemplate.findOne(db, {});
+      const newBrandSettings = adminSettings ? {
+        language: adminSettings.language,
+        totalPostsPerMonth: adminSettings.totalPostsPerMonth,
+        mediaPromptSuffix: adminSettings.mediaPromptSuffix,
+        affiliateContentKit: adminSettings.affiliateContentKit,
+        textGenerationModel: adminSettings.textGenerationModel,
+        imageGenerationModel: adminSettings.imageGenerationModel,
+        contentPillars: adminSettings.contentPillars || [],
+        prompts: { rules: { imagePrompt: [], postCaption: [], shortVideoScript: [], longVideoScript: [] } }
+      } : {};
+
+      brandDocument.settings = newBrandSettings;
+      const { id } = await brandsTemplate.create(db, brandDocument);
+      return { brandId: id };
+    }
+}
+
+export async function savePersonas(db, personas) {
+    const collection = db.collection('personas');
+    const personasWithIds = personas.map(p => {
+        const objectId = new ObjectId();
+        return {
+            ...p,
+            _id: objectId,
+            id: objectId.toString(),
+        };
+    });
+    const result = await collection.insertMany(personasWithIds);
+    return result.insertedIds;
+}

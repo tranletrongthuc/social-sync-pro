@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     GeneratedAssets,
     Settings,
@@ -31,6 +31,7 @@ interface useMediaPlanManagementProps {
     setGeneratedImages: React.Dispatch<React.SetStateAction<Record<string, string>>>;
     setSuccessMessage: (message: string | null) => void;
     setActiveTab: (tab: any) => void;
+    onTaskCreated?: () => void;
 }
 
 export const useMediaPlanManagement = ({
@@ -51,7 +52,35 @@ export const useMediaPlanManagement = ({
     setGeneratedImages,
     setSuccessMessage,
     setActiveTab,
+    onTaskCreated,
 }: useMediaPlanManagementProps) => {
+    const [isMediaPlanLoading, setIsMediaPlanLoading] = useState(false);
+
+    const onLoadMediaPlanData = useCallback(async () => {
+        if (!mongoBrandId || isMediaPlanLoading) return;
+        setIsMediaPlanLoading(true);
+        try {
+            const groups = await taskService.listMediaPlanGroups(mongoBrandId);
+            setMediaPlanGroupsList(groups);
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Could not load media plan groups.");
+        } finally {
+            setIsMediaPlanLoading(false);
+        }
+    }, [mongoBrandId, isMediaPlanLoading, setMediaPlanGroupsList, setError]);
+    
+    const handleRefreshMediaPlanData = useCallback(async () => {
+        if (!mongoBrandId || isMediaPlanLoading) return;
+        setIsMediaPlanLoading(true);
+        try {
+            const groups = await taskService.listMediaPlanGroups(mongoBrandId);
+            setMediaPlanGroupsList(groups);
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Could not load media plan groups.");
+        } finally {
+            setIsMediaPlanLoading(false);
+        }
+    }, [mongoBrandId, isMediaPlanLoading, setMediaPlanGroupsList, setError]);
 
     const handleGenerateMediaPlanGroup = useCallback(( 
         objective: string,
@@ -98,6 +127,8 @@ export const useMediaPlanManagement = ({
                     selectedProductId,
                     personaId,
                     pillar,
+                    // Include the primary model that will be used for generation
+                    modelUsed: settings.textGenerationModel,
                     // Extract only the necessary fields from brandFoundation
                     brandFoundation: generatedAssets.brandFoundation ? {
                         brandName: generatedAssets.brandFoundation.brandName,
@@ -161,6 +192,7 @@ export const useMediaPlanManagement = ({
                 
                 // In a real implementation, you would add the taskId to a global task tracking system
                 console.log(`[BackgroundTask] Media plan generation task started with ID: ${taskId}`);
+                onTaskCreated?.();
             } catch (err) {
                 console.error('[BackgroundTask] Error creating background task:', err);
                 setError(err instanceof Error ? err.message : "Failed to start media plan generation task.");
@@ -211,6 +243,8 @@ export const useMediaPlanManagement = ({
             const taskPayload = {
                 planName: planShell.name,
                 wizardData,
+                // Include the primary model that will be used for generation
+                modelUsed: settings.textGenerationModel,
                 brandFoundation: {
                     brandName: generatedAssets.brandFoundation.brandName,
                     mission: generatedAssets.brandFoundation.mission,
@@ -269,6 +303,7 @@ export const useMediaPlanManagement = ({
             
             // In a real implementation, you would add the taskId to a global task tracking system
             console.log(`Funnel campaign generation task started with ID: ${taskId}`);
+            onTaskCreated?.();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to start funnel campaign generation task.");
             setLoaderContent(null);
@@ -301,6 +336,8 @@ export const useMediaPlanManagement = ({
             // Create a background task for content package generation
             const taskPayload = {
                 idea,
+                // Include the primary model that will be used for generation
+                modelUsed: settings.textGenerationModel,
                 brandFoundation: {
                     brandName: generatedAssets.brandFoundation.brandName,
                     mission: generatedAssets.brandFoundation.mission,
@@ -347,6 +384,7 @@ export const useMediaPlanManagement = ({
             
             // In a real implementation, you would add the taskId to a global task tracking system
             console.log(`Content package generation task started with ID: ${taskId}`);
+            onTaskCreated?.();
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to start content package generation task.");
             setLoaderContent(null);
@@ -354,6 +392,8 @@ export const useMediaPlanManagement = ({
     }, [generatedAssets, settings, mongoBrandId, setLoaderContent, setError, setSuccessMessage]);
 
     return {
+        onLoadMediaPlanData,
+        handleRefreshMediaPlanData,
         handleGenerateMediaPlanGroup,
         handleCreateFunnelCampaignPlan,
         handleGenerateContentPackage,

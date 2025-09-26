@@ -25,32 +25,12 @@ import {
     buildMediaPlanPrompt, 
     buildBrandKitPrompt,
     buildRefinePostPrompt, 
-    buildGenerateBrandProfilePrompt, 
-    buildGenerateInCharacterPostPrompt, 
-    buildGenerateMediaPromptForPostPrompt,
-    buildAffiliateCommentPrompt, 
-    buildGenerateViralIdeasPrompt, 
-    buildGenerateContentPackagePrompt,
-    buildGenerateFacebookTrendsPrompt,
-    buildGeneratePostsForFacebookTrendPrompt,
-    buildGenerateIdeasFromProductPrompt,
-    buildAutoGeneratePersonaPrompt,
-    buildSuggestTrendsPrompt, // Add this import
-    buildSuggestGlobalTrendsPrompt // Add this import
+    buildGenerateBrandProfilePrompt
 } from './prompt.builder';
 import { 
     processMediaPlanResponse, 
     processBrandKitResponse, 
-    processBrandProfileResponse, 
-    processGenerateMediaPromptForPostResponse,
-    processViralIdeasResponse,
-    processContentPackageResponse,
-    processFacebookTrendsResponse,
-    processPostsForFacebookTrendResponse,
-    processIdeasFromProductResponse,
-    processAutoGeneratePersonaResponse,
-    processSuggestTrendsResponse, // Add this import
-    processSuggestGlobalTrendsResponse // Add this import
+    processBrandProfileResponse
 } from './response.processor';
 import { AiModelConfig } from './configService';
 
@@ -208,125 +188,7 @@ const generateBrandProfile = (
     });
 };
 
-const generateInCharacterPost = (
-    params: { objective: string, platform: string, persona: Persona, keywords: string[], pillar: string, brandSettings: Settings, adminSettings: Settings, options: GenerationOptions },
-    aiModelConfig: AiModelConfig
-): Promise<string> => {
-    return executeWithFallback(aiModelConfig, params.brandSettings, params.brandSettings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGenerateInCharacterPostPrompt({ ...params });
-        return await provider.generateRawContent(prompt, model, params.brandSettings, false);
-    });
-};
 
-const generateMediaPromptForPost = (
-    params: { postContent: MediaPlanPost, brandFoundation: BrandFoundation, language: string, persona: Persona | null, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<string | string[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGenerateMediaPromptForPostPrompt({ ...params });
-        const isJson = params.postContent.contentType === 'Carousel';
-        const responseText = await provider.generateRawContent(prompt, model, params.settings, isJson);
-        return processGenerateMediaPromptForPostResponse(responseText, params.postContent.contentType, params.settings);
-    });
-};
-
-const generateAffiliateComment = (
-    params: { post: PostInfo, products: AffiliateLink[], language: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<string> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildAffiliateCommentPrompt({ ...params, post: params.post.post });
-        return await provider.generateRawContent(prompt, model, params.settings, false);
-    });
-};
-
-const generateViralIdeas = (
-    params: { trend: { topic: string; keywords: string[] }, language: string, useSearch: boolean, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGenerateViralIdeasPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, params.useSearch);
-        return processViralIdeasResponse(jsonText, params.useSearch);
-    });
-};
-
-const generateContentPackage = (
-    params: { idea: Idea, brandFoundation: BrandFoundation, language: string, settings: Settings, persona: Persona | null, pillarPlatform: 'YouTube', options: GenerationOptions, selectedProduct: AffiliateLink | null, repurposedPlatforms: string[] },
-    aiModelConfig: AiModelConfig
-): Promise<MediaPlanGroup> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGenerateContentPackagePrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processContentPackageResponse(jsonText, params);
-    });
-};
-
-const generateFacebookTrends = (
-    params: { industry: string, language: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Omit<FacebookTrend, 'id'|'brandId'>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGenerateFacebookTrendsPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processFacebookTrendsResponse(jsonText);
-    });
-};
-
-const generatePostsForFacebookTrend = (
-    params: { trend: FacebookTrend, language: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Omit<FacebookPostIdea, 'id' | 'trendId'>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGeneratePostsForFacebookTrendPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processPostsForFacebookTrendResponse(jsonText);
-    });
-};
-
-const generateIdeasFromProduct = (
-    params: { product: AffiliateLink, language: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Omit<Idea, 'id' | 'trendId'>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildGenerateIdeasFromProductPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processIdeasFromProductResponse(jsonText, params.product);
-    });
-};
-
-const autoGeneratePersonaProfile = (
-    params: { mission: string, usp: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Partial<Persona>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildAutoGeneratePersonaPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processAutoGeneratePersonaResponse(jsonText);
-    });
-};
-
-const suggestTrends = (
-    params: { brandFoundation: BrandFoundation, timePeriod: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Omit<Trend, 'id' | 'brandId'>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildSuggestTrendsPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processSuggestTrendsResponse(jsonText);
-    });
-};
-
-const suggestGlobalTrends = (
-    params: { timePeriod: string, settings: Settings },
-    aiModelConfig: AiModelConfig
-): Promise<Omit<Trend, 'id' | 'brandId'>[]> => {
-    return executeWithFallback(aiModelConfig, params.settings, params.settings.textGenerationModel, async (provider, model) => {
-        const prompt = buildSuggestGlobalTrendsPrompt({ ...params });
-        const jsonText = await provider.generateRawContent(prompt, model, params.settings, true);
-        return processSuggestGlobalTrendsResponse(jsonText);
-    });
-};
 
 
 // This object is what the UI layer (App.tsx) interacts with.
@@ -335,15 +197,4 @@ export const textGenerationService = {
     generateBrandKit,
     refinePostContent,
     generateBrandProfile,
-    generateInCharacterPost,
-    generateMediaPromptForPost,
-    generateAffiliateComment,
-    generateViralIdeas,
-    generateContentPackage,
-    generateFacebookTrends,
-    generatePostsForFacebookTrend,
-    generateIdeasFromProduct,
-    autoGeneratePersonaProfile,
-    suggestTrends,
-    suggestGlobalTrends,
 };

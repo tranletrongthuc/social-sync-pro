@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import type { Trend } from '../../../types';
 import { TagIcon } from '../icons';
+import ModelLabel from '../ModelLabel';
 
 interface TrendListItemProps {
   trend: Trend;
@@ -52,6 +53,14 @@ const TrendListItemComponent: React.FC<TrendListItemProps> = ({
             }`}>
               {trend.industry === 'Global' ? 'Global' : 'Industry'}
             </span>
+            {/* Model used indicator */}
+            {trend.modelUsed && <ModelLabel model={trend.modelUsed} size="small" />}
+            {/* Idea count badge */}
+                        {trend.ideaCount && trend.ideaCount > 0 && (
+              <span className="ml-auto text-xs bg-red-100 text-red-800 font-medium w-5 h-5 flex items-center justify-center rounded-full">
+                {trend.ideaCount}
+              </span>
+            )}
           </div>
           <p className="text-gray-500 text-xs truncate">
             {trend.keywords ? trend.keywords.join(', ') : ''}

@@ -15,8 +15,6 @@ interface NavigationSidebarProps {
   setIsSidebarOpen: (isOpen: boolean) => void;
   onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
   isSuggestingTrends: boolean;
-  onGenerateFacebookTrends: (industry: string) => void;
-  isGeneratingTrendsFromSearch: boolean;
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
 }
@@ -32,8 +30,6 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   setIsSidebarOpen,
   onSuggestTrends,
   isSuggestingTrends,
-  onGenerateFacebookTrends,
-  isGeneratingTrendsFromSearch,
   onSaveTrend,
   onDeleteTrend
 }) => {
@@ -95,12 +91,7 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     return { industryTrends, globalTrends };
   }, [trends]);
 
-  const handleGenerateFacebookTrends = () => {
-    if (industryForSearch) {
-      onGenerateFacebookTrends(industryForSearch);
-      setIsSidebarOpen(false);
-    }
-  };
+
 
   return (
     <aside className={`

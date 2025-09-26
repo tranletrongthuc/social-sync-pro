@@ -78,6 +78,7 @@ export type MediaPlanPost = {
     pillar?: string; // Content Pillar name
     publishedAt?: string;
     publishedUrl?: string;
+    modelUsed?: string; // AI model used to generate this content
 };
 
 export type MediaPlanWeek = {
@@ -95,6 +96,7 @@ export type MediaPlanGroup = {
     productImages?: { name: string; type: string; data: string }[];
     source?: 'wizard' | 'content-package' | 'brand-launch' | 'funnel-campaign';
     personaId?: string;
+    modelUsed?: string; // AI model used to generate this media plan
 };
 
 export type GeneratedAssets = {
@@ -190,6 +192,7 @@ export type Persona = {
     coreCharacteristics?: string;
     keyMessages?: string;
     gender?: 'Male' | 'Female' | 'Non-binary';
+    modelUsed?: string; // AI model used to generate this persona
 };
 
 export type Trend = {
@@ -213,6 +216,8 @@ export type Trend = {
     category?: string; // Category/classification of the trend
     sentiment?: 'Positive' | 'Negative' | 'Neutral';
     predictedLifespan?: string; // Estimated how long this trend will last
+    ideaCount?: number;
+    modelUsed?: string; // AI model used to generate this trend
 };
 
 export type Idea = {
@@ -224,6 +229,7 @@ export type Idea = {
     description: string;
     cta?: string;
     targetAudience?: string;
+    modelUsed?: string; // AI model used to generate this idea
 };
 
 export type PostInfo = {

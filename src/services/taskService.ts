@@ -4,25 +4,35 @@ import { BackgroundTask, TaskType, TaskPayload } from '../types/task.types';
 const apiRequest = async (url: string, options: RequestInit = {}) => {
   console.log('[TaskService] Making API request to:', url, options);
   
-  const response = await fetch(url, {
+  const finalOptions = {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
-      // Add auth headers if needed
+      ...options.headers,
     },
-    ...options,
-  });
+  };
 
-  console.log('[TaskService] API response status:', response.status);
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('[TaskService] API request failed with error:', errorText);
-    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  try {
+    const response = await fetch(url, finalOptions);
+
+    console.log('[TaskService] API response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[TaskService] API request failed with error:', errorText);
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    const result = await response.json();
+    console.log('[TaskService] API request successful, response:', result);
+    return result;
+  } catch (error) {
+    console.error('[TaskService] Network error in API request:', error);
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Network error: Unable to reach the server. Please check your connection.');
+    }
+    throw error;
   }
-
-  const result = await response.json();
-  console.log('[TaskService] API request successful, response:', result);
-  return result;
 };
 
 // Task Service
@@ -89,6 +99,52 @@ export const taskService = {
     } catch (error) {
       console.error(`TaskService: Error canceling task ${taskId}:`, error);
       throw error;
+    }
+  },
+
+  // List all tasks for a brand
+  listTasks: async (brandId: string): Promise<BackgroundTask[]> => {
+    console.log('TaskService: Listing tasks for brandId:', brandId);
+    
+    if (!brandId) {
+      console.warn('TaskService: Missing brandId in listTasks');
+      return [];
+    }
+    
+    try {
+      const response = await apiRequest(`/api/index.js?service=jobs&action=list&brandId=${brandId}`, {
+        method: 'GET',
+      });
+      
+      console.log(`TaskService: Found ${response.length || 0} tasks for brand ${brandId}`);
+      return response || [];
+    } catch (error) {
+      console.error(`TaskService: Error listing tasks for brand ${brandId}:`, error);
+      // Return empty array instead of throwing to prevent app crashes
+      return [];
+    }
+  },
+
+  // List all media plan groups for a brand
+  listMediaPlanGroups: async (brandId: string): Promise<{ id: string, name: string, prompt: string, source?: string, productImages?: any[], personaId?: string }[]> => {
+    console.log('TaskService: Listing media plan groups for brandId:', brandId);
+    
+    if (!brandId) {
+      console.warn('TaskService: Missing brandId in listMediaPlanGroups');
+      return [];
+    }
+    
+    try {
+      const response = await apiRequest(`/api/mongodb?action=list-media-plan-groups&brandId=${brandId}`, {
+        method: 'GET',
+      });
+      
+      console.log(`TaskService: Found ${response.groups?.length || 0} media plan groups for brand ${brandId}`);
+      return response.groups || [];
+    } catch (error) {
+      console.error(`TaskService: Error listing media plan groups for brand ${brandId}:`, error);
+      // Return empty array instead of throwing to prevent app crashes
+      return [];
     }
   },
 };

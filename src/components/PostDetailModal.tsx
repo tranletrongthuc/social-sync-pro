@@ -6,6 +6,7 @@ import TagInput from './TagInput';
 import { DownloadIcon, SparklesIcon, YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, UploadIcon, LinkIcon, CheckCircleIcon, CalendarIcon, VideoCameraIcon, DocumentTextIcon } from './icons';
 import KhongMinhSuggestion from './KhongMinhSuggestion';
 import { renderPostContent } from '../services/utils';
+import ModelLabel from './ModelLabel';
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
@@ -63,7 +64,12 @@ const ImagePostHandler: React.FC<PostDetailModalProps> = (props) => {
             ) : (
                 <div 
                     onPaste={handlePaste}
-                    className="flex-grow border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-center p-4 mb-4"
+                    onClick={(e) => {
+                        // Focus the element to make sure it can receive paste events
+                        (e.target as HTMLElement).focus();
+                    }}
+                    tabIndex={0}  // Make the div focusable
+                    className="flex-grow border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center text-center p-4 mb-4 focus:outline-none focus:ring-2 focus:ring-brand-green"
                 >
                     <UploadIcon className="h-8 w-8 text-gray-400" />
                     <p className="mt-2 text-sm text-gray-600">{texts.pasteInstructions || 'Paste image here'}</p>
@@ -180,7 +186,12 @@ const CarouselPostHandler: React.FC<PostDetailModalProps> = (props) => {
                         <div key={index} className="bg-gray-50 p-3 rounded-lg border border-gray-200">
                             <div 
                                 onPaste={(e) => handlePaste(e, imageKey, index)}
-                                className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-center p-3 hover:bg-gray-100 cursor-pointer transition-colors mb-2"
+                                onClick={(e) => {
+                                    // Focus the element to make sure it can receive paste events
+                                    (e.target as HTMLElement).focus();
+                                }}
+                                tabIndex={0}  // Make the div focusable
+                                className="border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-center p-3 hover:bg-gray-100 cursor-pointer transition-colors mb-2 focus:outline-none focus:ring-2 focus:ring-brand-green"
                             >
                                 <UploadIcon className="h-5 w-5 text-gray-400" />
                                 <p className="ml-2 text-sm text-gray-500">{texts.pasteInstructions || 'Dán ảnh vào đây'}</p>
@@ -478,7 +489,10 @@ const PostDetailModal: React.FC<PostDetailModalProps> = (props) => {
                             ) : (
                                 <h2 className="text-lg sm:text-2xl font-bold font-sans text-gray-900 truncate">{editedPost.title}</h2>
                             )}
-                            <p className="text-sm text-gray-500">{editedPost.platform} - {editedPost.contentType}</p>
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                                <span>{editedPost.platform} - {editedPost.contentType}</span>
+                                {editedPost.modelUsed && <ModelLabel model={editedPost.modelUsed} size="small" />}
+                            </div>
                         </div>
                         <div className="ml-auto pl-4 flex-shrink-0">
                             <Select 

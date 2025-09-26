@@ -35,9 +35,6 @@ function createIdFilter(id, fieldName = '_id') {
 
 // ========== TEMPLATE FUNCTIONS ==========
 
-/**
- * Template for basic CRUD operations
- */
 class CRUDTemplate {
   constructor(collectionName, transformFn = null) {
     this.collectionName = collectionName;
@@ -109,9 +106,6 @@ class CRUDTemplate {
   }
 }
 
-/**
- * Template for save operations (create or update)
- */
 async function saveEntityTemplate(db, collectionName, entity, brandId = null, additionalFields = {}) {
   const collection = db.collection(collectionName);
   
@@ -123,7 +117,6 @@ async function saveEntityTemplate(db, collectionName, entity, brandId = null, ad
   };
 
   if (entity.id && ObjectId.isValid(entity.id)) {
-    // Update existing
     await collection.updateOne(
       createIdFilter(entity.id),
       { $set: document },
@@ -131,7 +124,6 @@ async function saveEntityTemplate(db, collectionName, entity, brandId = null, ad
     );
     return entity.id;
   } else {
-    // Create new
     const objectId = new ObjectId();
     const fullDocument = {
       ...document,
@@ -144,9 +136,6 @@ async function saveEntityTemplate(db, collectionName, entity, brandId = null, ad
   }
 }
 
-/**
- * Template for bulk save operations
- */
 async function bulkSaveTemplate(db, collectionName, entities, brandId, transformFn = null) {
   const collection = db.collection(collectionName);
   const operations = [];
@@ -159,13 +148,11 @@ async function bulkSaveTemplate(db, collectionName, entities, brandId, transform
       updatedAt: new Date()
     };
 
-    // Apply custom transformation if provided
     if (transformFn) {
       document = transformFn(document);
     }
 
     if (entity.id && ObjectId.isValid(entity.id)) {
-      // Update operation
       operations.push({
         updateOne: {
           filter: createIdFilter(entity.id),
@@ -173,7 +160,6 @@ async function bulkSaveTemplate(db, collectionName, entities, brandId, transform
         }
       });
     } else {
-      // Insert operation
       const objectId = new ObjectId();
       const fullDocument = {
         ...document,
@@ -195,14 +181,12 @@ async function bulkSaveTemplate(db, collectionName, entities, brandId, transform
   return newEntities;
 }
 
-/**
- * Template for request handlers with error handling
- */
 function createHandler(action, handlerFn) {
   return async (request, response, db) => {
     console.log(`--- Received request for /api/mongodb/${action} ---`);
     try {
-      const result = await handlerFn(request.body, db);
+      const data = request.method === 'GET' ? request.query : request.body;
+      const result = await handlerFn(data, db);
       response.status(200).json(result);
       console.log(`--- ${action} completed ---`);
     } catch (error) {
@@ -213,9 +197,6 @@ function createHandler(action, handlerFn) {
   };
 }
 
-/**
- * Template for pagination
- */
 function paginateArray(array, page = 1, limit = 30) {
   const offset = (page - 1) * limit;
   const paginatedItems = array.slice(offset, offset + limit);
@@ -254,13 +235,13 @@ const affiliateProductsTemplate = new CRUDTemplate('affiliateProducts', (record)
   product_image_links: record.productImageLinks || []
 }));
 
-const personasTemplate = new CRUDTemplate('personas');
-const trendsTemplate = new CRUDTemplate('trends');
-const ideasTemplate = new CRUDTemplate('ideas');
+const personasTemplate = new CRUDTemplate('personas', (record) => ({ ...record, id: record._id?.toString(), modelUsed: record.modelUsed }));
+const trendsTemplate = new CRUDTemplate('trends', (record) => ({ ...record, id: record._id?.toString(), modelUsed: record.modelUsed }));
+const ideasTemplate = new CRUDTemplate('ideas', (record) => ({ ...record, id: record._id?.toString(), modelUsed: record.modelUsed }));
 const aiModelsTemplate = new CRUDTemplate('aiModels');
 const brandsTemplate = new CRUDTemplate('brands');
-const mediaPlanGroupsTemplate = new CRUDTemplate('mediaPlanGroups');
-const mediaPlanPostsTemplate = new CRUDTemplate('mediaPlanPosts');
+const mediaPlanGroupsTemplate = new CRUDTemplate('mediaPlanGroups', (record) => ({ ...record, id: record._id?.toString(), modelUsed: record.modelUsed }));
+const mediaPlanPostsTemplate = new CRUDTemplate('mediaPlanPosts', (record) => ({ ...record, id: record._id?.toString(), modelUsed: record.modelUsed }));
 const adminSettingsTemplate = new CRUDTemplate('adminSettings');
 
 // ========== INITIAL SETTINGS ==========
@@ -281,8 +262,10 @@ const initialSettings = {
 // ========== ALL HANDLER DEFINITIONS ==========
 
 const handlers = {
-  // ===== SIMPLE DELETE OPERATIONS =====
   'delete-affiliate-link': createHandler('delete-affiliate-link', async ({ linkId }) => {
+    if (!linkId) {
+      throw new Error('Missing linkId');
+    }
     const { db } = await getClientAndDb();
     const success = await affiliateProductsTemplate.delete(db, linkId);
     return { success };
@@ -309,7 +292,6 @@ const handlers = {
     return { success };
   }),
 
-  // ===== FETCH OPERATIONS =====
   'fetch-affiliate-links': createHandler('fetch-affiliate-links', async ({ brandId }) => {
     const { db } = await getClientAndDb();
     const affiliateLinks = await affiliateProductsTemplate.findByBrand(db, brandId);
@@ -323,21 +305,61 @@ const handlers = {
   }),
 
   'load-personas': createHandler('load-personas', async ({ brandId }) => {
+    if (!brandId) {
+      throw new Error('Missing brandId');
+    }
     const { db } = await getClientAndDb();
     const personas = await personasTemplate.findByBrand(db, brandId);
-    return { personas };
+    
+    // Add modelUsed to each persona
+    const personasWithModel = personas.map(persona => ({
+      ...persona,
+      modelUsed: persona.modelUsed
+    }));
+    
+    return { personas: personasWithModel };
   }),
 
-  'load-strategy-hub': createHandler('load-strategy-hub', async ({ brandId }) => {
+'load-strategy-hub': createHandler('load-strategy-hub', async ({ brandId }) => {
+    if (!brandId) {
+      throw new Error('Missing brandId');
+    }
     const { db } = await getClientAndDb();
-    const trends = await trendsTemplate.findByBrand(db, brandId);
-    return { trends };
+    
+    // 1. Fetch all trends and ideas for the brand in parallel.
+    const [trends, allIdeas] = await Promise.all([
+      trendsTemplate.findByBrand(db, brandId),
+      ideasTemplate.findAll(db, { brandId })
+    ]);
+
+    // 2. Create a map to count ideas per trend.
+    const ideaCountMap = new Map();
+    for (const idea of allIdeas) {
+      if (idea.trendId) {
+        ideaCountMap.set(idea.trendId, (ideaCountMap.get(idea.trendId) || 0) + 1);
+      }
+    }
+
+    // 3. Map over trends and add the ideaCount.
+    const trendsWithCounts = trends.map(trend => ({
+      ...trend,
+      ideaCount: ideaCountMap.get(trend.id) || 0
+    }));
+
+    return { trends: trendsWithCounts };
   }),
 
   'load-ideas-for-trend': createHandler('load-ideas-for-trend', async ({ trendId }) => {
     const { db } = await getClientAndDb();
     const ideas = await ideasTemplate.findAll(db, { trendId });
-    return { ideas };
+    
+    // Add modelUsed to each idea
+    const ideasWithModel = ideas.map(idea => ({
+      ...idea,
+      modelUsed: idea.modelUsed
+    }));
+    
+    return { ideas: ideasWithModel };
   }),
 
   'load-trend': createHandler('load-trend', async ({ trendId, brandId }) => {
@@ -346,16 +368,18 @@ const handlers = {
     if (!trend) {
       throw new Error('Trend not found');
     }
-    return { trend };
+    return { trend: { ...trend, modelUsed: trend.modelUsed } };
   }),
 
   'load-affiliate-vault': createHandler('load-affiliate-vault', async ({ brandId }) => {
+    if (!brandId) {
+      throw new Error('Missing brandId');
+    }
     const { db } = await getClientAndDb();
     const affiliateLinks = await affiliateProductsTemplate.findByBrand(db, brandId);
     return { affiliateLinks };
   }),
 
-  // ===== SAVE OPERATIONS =====
   'save-affiliate-links': createHandler('save-affiliate-links', async ({ links, brandId }) => {
     const { db } = await getClientAndDb();
     const newLinks = await bulkSaveTemplate(db, 'affiliateProducts', links, brandId);
@@ -364,9 +388,11 @@ const handlers = {
 
   'save-persona': createHandler('save-persona', async ({ persona, brandId }) => {
     const { db } = await getClientAndDb();
-    // Directly use the incoming persona object as the entity to save/update.
-    // saveEntityTemplate will handle adding/updating _id, id, createdAt, updatedAt.
-    const id = await saveEntityTemplate(db, 'personas', persona, brandId);
+    const personaDocument = {
+      ...persona,
+      modelUsed: persona.modelUsed  // Preserve modelUsed if provided
+    };
+    const id = await saveEntityTemplate(db, 'personas', personaDocument, brandId);
     return { id };
   }),
 
@@ -389,7 +415,8 @@ const handlers = {
       sourceUrls: trend.sourceUrls,
       category: trend.category,
       sentiment: trend.sentiment,
-      predictedLifespan: trend.predictedLifespan
+      predictedLifespan: trend.predictedLifespan,
+      modelUsed: trend.modelUsed  // Preserve modelUsed if provided
     };
     
     const id = await saveEntityTemplate(db, 'trends', { ...trendDocument, id: trend.id }, brandId);
@@ -404,7 +431,12 @@ const handlers = {
 
   'save-ideas': createHandler('save-ideas', async ({ ideas, brandId }) => {
     const { db } = await getClientAndDb();
-    const newIdeas = await bulkSaveTemplate(db, 'ideas', ideas, brandId);
+    // Add modelUsed to each idea if not already present
+    const ideasWithModel = ideas.map(idea => ({
+      ...idea,
+      modelUsed: idea.modelUsed  // Preserve modelUsed if provided
+    }));
+    const newIdeas = await bulkSaveTemplate(db, 'ideas', ideasWithModel, brandId);
     return { success: true, ideas: newIdeas };
   }),
 
@@ -459,7 +491,6 @@ const handlers = {
     return { success: true };
   }),
 
-  // ===== BULK OPERATIONS =====
   'bulk-patch-posts': createHandler('bulk-patch-posts', async ({ updates }) => {
     const { db } = await getClientAndDb();
     const bulkOperations = updates.map(update => ({
@@ -491,7 +522,6 @@ const handlers = {
     return { success: true, modifiedCount: result.modifiedCount };
   }),
 
-  // ===== UTILITY OPERATIONS =====
   'check-credentials': createHandler('check-credentials', async () => {
     const { MONGODB_URI } = process.env;
     if (!MONGODB_URI) {
@@ -513,7 +543,6 @@ const handlers = {
     return { exists: !!productRecord };
   }),
 
-  // ===== APP INITIALIZATION =====
   'app-init': createHandler('app-init', async () => {
     const { MONGODB_URI } = process.env;
     if (!MONGODB_URI) {
@@ -556,7 +585,6 @@ const handlers = {
     };
   }),
 
-  // ===== COMPLEX OPERATIONS =====
   'create-or-update-brand': createHandler('create-or-update-brand', async ({ assets, brandId }) => {
     const { db } = await getClientAndDb();
     const brandDocument = {
@@ -613,17 +641,38 @@ const handlers = {
   }),
 
   'list-media-plan-groups': createHandler('list-media-plan-groups', async ({ brandId }) => {
+    if (!brandId) {
+      throw new Error('Missing brandId');
+    }
     const { db } = await getClientAndDb();
     const planRecords = await mediaPlanGroupsTemplate.findByBrand(db, brandId);
-    const groups = planRecords.map(record => ({
-      id: record.id || record._id.toString(),
-      name: record.name,
-      prompt: record.prompt,
-      source: record.source,
-      productImages: record.productImages || [],
-      personaId: record.personaId
-    }));
-    return { groups };
+    
+    // Safely map records to avoid any problematic data
+    const groups = planRecords.map(record => {
+      // Ensure all fields are properly sanitized
+      return {
+        id: (record.id || record._id?.toString()) ?? null,
+        name: typeof record.name === 'string' ? record.name : (record.name?.toString() || ''),
+        prompt: typeof record.prompt === 'string' ? record.prompt : (record.prompt?.toString() || ''),
+        source: record.source || null,
+        productImages: Array.isArray(record.productImages) ? record.productImages : [],
+        personaId: record.personaId || null,
+        modelUsed: record.modelUsed || null
+      };
+    });
+    
+    // Ensure the response object is clean of any potential problematic properties
+    const responseObj = { groups };
+    
+    // Verify the response can be serialized to JSON before returning
+    try {
+      JSON.stringify(responseObj);
+    } catch (e) {
+      console.error('Error serializing list-media-plan-groups response:', e);
+      throw new Error('Failed to serialize response data');
+    }
+    
+    return responseObj;
   }),
 
   'load-settings-data': createHandler('load-settings-data', async () => {
@@ -728,7 +777,8 @@ const handlers = {
         isPillar: record.isPillar,
         pillar: record.pillar,
         week: record.week,
-        postOrder: record.postOrder
+        postOrder: record.postOrder,
+        modelUsed: record.modelUsed  // Include modelUsed in the post data
       });
     });
     
@@ -757,7 +807,13 @@ const handlers = {
       return orderA - orderB;
     });
     
-    const { items: posts, pagination } = paginateArray(allPostRecords, page, limit);
+    // Include modelUsed in each post
+    const postsWithModelUsed = allPostRecords.map(post => ({
+      ...post,
+      modelUsed: post.modelUsed
+    }));
+    
+    const { items: posts, pagination } = paginateArray(postsWithModelUsed, page, limit);
     return { posts, pagination };
   }),
 
@@ -770,7 +826,8 @@ const handlers = {
       source: group.source,
       productImages: group.productImages || [],
       brandId,
-      personaId: group.personaId
+      personaId: group.personaId,
+      modelUsed: group.modelUsed  // Add modelUsed to the group if provided
     });
 
     const allPostsWithNewIds = [];
@@ -789,6 +846,7 @@ const handlers = {
               week: week.week,
               theme: week.theme,
               brandId: brandId,
+              modelUsed: post.modelUsed,  // Preserve modelUsed for each post if provided
               imageUrl: post.imageKey && !Array.isArray(post.imageKey) ? imageUrls[post.imageKey] : null,
               imageKeys: post.imageKeys,
               imageUrlsArray: post.imageUrlsArray,
@@ -829,9 +887,11 @@ const handlers = {
     const mediaPlanPostsCollection = mediaPlanPostsTemplate.getCollection(db);
     const filter = createIdFilter(post.id);
 
-    // Create the update payload directly from the post object, excluding the ID.
     const updatePayload = { ...post };
     delete updatePayload.id;
+
+    // Ensure updatedAt is set
+    updatePayload.updatedAt = new Date();
 
     const updateOperation = { $set: updatePayload };
 
@@ -948,11 +1008,24 @@ const handlers = {
         fontRecommendations: brandRecord.coreMediaAssets?.fontRecommendations || {}
       },
       unifiedProfileAssets: brandRecord.unifiedProfileAssets || {},
-      mediaPlans: mediaPlans.map(plan => ({ ...plan, id: plan._id?.toString() })),
+      mediaPlans: mediaPlans.map(plan => ({ 
+        ...plan, 
+        id: plan._id?.toString(),
+        modelUsed: plan.modelUsed  // Include modelUsed in the plan
+      })),
       affiliateLinks,
-      personas,
-      trends,
-      ideas,
+      personas: personas.map(persona => ({
+        ...persona,
+        modelUsed: persona.modelUsed  // Include modelUsed in personas
+      })),
+      trends: trends.map(trend => ({
+        ...trend,
+        modelUsed: trend.modelUsed  // Include modelUsed in trends
+      })),
+      ideas: ideas.map(idea => ({
+        ...idea,
+        modelUsed: idea.modelUsed  // Include modelUsed in ideas
+      })),
       settings: brandRecord.settings || {}
     };
     
@@ -974,25 +1047,57 @@ const handlers = {
 async function handler(request, response) {
   const { action } = request.query;
   
-  if (request.method !== 'POST') {
+  const GET_ALLOWED_ACTIONS = [
+    'list-media-plan-groups',
+    'fetch-affiliate-links',
+    'fetch-settings',
+    'load-personas',
+    'load-strategy-hub',
+    'load-ideas-for-trend',
+    'load-trend',
+    'load-affiliate-vault',
+    'check-credentials',
+    'check-product-exists',
+    'app-init',
+    'load-settings-data',
+    'load-media-plan',
+    'load-media-plan-posts',
+    'load-complete-project',
+    'load-project'
+  ];
+
+  if (request.method !== 'POST' && !(request.method === 'GET' && GET_ALLOWED_ACTIONS.includes(action))) {
     return response.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  if (!action) {
+    return response.status(400).json({ error: 'Missing action parameter' });
   }
 
   try {
     const { client, db } = await getClientAndDb();
 
-    // Handle all operations through the handlers object
     if (handlers[action]) {
       return await handlers[action](request, response, db);
     }
 
-    // Unknown action
     response.status(400).json({ error: `Unknown action: ${action}` });
   } catch (error) {
     console.error('--- CRASH in /api/mongodb/[action] ---');
     console.error('Error object:', error);
+    console.error('Action:', action);
+    console.error('Query params:', request.query);
+    console.error('Method:', request.method);
+    
+    // Check if it's a MongoDB connection error
+    if (error.message.includes('ECONNREFUSED') || error.message.includes('getaddrinfo') || error.message.includes('MongoServerSelectionError')) {
+      return response.status(500).json({ 
+        error: 'Database connection error. Please check that MongoDB is running and the connection string is correct.' 
+      });
+    }
+    
     response.status(500).json({ error: `Failed to process action ${action}: ${error.message}` });
   }
 }
 
-export default allowCors(handler);
+export default handler;

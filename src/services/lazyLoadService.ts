@@ -64,17 +64,17 @@ export const loadStrategyHub = async (brandId: string): Promise<{
   trends: Trend[];
   ideas: Idea[];
 }> => {
-  console.log("loadStrategyHub called with brandId:", brandId);
+  // console.log("loadStrategyHub called with brandId:", brandId);
   const cacheKey = `strategy-hub-${brandId}`;
   if (dataCache[cacheKey]) {
-    console.log("Returning cached strategy hub data");
+    // console.log("Returning cached strategy hub data");
     return dataCache[cacheKey];
   }
   
-  console.log("Loading strategy hub data from database");
+  // console.log("Loading strategy hub data from database");
   const data = await loadStrategyHubData(brandId);
   dataCache[cacheKey] = data;
-  console.log("Strategy hub data loaded and cached:", data);
+  // console.log("Strategy hub data loaded and cached:", data);
   return data;
 };
 
@@ -82,17 +82,17 @@ export const loadStrategyHub = async (brandId: string): Promise<{
  * Load affiliate vault data
  */
 export const loadAffiliateVault = async (brandId: string): Promise<AffiliateLink[]> => {
-  console.log("loadAffiliateVault called with brandId:", brandId);
+  // console.log("loadAffiliateVault called with brandId:", brandId);
   const cacheKey = `affiliate-vault-${brandId}`;
   if (dataCache[cacheKey]) {
-    console.log("Returning cached affiliate vault data");
+    // console.log("Returning cached affiliate vault data");
     return dataCache[cacheKey];
   }
   
-  console.log("Loading affiliate vault data from database");
+  // console.log("Loading affiliate vault data from database");
   const data = await loadAffiliateVaultData(brandId);
   dataCache[cacheKey] = data;
-  console.log("Affiliate vault data loaded and cached:", data);
+  // console.log("Affiliate vault data loaded and cached:", data);
   return data;
 };
 
@@ -100,17 +100,17 @@ export const loadAffiliateVault = async (brandId: string): Promise<AffiliateLink
  * Load personas data
  */
 export const loadPersonas = async (brandId: string): Promise<Persona[]> => {
-  console.log("loadPersonas called with brandId:", brandId);
+  // console.log("loadPersonas called with brandId:", brandId);
   const cacheKey = `personas-${brandId}`;
   if (dataCache[cacheKey]) {
-    console.log("Returning cached personas data");
+    // console.log("Returning cached personas data");
     return dataCache[cacheKey];
   }
   
-  console.log("Loading personas data from database");
+  // console.log("Loading personas data from database");
   const data = await loadPersonasData(brandId);
   dataCache[cacheKey] = data;
-  console.log("Personas data loaded and cached:", data);
+  // console.log("Personas data loaded and cached:", data);
   return data;
 };
 

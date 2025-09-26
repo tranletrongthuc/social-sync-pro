@@ -2,6 +2,7 @@ import { MediaPlanGroup, Persona, AffiliateLink } from '../../types';
 
 export type TaskType = 
   | 'GENERATE_MEDIA_PLAN' 
+  | 'CREATE_BRAND_FROM_IDEA'
   | 'GENERATE_BRAND_KIT' 
   | 'AUTO_GENERATE_PERSONAS'
   | 'GENERATE_CONTENT_PACKAGE'

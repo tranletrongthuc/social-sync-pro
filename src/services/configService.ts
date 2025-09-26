@@ -10,9 +10,9 @@ export class ConfigService {
         totalPostsPerMonth: 30,
         mediaPromptSuffix: '',
         affiliateContentKit: '',
-        textGenerationModel: 'gemini-2.5-pro',
+        textGenerationModel: 'deepseek/deepseek-r1-0528:free',
         imageGenerationModel: '@cf/stabilityai/stable-diffusion-xl-base-1.0',
-        textModelFallbackOrder: ['gemini-2.5-flash', 'gemini-1.5-pro'],
+        textModelFallbackOrder: ['qwen/qwen3-235b-a22b:free', 'gemini-2.5-pro', 'gemini-2.5-flash'],
         visionModels: ['gemini-2.5-pro', 'gemini-2.5-flash'],
         contentPillars: [],
         prompts: {

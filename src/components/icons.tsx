@@ -94,6 +94,7 @@ export const UsersIcon = ({ className }: { className?: string }) => <UIIcon clas
 export const LightBulbIcon = ({ className }: { className?: string }) => <UIIcon className={className} path={<><path d="M15 14c.2-1 .7-1.7 1.5-2.5C17.7 10.2 18 9 18 8A6 6 0 0 0 6 8c0 1 .3 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></>} />;
 export const XIcon = ({ className }: { className?: string }) => <UIIcon className={className} path={<><line x1="18" x2="6" y1="6" y2="18" /><line x1="6" x2="18" y1="6" y2="18" /></>} />;
 export const ArrowPathIcon = ({ className }: { className?: string }) => <UIIcon className={className} path={<><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.7 1 6.4 2.6l-1.4 1.4" /><path d="M21 2v6h-6" /></>} />;
+export const RefreshIcon = ({ className }: { className?: string }) => <UIIcon className={className} path={<><path d="M21 12a9 9 0 1 1-9-9c2.5 0 4.7 1 6.4 2.6l-1.4 1.4" /><path d="M21 2v6h-6" /></>} />;
 
 // Funnel Icon - New addition
 export const FunnelIcon = ({ className }: { className?: string }) => (

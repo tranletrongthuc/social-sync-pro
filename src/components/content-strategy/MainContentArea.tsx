@@ -41,8 +41,7 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
   isGeneratingIdeas,
   onSaveTrend,
   onDeleteTrend,
-  isDataLoaded,
-  onLoadData
+  isDataLoaded
 }) => {
   // State for tabs
   const [activeTab, setActiveTab] = useState<'overview' | 'queries' | 'sources'>('overview');

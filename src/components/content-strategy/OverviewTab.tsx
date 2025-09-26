@@ -2,6 +2,7 @@ import React, { memo } from 'react';
 import type { Trend, Idea, Persona, AffiliateLink } from '../../../types';
 import { Button } from '../ui';
 import { HoverCopyWrapper } from '../ui';
+import ModelLabel from '../ModelLabel';
 
 interface OverviewTabProps {
   trend: Trend;
@@ -73,26 +74,31 @@ const OverviewTabComponent: React.FC<OverviewTabProps> = ({
             </HoverCopyWrapper>
           )}
           {idea.cta && <p className="text-xs text-gray-400 mt-1">{texts.cta} {idea.cta}</p>}
-          <div className="flex justify-end gap-2 mt-3">
-            <Button 
-              variant="secondary" 
-              onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} 
-              className="text-xs py-1 px-2"
-            >
-              {texts.createPlan}
-            </Button>
-            <Button 
-              variant="primary" 
-              onClick={() => onGenerateContentPackage(idea, null, idea.productId || null, { 
-                tone: '', 
-                style: '', 
-                length: '', 
-                includeEmojis: false 
-              })} 
-              className="text-xs py-1 px-2"
-            >
-              {texts.createPackage}
-            </Button>
+          <div className="flex justify-between items-center mt-3">
+            <div>
+              {idea.modelUsed && <ModelLabel model={idea.modelUsed} size="small" />}
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="secondary" 
+                onClick={() => onCreatePlanFromIdea(idea.description, idea.productId)} 
+                className="text-xs py-1 px-2"
+              >
+                {texts.createPlan}
+              </Button>
+              <Button 
+                variant="primary" 
+                onClick={() => onGenerateContentPackage(idea, null, idea.productId || null, { 
+                  tone: '', 
+                  style: '', 
+                  length: '', 
+                  includeEmojis: false 
+                })} 
+                className="text-xs py-1 px-2"
+              >
+                {texts.createPackage}
+              </Button>
+            </div>
           </div>
         </div>
       ))}

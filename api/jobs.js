@@ -1,28 +1,25 @@
-import { allowCors } from '../server_lib/cors.js';
 import { getClientAndDb } from '../server_lib/mongodb.js';
 import { ObjectId } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
+import { Client, Receiver } from '@upstash/qstash';
+import { generateMediaPlanGroup, createBrandFromIdea, generateBrandKit, generateViralIdeas, generatePersonasForBrand, generateTrends } from '../server_lib/generationService.js';
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
-// Rate limiting store (in production, use Redis or similar)
+// Note: Body parser is disabled in the main api/index.js router
+
+// Initialize QStash client for PUBLISHING
+const qstashClient = process.env.QSTASH_TOKEN ? new Client({ token: process.env.QSTASH_TOKEN }) : null;
+
 const rateLimiter = new Map();
 
-// Utility function to validate QStash signature (simplified for now)
-async function validateQStashSignature(request) {
-  // In a real implementation, you would verify the signature
-  // For now, we'll just return true if we're in a QStash webhook context
-  return request.headers['upstash-delivery-url'] !== undefined;
-}
-
-// Utility function to enforce rate limiting per user
 function enforceRateLimit(userId) {
   const lastCall = rateLimiter.get(userId) || 0;
   const now = Date.now();
-  if (now - lastCall < 60000) return false; // Max 1 task per minute
+  if (now - lastCall < 60000) return false;
   rateLimiter.set(userId, now);
   return true;
 }
 
-// Utility function to create a task document
 function createTaskDocument(taskData) {
   const now = new Date();
   return {
@@ -43,34 +40,25 @@ function createTaskDocument(taskData) {
   };
 }
 
-// Handler functions
 async function createTask(requestBody) {
-  console.log('[API/Jobs] Creating task with request body:', requestBody);
+  console.log('[API/Jobs] Creating task with request body.');
   
   const { type, payload, userId, brandId, priority = 'normal' } = requestBody;
   
-  // Validate input
-  if (!type || !payload || !userId || !brandId) {
-    console.error('[API/Jobs] Missing required fields:', { type, payload, userId, brandId });
+  if (!type || !payload || !userId || (!brandId && type !== 'CREATE_BRAND_FROM_IDEA')) {
     throw new Error('Missing required fields: type, payload, userId, brandId');
   }
   
-  // Rate limiting
   if (!enforceRateLimit(userId)) {
-    console.warn('[API/Jobs] Rate limit exceeded for user:', userId);
     throw new Error('Rate limit exceeded. Please wait before creating another task.');
   }
   
   const { db } = await getClientAndDb();
   const tasksCollection = db.collection('tasks');
   
-  // Create task document
   const taskDocument = createTaskDocument({ type, payload, userId, brandId, priority });
   
-  console.log('[API/Jobs] Saving task document to database:', taskDocument);
-  
-  // Save to database
-  const result = await tasksCollection.insertOne({
+  await tasksCollection.insertOne({
     ...taskDocument,
     _id: new ObjectId(),
     queuedAt: new Date(taskDocument.queuedAt),
@@ -80,8 +68,55 @@ async function createTask(requestBody) {
   
   console.log('[API/Jobs] Task saved with ID:', taskDocument.taskId);
   
-  // In a real implementation, you would push a message to QStash here
-  // For now, we'll just return the task ID
+  try {
+    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+    const hasQStashConfig = qstashClient;
+    const useQStashInDev = process.env.USE_QSTASH_IN_DEV === 'true';
+    const shouldUseQStash = isProduction || (useQStashInDev && hasQStashConfig);
+    
+    if (shouldUseQStash && qstashClient) {
+      let baseUrl;
+      if (isProduction) {
+        baseUrl = `https://${process.env.VERCEL_URL}`;
+      } else if (process.env.QSTASH_BASE_URL) {
+        baseUrl = process.env.QSTASH_BASE_URL;
+      } else {
+        throw new Error('QStash is enabled in development, but QSTASH_BASE_URL (your ngrok URL) is not set.');
+      }
+      
+      const destinationUrl = `${baseUrl}/api/index.js?service=jobs&action=process`;
+      console.log('[API/Jobs] Publishing task to QStash for taskId:', taskDocument.taskId, 'with URL:', destinationUrl);
+      
+      await qstashClient.publishJSON({
+        url: destinationUrl,
+        body: { taskId: taskDocument.taskId },
+        method: 'POST',
+      });
+
+      console.log('[API/Jobs] Task published to QStash successfully for taskId:', taskDocument.taskId);
+    } else {
+      console.log('[API/Jobs] Using self-invocation for local development for taskId:', taskDocument.taskId);
+      const baseUrl = process.env.VERCEL_URL 
+        ? `https://${process.env.VERCEL_URL}` 
+        : 'http://localhost:3000';
+      const processUrl = `${baseUrl}/api/index.js?service=jobs&action=process`;
+
+      fetch(processUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId: taskDocument.taskId, isSelfInvoke: true }),
+      }).catch(err => {
+          console.error(`[API/Jobs] Self-invocation fetch failed for taskId: ${taskDocument.taskId}`, err);
+      });
+    }
+  } catch (error) {
+    console.error('[API/Jobs] Error during task scheduling for taskId:', taskDocument.taskId, error);
+    await db.collection('tasks').updateOne(
+      { taskId: taskDocument.taskId },
+      { $set: { status: 'failed', lastError: error.message, updatedAt: new Date() } }
+    );
+    throw error;
+  }
   
   return { taskId: taskDocument.taskId };
 }
@@ -89,107 +124,60 @@ async function createTask(requestBody) {
 async function processTask(requestBody) {
   console.log('[API/Jobs] Processing task with request body:', requestBody);
   
-  // In a real implementation, this would be called by QStash webhook
-  // and would process the actual task
   const { taskId } = requestBody;
   
   if (!taskId) {
-    console.error('[API/Jobs] Missing taskId in request body');
     throw new Error('Missing taskId');
   }
   
   const { db } = await getClientAndDb();
   const tasksCollection = db.collection('tasks');
   
-  // Find the task
   const task = await tasksCollection.findOne({ taskId });
   
   if (!task) {
-    console.error('[API/Jobs] Task not found with ID:', taskId);
     throw new Error(`Task with ID ${taskId} not found`);
   }
   
-  console.log('[API/Jobs] Found task:', task);
-  
-  // Update task status to processing
-  await tasksCollection.updateOne(
-    { taskId },
-    { 
-      $set: { 
-        status: 'processing',
-        startedAt: new Date(),
-        updatedAt: new Date()
-      }
-    }
-  );
+  await tasksCollection.updateOne({ taskId }, { $set: { status: 'processing', startedAt: new Date(), updatedAt: new Date() } });
   
   console.log('[API/Jobs] Updated task status to processing for task ID:', taskId);
   
   try {
-    // Process the actual task based on its type
+    const payloadWithBrandId = { ...task.payload, brandId: task.brandId };
+
     let result = null;
-    
     switch (task.type) {
       case 'GENERATE_MEDIA_PLAN':
-        console.log('[API/Jobs] Processing GENERATE_MEDIA_PLAN task');
-        // For now, let's just simulate the processing
-        // In a real implementation, we would import and call the actual service functions
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        result = { mediaPlanGroupId: 'mock-media-plan-id' };
-        console.log('[API/Jobs] Completed GENERATE_MEDIA_PLAN task');
+        result = { mediaPlanGroupId: await generateMediaPlanGroup(payloadWithBrandId) };
         break;
-        
+      case 'CREATE_BRAND_FROM_IDEA':
+        result = await createBrandFromIdea(payloadWithBrandId);
+        break;
       case 'GENERATE_BRAND_KIT':
-        console.log('[API/Jobs] Processing GENERATE_BRAND_KIT task');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        result = { brandKitId: 'mock-brand-kit-id' };
-        console.log('[API/Jobs] Completed GENERATE_BRAND_KIT task');
+        result = await generateBrandKit(payloadWithBrandId);
         break;
-        
+      case 'GENERATE_VIRAL_IDEAS':
+        result = await generateViralIdeas(payloadWithBrandId);
+        break;
       case 'AUTO_GENERATE_PERSONAS':
-        console.log('[API/Jobs] Processing AUTO_GENERATE_PERSONAS task');
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        result = { personaSetId: 'mock-persona-set-id' };
-        console.log('[API/Jobs] Completed AUTO_GENERATE_PERSONAS task');
+        result = await generatePersonasForBrand(payloadWithBrandId);
         break;
-        
+      case 'GENERATE_TRENDS':
+        result = await generateTrends({ ...payloadWithBrandId, trendType: 'industry' });
+        break;
+      case 'GENERATE_GLOBAL_TRENDS':
+        result = await generateTrends({ ...payloadWithBrandId, trendType: 'global' });
+        break;
       default:
-        console.error('[API/Jobs] Unsupported task type:', task.type);
         throw new Error(`Unsupported task type: ${task.type}`);
     }
     
-    // Update task status to completed
-    await tasksCollection.updateOne(
-      { taskId },
-      { 
-        $set: { 
-          status: 'completed',
-          progress: 100,
-          result: result,
-          completedAt: new Date(),
-          updatedAt: new Date()
-        }
-      }
-    );
-    
+    await tasksCollection.updateOne({ taskId }, { $set: { status: 'completed', progress: 100, result: result, completedAt: new Date(), updatedAt: new Date() } });
     console.log('[API/Jobs] Updated task status to completed for task ID:', taskId);
   } catch (error) {
     console.error(`[API/Jobs] Error processing task ${taskId}:`, error);
-    
-    // Update task status to failed
-    await tasksCollection.updateOne(
-      { taskId },
-      { 
-        $set: { 
-          status: 'failed',
-          lastError: error.message,
-          updatedAt: new Date()
-        }
-      }
-    );
-    
-    console.log('[API/Jobs] Updated task status to failed for task ID:', taskId);
-    
+    await tasksCollection.updateOne({ taskId }, { $set: { status: 'failed', lastError: error.message, updatedAt: new Date() } });
     throw error;
   }
   
@@ -198,151 +186,142 @@ async function processTask(requestBody) {
 
 async function getTaskStatus(requestQuery) {
   const { taskId } = requestQuery;
-  
-  console.log('[API/Jobs] Getting status for task ID:', taskId);
-  
-  if (!taskId) {
-    console.error('[API/Jobs] Missing taskId in query');
-    throw new Error('Missing taskId');
-  }
-  
+  if (!taskId) throw new Error('Missing taskId');
   const { db } = await getClientAndDb();
-  const tasksCollection = db.collection('tasks');
-  
-  // Find the task
-  const task = await tasksCollection.findOne({ taskId });
-  
-  if (!task) {
-    console.error('[API/Jobs] Task not found with ID:', taskId);
-    throw new Error(`Task with ID ${taskId} not found`);
-  }
-  
-  console.log('[API/Jobs] Found task status:', {
-    taskId: task.taskId,
-    status: task.status,
-    progress: task.progress,
-    currentStep: task.currentStep,
-    result: task.result,
-    error: task.lastError
-  });
-  
-  // Return task status
-  return {
-    taskId: task.taskId,
-    status: task.status,
-    progress: task.progress,
-    currentStep: task.currentStep,
-    result: task.result,
-    error: task.lastError
-  };
+  const task = await db.collection('tasks').findOne({ taskId });
+  if (!task) throw new Error(`Task with ID ${taskId} not found`);
+  return { taskId: task.taskId, status: task.status, progress: task.progress, currentStep: task.currentStep, result: task.result, error: task.lastError };
 }
 
 async function cancelTask(requestBody) {
   const { taskId, userId } = requestBody;
-  
-  if (!taskId || !userId) {
-    throw new Error('Missing required fields: taskId, userId');
-  }
-  
+  if (!taskId || !userId) throw new Error('Missing required fields: taskId, userId');
   const { db } = await getClientAndDb();
-  const tasksCollection = db.collection('tasks');
-  
-  // Find the task and verify ownership
-  const task = await tasksCollection.findOne({ taskId });
-  
-  if (!task) {
-    throw new Error(`Task with ID ${taskId} not found`);
-  }
-  
-  if (task.userId !== userId) {
-    throw new Error('Unauthorized: You do not own this task');
-  }
-  
-  // Update task status to cancelled
-  await tasksCollection.updateOne(
-    { taskId },
-    { 
-      $set: { 
-        status: 'cancelled',
-        updatedAt: new Date()
-      }
-    }
-  );
-  
+  const task = await db.collection('tasks').findOne({ taskId });
+  if (!task) throw new Error(`Task with ID ${taskId} not found`);
+  if (task.userId !== userId) throw new Error('Unauthorized: You do not own this task');
+  await db.collection('tasks').updateOne({ taskId }, { $set: { status: 'cancelled', updatedAt: new Date() } });
   return { success: true };
 }
 
-// Main handler
-async function handler(request, response) {
-  const { action } = request.query;
+async function listTasks(requestQuery) {
+  let { brandId } = requestQuery;
+  if (!brandId) {
+    console.error('[API/Jobs] Missing brandId in listTasks request');
+    throw new Error('Missing brandId');
+  }
   
-  console.log('[API/Jobs] Received request with action:', action, 'method:', request.method, 'query:', request.query);
+  // Sanitize and convert to string
+  brandId = String(brandId).trim();
   
-  if (request.method !== 'POST' && action !== 'status') {
-    console.warn('[API/Jobs] Method not allowed:', request.method);
-    return response.status(405).json({ error: 'Method Not Allowed' });
+  // Do a simple validation without potentially problematic regex
+  if (typeof brandId !== 'string' || brandId.length !== 24) {
+    console.error(`[API/Jobs] Invalid brandId format - length check failed: ${brandId}`);
+    throw new Error(`Invalid brandId format: ${brandId}`);
+  }
+  
+  // Additional check: verify it only contains hexadecimal characters
+  for (let i = 0; i < brandId.length; i++) {
+    const c = brandId[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+      console.error(`[API/Jobs] Invalid character in brandId: ${brandId}, char at pos ${i} is ${c}`);
+      throw new Error(`Invalid brandId format: ${brandId}`);
+    }
   }
   
   try {
-    // Handle QStash webhook signature validation for process action
-    if (action === 'process') {
-      const isValid = await validateQStashSignature(request);
-      if (!isValid) {
-        console.warn('[API/Jobs] Invalid signature for process action');
-        return response.status(401).json({ error: 'Invalid signature' });
-      }
-    }
+    const { db } = await getClientAndDb();
     
-    let result;
-    
-    switch (action) {
-      case 'create':
-        console.log('[API/Jobs] Processing create action with body:', request.body);
-        result = await createTask(request.body);
-        console.log('[API/Jobs] Create action completed, result:', result);
-        response.status(202).json(result);
-        break;
-        
-      case 'process':
-        console.log('[API/Jobs] Processing process action with body:', request.body);
-        result = await processTask(request.body);
-        console.log('[API/Jobs] Process action completed, result:', result);
-        response.status(200).json(result);
-        break;
-        
-      case 'status':
-        if (request.method !== 'GET') {
-          console.warn('[API/Jobs] Method not allowed for status action:', request.method);
-          return response.status(405).json({ error: 'Method Not Allowed for status action' });
-        }
-        console.log('[API/Jobs] Processing status action with query:', request.query);
-        result = await getTaskStatus(request.query);
-        console.log('[API/Jobs] Status action completed, result:', result);
-        response.status(200).json(result);
-        break;
-        
-      case 'cancel':
-        console.log('[API/Jobs] Processing cancel action with body:', request.body);
-        result = await cancelTask(request.body);
-        console.log('[API/Jobs] Cancel action completed, result:', result);
-        response.status(200).json(result);
-        break;
-        
-      default:
-        console.warn('[API/Jobs] Unknown action:', action);
-        response.status(400).json({ error: `Unknown action: ${action}` });
-    }
+    // To avoid any potential issues with direct parameter injection into the query,
+    // we'll use a more explicit approach with a validated ObjectId
+    const tasks = await db.collection('tasks').find({ brandId }).sort({ createdAt: -1 }).toArray();
+    console.log(`[API/Jobs] Found ${tasks.length} tasks for brand ${brandId}`);
+    return tasks;
   } catch (error) {
-    console.error('--- CRASH in /api/jobs/[action] ---');
-    console.error('Error object:', error);
-    
-    // Make sure the error message is a string and properly escaped
-    const errorMessage = error.message ? String(error.message) : 'Unknown error occurred';
-    
-    response.status(500).json({ 
-      error: "Failed to process action " + action + ": " + errorMessage.replace(/"/g, '"') 
-    });
+    console.error('[API/Jobs] Error in listTasks:', error);
+    throw error;
   }
 }
 
-export default allowCors(handler);
+async function handler(request, response) {
+  const { action } = request.query;
+  const requestBody = request.body; // Parsed by api/index.js
+  const rawBody = request.rawBody; // Raw body also provided by api/index.js
+
+  // Validate action parameter to prevent potential injection issues
+  // Using manual character checking instead of regex to avoid potential issues
+  if (typeof action !== 'string') {
+    console.error(`[API/Jobs] Invalid action parameter type: ${typeof action}`);
+    return response.status(400).json({ error: 'Invalid action parameter' });
+  }
+
+  // Check each character to ensure it's safe (alphanumeric, underscore, hyphen)
+  for (let i = 0; i < action.length; i++) {
+    const c = action[i];
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c === '_' || c === '-')) {
+      console.error(`[API/Jobs] Invalid character in action parameter: ${c} at position ${i}`);
+      return response.status(400).json({ error: 'Invalid action parameter' });
+    }
+  }
+
+  if (action === 'process' && !requestBody.isSelfInvoke) {
+    const signature = request.headers['upstash-signature'];
+    if (!signature) {
+      return response.status(401).json({ error: 'Missing Upstash-Signature header' });
+    }
+
+    const receiver = new Receiver({
+        currentSigningKey: process.env.QSTASH_CURRENT_SIGNING_KEY,
+        nextSigningKey: process.env.QSTASH_NEXT_SIGNING_KEY,
+    });
+
+    try {
+        const isValid = await receiver.verify({
+            signature,
+            body: rawBody.toString('utf-8'),
+        });
+
+        if (!isValid) {
+            console.error('[API/Jobs] QStash signature verification failed. Signature:', signature);
+            return response.status(401).json({ error: 'Invalid QStash signature' });
+        }
+        console.log('[API/Jobs] QStash signature verified successfully.');
+    } catch (error) {
+        console.error('[API/Jobs] Error during QStash signature verification:', error);
+        return response.status(400).json({ error: 'Invalid signature' });
+    }
+  }
+  
+  try {
+    let result;
+    switch (action) {
+      case 'create':
+        result = await createTask(requestBody);
+        response.status(202).json(result);
+        break;
+      case 'process':
+        result = await processTask(requestBody);
+        response.status(200).json(result);
+        break;
+      case 'status':
+        result = await getTaskStatus(request.query);
+        response.status(200).json(result);
+        break;
+      case 'list':
+        result = await listTasks(request.query);
+        response.status(200).json(result);
+        break;
+      case 'cancel':
+        result = await cancelTask(requestBody);
+        response.status(200).json(result);
+        break;
+      default:
+        response.status(400).json({ error: `Unknown action: ${action}` });
+    }
+  } catch (error) {
+    const errorMessage = error.message ? String(error.message) : 'Unknown error occurred';
+    response.status(500).json({ error: `Failed to process action ${action}: ${errorMessage}` });
+  }
+}
+
+export default handler;

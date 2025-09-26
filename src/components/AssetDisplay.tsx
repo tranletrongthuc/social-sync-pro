@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { GeneratedAssets, BrandFoundation, CoreMediaAssets, ColorInfo, LogoConcept, ColorPalette, FontRecommendations, UnifiedProfileAssets } from '../../types';
 import { Section, CopyableText, Button, HoverCopyWrapper } from './ui';
-import { DownloadIcon, SparklesIcon, ArchiveIcon, UploadIcon, TagIcon } from './icons';
+import { DownloadIcon, SparklesIcon, ArchiveIcon, UploadIcon, TagIcon, RefreshIcon } from './icons';
 import StandardPageView from './StandardPageView';
 
 interface AssetDisplayProps {
@@ -14,6 +14,8 @@ interface AssetDisplayProps {
   language: string;
   onExport: () => void;
   isExporting: boolean;
+  mongoBrandId: string | null;
+  onLoadData?: (brandId: string) => Promise<void>;
 }
 
 const getNavItems = (language: string) => {
@@ -36,7 +38,7 @@ const getNavItems = (language: string) => {
 const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
     console.log("AssetDisplay rendered with props:", props);
     
-    const { assets, onGenerateImage, onSetImage, generatedImages, isGeneratingImage, language, onExport, isExporting } = props;
+    const { assets, onGenerateImage, onSetImage, generatedImages, isGeneratingImage, language, onExport, isExporting, mongoBrandId, onLoadData } = props;
     const [activeSection, setActiveSection] = useState('foundation');
 
     const NAV_ITEMS = getNavItems(language);
@@ -99,19 +101,29 @@ const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
             title="Brand Kit"
             subtitle="All your brand assets in one place"
             actions={
-                <Button onClick={onExport} disabled={isExporting} className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
-                    {isExporting ? (
-                        <>
-                            <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                            <span className="hidden sm:inline">{currentExportTexts.exporting}</span>
-                        </>
-                    ) : (
-                        <>
-                            <ArchiveIcon className="h-4 w-4" />
-                            <span className="hidden sm:inline">{currentExportTexts.export}</span>
-                        </>
-                    )}
-                </Button>
+                <div className="flex flex-row gap-2">
+                    <Button onClick={onExport} disabled={isExporting} className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
+                        {isExporting ? (
+                            <>
+                                <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
+                                <span className="hidden sm:inline">{currentExportTexts.exporting}</span>
+                            </>
+                        ) : (
+                            <>
+                                <ArchiveIcon className="h-4 w-4" />
+                                <span className="hidden sm:inline">{currentExportTexts.export}</span>
+                            </>
+                        )}
+                    </Button>
+                    <button 
+                        onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+                        className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+                        aria-label="Refresh data"
+                        disabled={isExporting}
+                    >
+                        <RefreshIcon className={`h-4 w-4 text-gray-600 ${isExporting ? 'animate-spin' : ''}`} />
+                    </button>
+                </div>
             }
         >
             <div className="flex flex-col md:flex-row h-full">
