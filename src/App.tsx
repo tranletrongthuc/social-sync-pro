@@ -78,8 +78,6 @@ const AppContent: React.FC = () => {
     const [viewingPost, setViewingPost] = useState<PostInfo | null>(null);
     const [areCredentialsSet, setAreCredentialsSet] = useState(false);
     const [integrationsVersion, setIntegrationsVersion] = useState(0);
-    // New state for trend suggestion
-    const [isSuggestingTrends, setIsSuggestingTrends] = useState(false);
 
     // Admin Auth State
     const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => checkAdminAuthenticated());
@@ -170,7 +168,7 @@ const AppContent: React.FC = () => {
     });
 
     const strategyManager = useStrategyManagement({
-        mongoBrandId, dispatchAssets, setError, setLoaderContent, updateAutoSaveStatus, settings, aiModelConfig,
+        mongoBrandId, dispatchAssets, setError, updateAutoSaveStatus, settings, aiModelConfig,
         generatedAssets, setActiveTab, setProductTrendToSelect, setSuccessMessage
     });
 

@@ -3,7 +3,7 @@ import type { Trend, Idea, Settings, Persona, AffiliateLink } from '../../types'
 import NavigationSidebar from './content-strategy/NavigationSidebar';
 import MainContentArea from './content-strategy/MainContentArea';
 import StandardPageView from './StandardPageView';
-import { LightBulbIcon, SparklesIcon } from './icons';
+import { SparklesIcon } from './icons';
 import { Button } from './ui';
 
 interface ContentStrategyPageProps {
@@ -18,18 +18,17 @@ interface ContentStrategyPageProps {
   onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
   onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
   onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
-  isGeneratingIdeas: boolean;
   onGenerateFacebookTrends: (industry: string) => void;
-  isGeneratingTrendsFromSearch: boolean;
   productTrendToSelect?: string | null;
   selectedTrend: Trend | null;
   ideasForSelectedTrend: Idea[];
   onSelectTrend: (trend: Trend) => void;
   onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
-  isSuggestingTrends: boolean;
   isDataLoaded?: boolean;
   onLoadData?: () => Promise<void>;
-  isLoading?: boolean;
+  isGeneratingIdeas?: boolean;
+  isSuggestingTrends?: boolean;
+  isSelectingTrend?: boolean;
 }
 
 const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
@@ -45,27 +44,24 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
     onGenerateIdeas,
     onCreatePlanFromIdea,
     onGenerateContentPackage,
-    isGeneratingIdeas,
     onGenerateFacebookTrends,
-    isGeneratingTrendsFromSearch,
     productTrendToSelect,
     selectedTrend,
     ideasForSelectedTrend,
     onSelectTrend,
     onSuggestTrends,
-    isSuggestingTrends,
     isDataLoaded,
     onLoadData,
-    isLoading
+    isGeneratingIdeas,
+    isSuggestingTrends,
+    isSelectingTrend,
   } = props;
 
   const [trendType, setTrendType] = useState<'industry' | 'global'>('industry');
   const [timePeriod, setTimePeriod] = useState('Last Month');
   
-  // State for mobile sidebar
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Filter trends based on search
   const [searchQuery, setSearchQuery] = useState('');
   const filteredTrends = useMemo(() => {
     if (!searchQuery) return trends;
@@ -81,7 +77,6 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
     onSuggestTrends(trendType, timePeriod);
   };
 
-  // Load data when component mounts if not already loaded
   useEffect(() => {
     if (!isDataLoaded && onLoadData) {
       onLoadData();
@@ -177,23 +172,14 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
       }
       onMobileMenuToggle={() => setIsSidebarOpen(true)}
     >
-      {/* Loading indicator */}
-      {isLoading && (
+      {(isSelectingTrend) && (
         <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-20">
-          <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      )}
-
-      {/* Load data on first render if not already loaded */}
-      {!isDataLoaded && onLoadData && (
-        <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center z-10">
           <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
         </div>
       )}
 
       <div className="h-full flex flex-col bg-gray-50/50 relative">
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-          {/* Navigation Sidebar */}
           <NavigationSidebar
             language={language}
             trends={filteredTrends}
@@ -204,14 +190,13 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
             isSidebarOpen={isSidebarOpen}
             setIsSidebarOpen={setIsSidebarOpen}
             onSuggestTrends={onSuggestTrends}
-            isSuggestingTrends={isSuggestingTrends}
+            isSuggestingTrends={!!isSuggestingTrends}
             onGenerateFacebookTrends={onGenerateFacebookTrends}
-            isGeneratingTrendsFromSearch={isGeneratingTrendsFromSearch}
+            isGeneratingTrendsFromSearch={!!isSuggestingTrends} // Re-using the same flag for now
             onSaveTrend={onSaveTrend}
             onDeleteTrend={onDeleteTrend}
           />
 
-          {/* Main Content Area */}
           <MainContentArea
             language={language}
             selectedTrend={selectedTrend}
@@ -223,7 +208,7 @@ const ContentStrategyPage: React.FC<ContentStrategyPageProps> = (props) => {
             onGenerateIdeas={onGenerateIdeas}
             onCreatePlanFromIdea={onCreatePlanFromIdea}
             onGenerateContentPackage={onGenerateContentPackage}
-            isGeneratingIdeas={isGeneratingIdeas}
+            isGeneratingIdeas={!!isGeneratingIdeas}
             onSaveTrend={onSaveTrend}
             onDeleteTrend={onDeleteTrend}
             isDataLoaded={isDataLoaded}

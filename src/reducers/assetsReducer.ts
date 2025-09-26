@@ -23,7 +23,6 @@ export type AssetsAction =
   | { type: 'UPDATE_POST_CAROUSEL'; payload: { planId: string; weekIndex: number; postIndex: number; imageUrlsArray: string[]; imageKeys: string[] } }
   | { type: 'UPDATE_PLAN'; payload: { planId: string; plan: MediaPlan } }
   | { type: 'UPDATE_ASSET_IMAGE'; payload: { oldImageKey: string; newImageKey: string; postInfo?: PostInfo; carouselImageIndex?: number } }
-  | { type: 'ADD_OR_UPDATE_AFFILIATE_LINK'; payload: AffiliateLink }
   | { type: 'ADD_OR_UPDATE_AFFILIATE_LINKS'; payload: AffiliateLink[] }
   | { type: 'DELETE_AFFILIATE_LINK'; payload: string }
   | { type: 'IMPORT_AFFILIATE_LINKS'; payload: AffiliateLink[] }
@@ -189,29 +188,19 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
             return newState;
         }
 
-        case 'ADD_OR_UPDATE_AFFILIATE_LINK': {
-            const newLink = action.payload;
-            const existingLinks = state.affiliateLinks || [];
-            const index = existingLinks.findIndex(l => l.id === newLink.id);
-            let updatedLinks;
+        case 'ADD_OR_UPDATE_AFFILIATE_LINKS': {
+            const newLinks = action.payload;
+            if (!newLinks || newLinks.length === 0) return state;
 
-            if (index > -1) {
-                updatedLinks = [...existingLinks];
-                updatedLinks[index] = newLink;
-            } else {
-                updatedLinks = [newLink, ...existingLinks];
-            }
+            // Use a Map for efficient upserting
+            const linksMap = new Map((state.affiliateLinks || []).map(link => [link.id, link]));
+            newLinks.forEach(link => {
+                linksMap.set(link.id, link);
+            });
+
+            const updatedLinks = Array.from(linksMap.values());
+
             return { ...state, affiliateLinks: updatedLinks };
-        }
-
-        case 'DELETE_AFFILIATE_LINK': {
-             const linkId = action.payload;
-             const updatedLinks = (state.affiliateLinks || []).filter(l => l.id !== linkId);
-             return { ...state, affiliateLinks: updatedLinks };
-        }
-
-        case 'IMPORT_AFFILIATE_LINKS': {
-            return { ...state, affiliateLinks: [...(state.affiliateLinks || []), ...action.payload] };
         }
         
         case 'SET_AFFILIATE_LINKS': {

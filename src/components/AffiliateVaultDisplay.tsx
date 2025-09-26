@@ -13,6 +13,7 @@ interface AffiliateVaultDisplayProps {
   onImportLinks: (links: Omit<AffiliateLink, 'id' | 'brandId'>[]) => void;
   onReloadLinks: () => void;
   onGenerateIdeasFromProduct?: (product: AffiliateLink) => void;
+  generatingIdeasForProductId?: string | null;
   language: string;
   isDataLoaded?: boolean;
   onLoadData?: () => void;
@@ -27,7 +28,7 @@ const emptyLink: Omit<AffiliateLink, 'id' | 'brandId'> = {
     notes: '',
 };
 
-const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, language, isDataLoaded, onLoadData, isLoading }) => {
+const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliateLinks, onSaveLink, onDeleteLink, onImportLinks, onReloadLinks, onGenerateIdeasFromProduct, generatingIdeasForProductId, language, isDataLoaded, onLoadData, isLoading }) => {
     const [isAddingNewLink, setIsAddingNewLink] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('productName-asc');
@@ -222,6 +223,13 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
             subtitle={texts.subtitle}
             actions={
                 <div className="flex flex-row gap-2">
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleFileImport}
+                        className="hidden"
+                        accept=".xlsx"
+                    />
                     <Button onClick={onReloadLinks} variant="secondary" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
                         <ArrowPathIcon className="h-4 w-4" /> 
                         <span className="hidden sm:inline">{texts.reload}</span>
@@ -237,7 +245,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                 </div>
             }
         >
-            {isLoading && (
+            {isLoading && !generatingIdeasForProductId && (
                 <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
                     <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
                         <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
@@ -292,6 +300,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                             onCancel={() => setIsAddingNewLink(false)}
                                             language={language}
                                             onGenerateIdeas={onGenerateIdeasFromProduct}
+                                            generatingIdeasForProductId={generatingIdeasForProductId}
                                         />
                                     )}
                                     {displayLinks.map(link => (
@@ -302,6 +311,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ affiliate
                                             onDelete={() => handleDelete(link.id)}
                                             language={language}
                                             onGenerateIdeas={onGenerateIdeasFromProduct}
+                                            generatingIdeasForProductId={generatingIdeasForProductId}
                                         />
                                     ))}
                                 </div>
