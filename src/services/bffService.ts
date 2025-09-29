@@ -282,7 +282,7 @@ export const generateEmbeddingsWithBff = async (
   taskTypes: string[]
 ): Promise<number[][]> => {
   try {
-    const response = await bffFetch('/api/gemini?action=embed', {
+    const response = await bffFetch('/api/embedding', {
       method: 'POST',
       body: JSON.stringify({ texts, taskTypes }),
     });

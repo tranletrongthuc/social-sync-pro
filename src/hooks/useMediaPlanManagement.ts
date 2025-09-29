@@ -6,10 +6,11 @@ import {
     Idea,
     Persona,
     AffiliateLink,
+    PostInfo,
 } from '../../types';
 import { AiModelConfig } from '../services/configService';
-import { textGenerationService } from '../services/textGenerationService';
-import { saveMediaPlanGroupToDatabase as saveMediaPlanGroup } from '../services/databaseService';
+
+import { saveMediaPlanGroupToDatabase as saveMediaPlanGroup, updateMediaPlanPostInDatabase, assignPersonaToPlanInDatabase } from '../services/databaseService';
 import { uploadMediaToCloudinary } from '../services/cloudinaryService';
 import { taskService } from '../services/taskService';
 
@@ -391,11 +392,99 @@ export const useMediaPlanManagement = ({
         }
     }, [generatedAssets, settings, mongoBrandId, setLoaderContent, setError, setSuccessMessage]);
 
+    const handleTogglePostApproval = useCallback(async (postInfo: PostInfo) => {
+        if (!mongoBrandId) return;
+
+        const { planId, weekIndex, postIndex, post } = postInfo;
+        const newStatus = !post.isApproved;
+
+        // Optimistically update UI
+        dispatchAssets({
+            type: 'UPDATE_POST',
+            payload: { 
+                planId, 
+                weekIndex, 
+                postIndex, 
+                updates: { isApproved: newStatus } 
+            }
+        });
+
+        try {
+            // Persist change to DB
+            await updateMediaPlanPostInDatabase(post.id, mongoBrandId, { isApproved: newStatus });
+        } catch (error) { 
+            // Revert UI on error
+            setError("Failed to update post approval status.");
+            dispatchAssets({
+                type: 'UPDATE_POST',
+                payload: { 
+                    planId, 
+                    weekIndex, 
+                    postIndex, 
+                    updates: { isApproved: post.isApproved } // Revert to original state
+                }
+            });
+        }
+    }, [mongoBrandId, dispatchAssets, setError]);
+
+    const handleAssignPersonaToPlan = useCallback(async (planId: string, personaId: string | null) => {
+        if (!mongoBrandId || !generatedAssets) return;
+
+        const planGroup = generatedAssets.mediaPlans.find(p => p.id === planId);
+        if (!planGroup) return;
+
+        const oldPersonaId = planGroup.personaId;
+        const allPersonas = generatedAssets.personas || [];
+        const oldPersona = allPersonas.find(p => p.id === oldPersonaId);
+        const newPersona = allPersonas.find(p => p.id === personaId);
+
+        // Prepare updated posts for database (only mediaPrompt changes)
+        const updatedPosts: { id: string; mediaPrompt: string | string[]; }[] = [];
+        const updatedPlan = { ...planGroup, personaId: personaId || undefined };
+
+        updatedPlan.plan.forEach(week => {
+            week.posts.forEach(post => {
+                if (post.mediaPrompt) {
+                    let prompt = Array.isArray(post.mediaPrompt) ? post.mediaPrompt[0] : post.mediaPrompt;
+                    if (oldPersona && prompt.startsWith(`${oldPersona.outfitDescription}, `)) {
+                        prompt = prompt.substring(`${oldPersona.outfitDescription}, `.length);
+                    }
+                    if (newPersona) {
+                        prompt = `${newPersona.outfitDescription}, ${prompt}`;
+                    }
+                    updatedPosts.push({ id: post.id, mediaPrompt: prompt });
+                }
+            });
+        });
+
+        // Optimistically update UI
+        dispatchAssets({
+            type: 'ASSIGN_PERSONA_TO_PLAN',
+            payload: { planId, personaId }
+        });
+
+        try {
+            await assignPersonaToPlanInDatabase(planId, personaId, updatedPosts, mongoBrandId);
+            setSuccessMessage(settings.language === 'Việt Nam' 
+                ? "Đã gán người đại diện thành công!" 
+                : "Persona assigned successfully!");
+        } catch (error) {
+            setError(error instanceof Error ? error.message : "Failed to assign persona to plan.");
+            // Revert UI on error
+            dispatchAssets({
+                type: 'ASSIGN_PERSONA_TO_PLAN',
+                payload: { planId, personaId: oldPersonaId }
+            });
+        }
+    }, [mongoBrandId, generatedAssets, dispatchAssets, setError, setSuccessMessage, settings.language]);
+
     return {
         onLoadMediaPlanData,
         handleRefreshMediaPlanData,
         handleGenerateMediaPlanGroup,
         handleCreateFunnelCampaignPlan,
         handleGenerateContentPackage,
+        handleTogglePostApproval,
+        handleAssignPersonaToPlan,
     };
 };

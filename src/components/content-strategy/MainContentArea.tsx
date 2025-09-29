@@ -20,9 +20,11 @@ interface MainContentAreaProps {
   onGenerateIdeas: (trend: Trend, useSearch: boolean) => void;
   onCreatePlanFromIdea: (prompt: string, productId?: string) => void;
   onGenerateContentPackage: (idea: Idea, personaId: string | null, selectedProductId: string | null, options: { tone: string; style: string; length: string; includeEmojis: boolean; }) => void;
-  isGeneratingIdeas: boolean;
+  isGeneratingIdeas?: boolean;
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
+  onToggleIdeaArchive: (ideaId: string) => void;
+  onEditIdea: (idea: Idea) => void;
   isDataLoaded?: boolean;
   onLoadData?: () => void;
 }
@@ -41,6 +43,8 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
   isGeneratingIdeas,
   onSaveTrend,
   onDeleteTrend,
+  onToggleIdeaArchive,
+  onEditIdea,
   isDataLoaded
 }) => {
   // State for tabs
@@ -327,6 +331,8 @@ const MainContentArea: React.FC<MainContentAreaProps> = ({
                         affiliateLinks={affiliateLinks}
                         generatedImages={generatedImages}
                         isGeneratingIdeas={isGeneratingIdeas}
+                        onToggleIdeaArchive={onToggleIdeaArchive}
+                        onEditIdea={onEditIdea}
                       />
                     )}
                     {activeTab === 'queries' && (

@@ -904,6 +904,12 @@ const handlers = {
     return { success: true, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
   }),
 
+  'update-persona-state': createHandler('update-persona-state', async ({ personaId, isActive }) => {
+    const { db } = await getClientAndDb();
+    const result = await personasTemplate.update(db, personaId, { isActive });
+    return { success: result.modifiedCount > 0 || result.upsertedCount > 0 };
+  }),
+
   'sync-asset-media': createHandler('sync-asset-media', async ({ brandId, assets }) => {
     const { db } = await getClientAndDb();
     

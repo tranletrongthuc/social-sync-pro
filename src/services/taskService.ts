@@ -102,6 +102,36 @@ export const taskService = {
     }
   },
 
+  // Retry a failed task
+  retryTask: async (taskId: string): Promise<{ success: boolean }> => {
+    const userId = 'current-user-id'; // Placeholder
+    try {
+      const response = await apiRequest('/api/index.js?service=jobs&action=retry', {
+        method: 'POST',
+        body: JSON.stringify({ taskId, userId }),
+      });
+      return response;
+    } catch (error) {
+      console.error(`TaskService: Error retrying task ${taskId}:`, error);
+      throw error;
+    }
+  },
+
+  // Delete a task
+  deleteTask: async (taskId: string): Promise<{ success: boolean }> => {
+    const userId = 'current-user-id'; // Placeholder
+    try {
+      const response = await apiRequest('/api/index.js?service=jobs&action=delete', {
+        method: 'POST',
+        body: JSON.stringify({ taskId, userId }),
+      });
+      return response;
+    } catch (error) {
+      console.error(`TaskService: Error deleting task ${taskId}:`, error);
+      throw error;
+    }
+  },
+
   // List all tasks for a brand
   listTasks: async (brandId: string): Promise<BackgroundTask[]> => {
     console.log('TaskService: Listing tasks for brandId:', brandId);

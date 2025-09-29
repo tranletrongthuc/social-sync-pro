@@ -1,16 +1,27 @@
 import React, { useState, useRef, useEffect, memo } from 'react';
 import type { Persona, BrandFoundation } from '../../types';
-import { Button } from './ui';
-import { PlusIcon, UsersIcon, SparklesIcon, TrashIcon, PencilIcon, DotsVerticalIcon, RefreshIcon } from './icons';
+import { Button } from '../design/components';
+import { PlusIcon, UsersIcon, SparklesIcon, TrashIcon, PencilIcon, CheckIcon, RefreshIcon } from './icons';
+import RefreshButton from './RefreshButton';
 import PersonaEditorModal from './PersonaEditorModal';
-import StandardPageView from './StandardPageView';
+import GenericTabTemplate from './GenericTabTemplate';
 import ModelLabel from './ModelLabel';
+import { Card, Label } from '../design/components';
 
 // A simplified, read-only card to display in the main grid
-const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: () => void; generatedImages: Record<string, string>; language: string; }> = memo(({ persona, onEdit, onDelete, generatedImages, language }) => {
+const PersonaCard: React.FC<{ 
+    persona: Persona; 
+    onEdit: () => void; 
+    onDelete: () => void;
+    onSelect: () => void;
+    onToggle: (newState: boolean) => void;
+    isSelected: boolean;
+    generatedImages: Record<string, string>; 
+    language: string; 
+}> = memo(({ persona, onEdit, onDelete, onSelect, onToggle, isSelected, generatedImages, language }) => {
     const T = {
-        'Việt Nam': { occupation: "Nghề nghiệp", location: "Địa điểm", edit: "Sửa", delete: "Xóa" },
-        'English': { occupation: "Occupation", location: "Location", edit: "Edit", delete: "Delete" },
+        'Việt Nam': { occupation: "Nghề nghiệp", location: "Địa điểm", edit: "Sửa", delete: "Xóa", active: "Hoạt động" },
+        'English': { occupation: "Occupation", location: "Location", edit: "Edit", delete: "Delete", active: "Active" },
     };
     const texts = (T as any)[language] || T['English'];
 
@@ -22,65 +33,78 @@ const PersonaCard: React.FC<{ persona: Persona; onEdit: () => void; onDelete: ()
 
     const avatarUrl = getAvatar();
 
-    return (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col transition-all duration-200 shadow-sm hover:shadow-md">
-            <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-4">
-                    {avatarUrl ? (
-                        <img src={avatarUrl} alt={persona.nickName} className="h-16 w-16 rounded-full object-cover border-2 border-white shadow-md" />
-                    ) : (
-                        <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                            <UsersIcon className="h-8 w-8" />
-                        </div>
-                    )}
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900">{persona.nickName}</h3>
-                        <p className="text-sm text-gray-600">{persona.demographics?.occupation}</p>
-                        <p className="text-xs text-gray-500">{persona.demographics?.location}</p>
+    const handleToggle = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onToggle(!persona.isActive);
+    };
+
+    const handleEdit = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onEdit();
+    };
+
+    const handleDelete = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onDelete();
+    };
+
+    const cardHeader = (
+        <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+                {avatarUrl ? (
+                    <img src={avatarUrl} alt={persona.nickName} className="h-16 w-16 rounded-full object-cover border-2 border-white shadow-md" />
+                ) : (
+                    <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
+                        <UsersIcon className="h-8 w-8" />
                     </div>
+                )}
+                <div>
+                    <h3 className="text-lg font-bold text-gray-900">{persona.nickName}</h3>
+                    <p className="text-sm text-gray-600">{persona.demographics?.occupation}</p>
+                    <p className="text-xs text-gray-500">{persona.demographics?.location}</p>
                 </div>
-                <MenuDropDown onEdit={onEdit} onDelete={onDelete} texts={texts} />
             </div>
-            <div className="flex-grow">
-                        <p className="text-sm text-gray-700 line-clamp-3">{persona.backstory || persona.background}</p>
-                    </div>
-                    <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-2">
-                        {(persona.voice?.personalityTraits || []).slice(0, 3).map(trait => (
-                            <span key={trait} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">{trait}</span>
-                        ))}
-                        {(persona.interestsAndHobbies || []).slice(0, 3).map(interest => (
-                            <span key={interest} className="px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">{interest}</span>
-                        ))}
-                        {persona.modelUsed && <ModelLabel model={persona.modelUsed} size="small" />}
-                    </div>
+            <div
+                onClick={handleToggle}
+                className={`flex items-center justify-center w-6 h-6 rounded cursor-pointer
+                    border-2 transition-all duration-200
+                    ${persona.isActive ? 'bg-emerald-500 border-emerald-500' : 'bg-white border-gray-300 hover:border-emerald-400'}
+                `}
+                role="checkbox"
+                aria-checked={persona.isActive}
+                title={persona.isActive ? "Deactivate Persona" : "Activate Persona"}
+            >
+                {persona.isActive && <CheckIcon className="w-4 h-4 text-white" />}
+            </div>
+        </div>
+    );
+
+    const cardFooter = (
+        <div className="flex items-center justify-between">
+            <div className="flex flex-wrap gap-2">
+                {(persona.voice?.personalityTraits || []).slice(0, 2).map(trait => (
+                    <Label key={trait} variant="info" size="sm">{trait}</Label>
+                ))}
+                {(persona.interestsAndHobbies || []).slice(0, 2).map(interest => (
+                    <Label key={interest} variant="success" size="sm">{interest}</Label>
+                ))}
+                {persona.modelUsed && <ModelLabel model={persona.modelUsed} size="small" />}
+            </div>
+            <div className="flex gap-1">
+                <Button variant="ghost" size="sm" onClick={handleEdit}><PencilIcon className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="sm" onClick={handleDelete}><TrashIcon className="h-4 w-4 text-red-500" /></Button>
+            </div>
+        </div>
+    );
+
+    return (
+        <div onClick={onSelect} className={`transition-all duration-200 rounded-lg ${isSelected ? 'ring-2 ring-emerald-500' : ''}`}>
+            <Card header={cardHeader} footer={cardFooter} hoverable={true}>
+                <p className="text-sm text-gray-700 line-clamp-3 h-16">{persona.backstory || persona.background}</p>
+            </Card>
         </div>
     );
 });
-
-const MenuDropDown: React.FC<{onEdit: () => void, onDelete: () => void, texts: any}> = ({ onEdit, onDelete, texts }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-     useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-    return (
-        <div ref={menuRef} className="relative">
-            <button onClick={() => setIsOpen(!isOpen)} className="text-gray-400 hover:text-gray-700 p-1 rounded-full"><DotsVerticalIcon className="h-5 w-5" /></button>
-            {isOpen && (
-                 <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg border z-10">
-                    <button onClick={onEdit} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PencilIcon className="h-4 w-4"/> {texts.edit}</button>
-                    <button onClick={onDelete} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/> {texts.delete}</button>
-                </div>
-            )}
-        </div>
-    )
-};
 
 interface PersonasDisplayProps {
     mongoBrandId: string | null;
@@ -88,6 +112,7 @@ interface PersonasDisplayProps {
     generatedImages: Record<string, string>;
     onSavePersona: (persona: Persona) => void;
     onDeletePersona: (personaId: string) => void;
+    onTogglePersonaState: (personaId: string, isActive: boolean) => void;
     language: string;
     brandFoundation?: BrandFoundation;
     onAutoGeneratePersona: () => void;
@@ -96,9 +121,10 @@ interface PersonasDisplayProps {
     onLoadData?: (brandId: string) => Promise<void>;
 }
 
-const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, personas, generatedImages, onSavePersona, onDeletePersona, language, brandFoundation, onAutoGeneratePersona, isLoading, isDataLoaded, onLoadData }) => {
+const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, personas, generatedImages, onSavePersona, onDeletePersona, onTogglePersonaState, language, brandFoundation, onAutoGeneratePersona, isLoading, isDataLoaded, onLoadData }) => {
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingPersona, setEditingPersona] = useState<Persona | null>(null);
+    const [selectedPersonaId, setSelectedPersonaId] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isDataLoaded && onLoadData && mongoBrandId) {
@@ -136,6 +162,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, persona
             background: '',
             outfitDescription: '',
             brandId: '', // Will be populated on save
+            isActive: true,
             demographics: { age: 30, gender: 'Non-binary', location: '', occupation: '', incomeLevel: '' },
             backstory: '',
             goalsAndMotivations: [],
@@ -153,14 +180,13 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, persona
                     preferredChannels: []
                 }
             },
-            // Setting other optional fields to undefined for clarity
             imageKey: undefined,
             imageUrl: undefined,
             avatarImageKey: undefined,
             avatarImageUrl: undefined,
             mainStyle: undefined,
             activityField: undefined,
-            contentTone: undefined,
+contentTone: undefined,
             visualCharacteristics: undefined,
             coreCharacteristics: undefined,
             keyMessages: undefined,
@@ -194,48 +220,47 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, persona
         }
     };
 
+    const handleSelectPersona = (personaId: string) => {
+        setSelectedPersonaId(prevId => prevId === personaId ? null : personaId);
+    };
+
+    const handleTogglePersona = (personaId: string, isActive: boolean) => {
+        onTogglePersonaState(personaId, isActive);
+    };
+
+    const actionButtons = (
+        <div className="flex flex-row gap-2">
+            <Button 
+                onClick={onAutoGeneratePersona} 
+                variant="secondary"
+                size="sm"
+                disabled={!brandFoundation?.mission || !brandFoundation?.usp}
+                className="whitespace-nowrap"
+            >
+                <SparklesIcon className="h-4 w-4"/> 
+                <span className="hidden sm:inline">{texts.autoGenerate}</span>
+            </Button>
+            <Button onClick={handleAddNew} size="sm" className="whitespace-nowrap">
+                <PlusIcon className="h-4 w-4"/> 
+                <span className="hidden sm:inline">{texts.addPersona}</span>
+            </Button>
+            <RefreshButton 
+                onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+                isLoading={isLoading}
+                language={language}
+            />
+        </div>
+    );
+
     return (
-        <StandardPageView
+        <GenericTabTemplate
             title={texts.title}
             subtitle={texts.subtitle}
-            actions={
-                <div className="flex flex-row gap-2">
-                    <Button 
-                        onClick={onAutoGeneratePersona} 
-                        variant="secondary"
-                        disabled={!brandFoundation?.mission || !brandFoundation?.usp}
-                        title={(!brandFoundation?.mission || !brandFoundation?.usp) ? "Please define a mission and USP in the Brand Kit tab first." : "Auto-generate new personas"}
-                        className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium"
-                    >
-                        <SparklesIcon className="h-4 w-4"/> 
-                        <span className="hidden sm:inline">{texts.autoGenerate}</span>
-                    </Button>
-                    <Button onClick={handleAddNew} className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
-                        <PlusIcon className="h-4 w-4"/> 
-                        <span className="hidden sm:inline">{texts.addPersona}</span>
-                    </Button>
-                    <button 
-                        onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
-                        className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-                        aria-label="Refresh data"
-                        disabled={isLoading}
-                    >
-                        <RefreshIcon className={`h-4 w-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                </div>
-            }
+            actionButtons={actionButtons}
+            isLoading={isLoading}
         >
-            {isLoading && (
-                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-gray-700 font-medium">Loading personas data...</p>
-                    </div>
-                </div>
-            )}
-
             <main className="flex-grow overflow-y-auto -mx-2">
-                {(!personas || personas.length === 0) ? (
+                {(!personas || personas.length === 0) && !isLoading ? (
                      <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300">
                         <UsersIcon className="mx-auto h-16 w-16 text-gray-400" />
                         <h3 className="mt-2 text-2xl font-bold font-sans text-gray-900">{texts.noPersonas}</h3>
@@ -249,6 +274,9 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, persona
                                 persona={p}
                                 onEdit={() => handleEdit(p)}
                                 onDelete={() => handleDelete(p.id)}
+                                onSelect={() => handleSelectPersona(p.id)}
+                                onToggle={(newState) => handleTogglePersona(p.id, newState)}
+                                isSelected={selectedPersonaId === p.id}
                                 generatedImages={generatedImages}
                                 language={language}
                             />
@@ -266,7 +294,7 @@ const PersonasDisplay: React.FC<PersonasDisplayProps> = ({ mongoBrandId, persona
                     language={language}
                 />
             )}
-        </StandardPageView>
+        </GenericTabTemplate>
     );
 };
 

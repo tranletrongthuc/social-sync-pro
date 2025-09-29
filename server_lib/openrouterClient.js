@@ -89,6 +89,43 @@ async function generateWithOpenRouter(model, contents, config) {
   }
 }
 
+async function generateImageWithOpenRouter(model, prompt, n = 1, size = "1024x1024") {
+    console.log('--- Calling OpenRouter for Image Generation with model:', model);
+    try {
+        if (!process.env.OPENROUTER_API_KEY) {
+            throw new Error('OpenRouter API key not configured on server');
+        }
+
+        const siteUrl = process.env.VERCEL_URL || 'https://socialsync.pro';
+        const siteTitle = 'SocialSync Pro';
+
+        const body = {
+            model: model,
+            prompt: prompt,
+            n: n,
+            size: size,
+        };
+
+        const openrouterResponse = await fetch("https://openrouter.ai/api/v1/images/generations", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                "HTTP-Referer": siteUrl,
+                "X-Title": siteTitle,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify(body)
+        });
+
+        return handleOpenRouterResponse(openrouterResponse);
+
+    } catch (error) {
+        console.error('--- ERROR in generateImageWithOpenRouter ---', error);
+        throw new Error('Failed to generate image from OpenRouter API: ' + error.message);
+    }
+}
+
 export {
     generateWithOpenRouter,
+    generateImageWithOpenRouter
 };

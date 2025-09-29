@@ -166,35 +166,32 @@ const PersonaEditorModal: React.FC<PersonaEditorModalProps> = ({ isOpen, persona
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="p-6 border-b">
-            <h2 className="text-2xl font-bold text-gray-800">{texts.title}</h2>
+      <div className="bg-white rounded-lg shadow-2xl w-full sm:max-w-lg md:max-w-2xl lg:max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="flex-shrink-0 p-4 md:p-6 border-b">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-800">{texts.title}</h2>
         </div>
-        <div className='flex-grow flex'>
-            <div className='w-1/4 border-r bg-gray-50'>
-                <nav className='p-4'>
-                    <ul>
-                        {tabs.map(tab => (
-                            <li key={tab.id}>
-                                <button 
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`w-full text-left px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                                        activeTab === tab.id 
-                                        ? 'bg-brand-green text-white' 
-                                        : 'text-gray-600 hover:bg-gray-200'
-                                    }`}>
-                                    {tab.label}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
+        <div className="flex-grow md:flex-row">
+            <div className='w-full md:w-1/4 border-b md:border-b-0 md:border-r bg-gray-50 flex-shrink-0'>
+                <nav className='p-2 md:p-4'>
+                    {/* Dropdown selector for both mobile and desktop */}
+                    <div className="mb-3">
+                        <select 
+                            value={activeTab}
+                            onChange={(e) => setActiveTab(e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                        >
+                            {tabs.map(tab => (
+                                <option key={tab.id} value={tab.id}>{tab.label}</option>
+                            ))}
+                        </select>
+                    </div>
                 </nav>
             </div>
-            <div className='w-3/4 p-6 overflow-y-auto'>
+            <div className='flex-grow p-4 md:p-6 overflow-y-auto'>
                 {renderContent()}
             </div>
         </div>
-        <div className="p-4 bg-gray-50 border-t flex justify-end gap-4">
+        <div className="flex-shrink-0 p-4 bg-gray-50 border-t flex justify-end gap-4">
           <Button variant="tertiary" onClick={onClose}>{texts.cancel}</Button>
           <Button onClick={handleSave}>{texts.save}</Button>
         </div>

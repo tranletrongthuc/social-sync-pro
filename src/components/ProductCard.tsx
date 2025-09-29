@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { AffiliateLink } from '../../types';
 import { Button, Input, TextArea } from './ui';
-import { DotsVerticalIcon, PencilIcon, TrashIcon, LinkIcon, SparklesIcon, StarIcon } from './icons';
+import { DotsVerticalIcon, PencilIcon, TrashIcon, LinkIcon, SparklesIcon, StarIcon, CheckCircleIcon, XIcon } from './icons';
 
 interface ProductCardProps {
     link: AffiliateLink;
@@ -12,9 +12,14 @@ interface ProductCardProps {
     language: string;
     onGenerateIdeas?: (product: AffiliateLink) => void;
     generatingIdeasForProductId?: string | null;
+    isSelected: boolean;
+    onToggleSelection: (linkId: string) => void;
+    onToggleActive: (link: AffiliateLink) => void;
 }
 
-const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, onGenerateIdeas, generatingIdeasForProductId }) => {
+import { Card, Label } from '../design/components';
+
+const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCancel, isNew = false, language, onGenerateIdeas, generatingIdeasForProductId, isSelected, onToggleSelection, onToggleActive }) => {
     const [isEditing, setIsEditing] = useState(isNew);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [editedLink, setEditedLink] = useState<AffiliateLink>(link);
@@ -30,18 +35,20 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
             productName: "Tên sản phẩm", providerName: "Nhà cung cấp", notes: "Ghi chú",
             commissionRate: "Tỷ lệ HH", productLink: "Link sản phẩm", generateIdeas: "Tạo ý tưởng", generating: "Đang tạo...",
             price: "Giá", salesVolume: "Doanh số", promotionLink: "Link KM",
-            productDescription: "Mô tả sản phẩm", features: "Tính năng (phân cách bằng dấu phẩy)",
-            useCases: "Trường hợp SD (phân cách bằng dấu phẩy)", customerReviews: "Đánh giá của khách hàng",
+            productDescription: "Mô tả sản phẩm", features: "Tính năng",
+            useCases: "Trường hợp SD", customerReviews: "Đánh giá của khách hàng",
             productRating: "Xếp hạng (0-5)",
+            activate: "Kích hoạt", deactivate: "Vô hiệu hóa", active: "Hoạt động", inactive: "Không hoạt động",
         },
         'English': {
             edit: "Edit", delete: "Delete", save: "Save", cancel: "Cancel",
             productName: "Product Name", providerName: "Provider", notes: "Notes",
             commissionRate: "Comm. Rate", productLink: "Product Link", generateIdeas: "Generate Ideas", generating: "Generating...",
             price: "Price", salesVolume: "Sales Volume", promotionLink: "Promo Link",
-            productDescription: "Product Description", features: "Features (comma-separated)",
-            useCases: "Use Cases (comma-separated)", customerReviews: "Customer Reviews",
+            productDescription: "Product Description", features: "Features",
+            useCases: "Use Cases", customerReviews: "Customer Reviews",
             productRating: "Rating (0-5)",
+            activate: "Activate", deactivate: "Deactivate", active: "Active", inactive: "Inactive",
         }
     };
     const texts = (T as any)[language] || T['English'];
@@ -81,6 +88,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
                     <p className="text-xs text-gray-400">{link.providerName}</p>
                     <h3 className="text-lg font-bold text-gray-900 leading-tight" title={link.productName}>{link.productName}</h3>
                     {link.product_rating !== undefined && <StarRating rating={link.product_rating} />}
+                    {link.isActive === false ? 
+                        <Label variant="error" size="sm">{texts.inactive}</Label> : 
+                        <Label variant="success" size="sm">{texts.active}</Label>}
                 </div>
             </div>
 
@@ -119,61 +129,69 @@ const ProductCard: React.FC<ProductCardProps> = ({ link, onSave, onDelete, onCan
         </div>
     );
 
-    return (
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col transition-all duration-200 shadow-sm h-full">
-            <div className="flex justify-between items-start mb-3">
-                <div className="flex-1 min-w-0">
-                    {isEditing && <h3 className="text-lg font-bold text-gray-900">{isNew ? 'Add New Product' : 'Edit Product'}</h3>}
-                </div>
-                {!isNew && !isEditing && (
-                    <div className="relative ml-2" ref={menuRef}>
-                        <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} className="text-gray-400 hover:text-gray-700 p-1 rounded-full">
-                            <DotsVerticalIcon className="h-5 w-5" />
-                        </button>
-                        {isMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg border z-10">
-                                <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); setIsEditing(true); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PencilIcon className="h-4 w-4"/> {texts.edit}</button>
-                                <button onClick={(e) => { e.stopPropagation(); if (onDelete) onDelete(); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/> {texts.delete}</button>
-                            </div>
-                        )}
-                    </div>
-                )}
+    const cardHeader = (
+        <div className="flex justify-between items-start">
+            <div className="flex-1 min-w-0 flex items-center gap-2">
+                {!isEditing && <input type="checkbox" checked={isSelected} onChange={() => onToggleSelection(link.id)} className="h-5 w-5 rounded border-gray-300 text-brand-green focus:ring-brand-green" onClick={e => e.stopPropagation()} />}
+                {isEditing && <h3 className="text-lg font-bold text-gray-900">{isNew ? 'Add New Product' : 'Edit Product'}</h3>}
             </div>
+            {!isNew && !isEditing && (
+                <div className="relative ml-2" ref={menuRef}>
+                    <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(!isMenuOpen); }} className="text-gray-400 hover:text-gray-700 p-1 rounded-full">
+                        <DotsVerticalIcon className="h-5 w-5" />
+                    </button>
+                    {isMenuOpen && (
+                        <div className="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg border z-10">
+                            <button onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); setIsEditing(true); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><PencilIcon className="h-4 w-4"/> {texts.edit}</button>
+                            <button onClick={(e) => { e.stopPropagation(); onToggleActive(link); setIsMenuOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                                {link.isActive === false ? <CheckCircleIcon className="h-4 w-4 text-green-500"/> : <XIcon className="h-4 w-4 text-red-500"/>} 
+                                {link.isActive === false ? texts.activate : texts.deactivate}
+                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); if (onDelete) onDelete(); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/> {texts.delete}</button>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 
+    const cardFooter = (
+        <div className="flex items-center justify-between gap-3">
+             {isEditing ? (
+                <div className="flex justify-end w-full gap-2">
+                    <Button variant="tertiary" onClick={(e) => { e.stopPropagation(); isNew ? onCancel && onCancel() : setIsEditing(false); }}>{texts.cancel}</Button>
+                    <Button onClick={handleSave}>{texts.save}</Button>
+                </div>
+            ) : (
+                <>
+                    {onGenerateIdeas && (
+                        <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onGenerateIdeas(link); }} className="text-xs py-1 px-2 flex items-center gap-1" disabled={isGenerating}>
+                            {isGenerating ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
+                                    <span className="ml-1">{texts.generating}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <SparklesIcon className="h-4 w-4"/> {texts.generateIdeas}
+                                </>)}
+                        </Button>
+                    )}
+                    <div className="flex items-center gap-3">
+                        {link.promotionLink && <a href={link.promotionLink} onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer" title="Promotion Link" className="text-red-500 hover:text-red-700 transition-colors font-semibold text-sm">Promo</a>}
+                        <a href={link.productLink} onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer" title={texts.productLink} className="text-gray-500 hover:text-brand-green transition-colors"><LinkIcon className="h-5 w-5"/></a>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+
+    return (
+        <Card header={cardHeader} footer={cardFooter} className="h-full flex flex-col">
             <div className="flex-grow">
                 {isEditing ? renderEditMode() : renderDisplayMode()}
             </div>
-
-            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between gap-3">
-                 {isEditing ? (
-                    <div className="flex justify-end w-full gap-2">
-                        <Button variant="tertiary" onClick={(e) => { e.stopPropagation(); isNew ? onCancel && onCancel() : setIsEditing(false); }}>{texts.cancel}</Button>
-                        <Button onClick={handleSave}>{texts.save}</Button>
-                    </div>
-                ) : (
-                    <>
-                        {onGenerateIdeas && (
-                            <Button variant="secondary" onClick={(e) => { e.stopPropagation(); onGenerateIdeas(link); }} className="text-xs py-1 px-2 flex items-center gap-1" disabled={isGenerating}>
-                                {isGenerating ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                        <span className="ml-1">{texts.generating}</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <SparklesIcon className="h-4 w-4"/> {texts.generateIdeas}
-                                    </>
-                                )}
-                            </Button>
-                        )}
-                        <div className="flex items-center gap-3">
-                            {link.promotionLink && <a href={link.promotionLink} onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer" title="Promotion Link" className="text-red-500 hover:text-red-700 transition-colors font-semibold text-sm">Promo</a>}
-                            <a href={link.productLink} onClick={e => e.stopPropagation()} target="_blank" rel="noopener noreferrer" title={texts.productLink} className="text-gray-500 hover:text-brand-green transition-colors"><LinkIcon className="h-5 w-5"/></a>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
+        </Card>
     );
 };
 
@@ -192,7 +210,7 @@ const TagSection: React.FC<{ title: string, tags?: string[] }> = ({ title, tags 
         <div className="mt-3">
             <p className="text-xs text-gray-500">{title}</p>
             <div className="flex flex-wrap gap-1.5 mt-1">
-                {tags.map(tag => <span key={tag} className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full text-xs font-medium">{tag}</span>)}
+                {tags.map(tag => <Label key={tag} size="sm" variant="info">{tag}</Label>)} 
             </div>
         </div>
     );

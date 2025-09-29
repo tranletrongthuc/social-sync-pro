@@ -1,32 +1,58 @@
 import React, { useState } from 'react';
 import { CopyIcon, CheckCircleIcon, CheckIcon, ChevronLeftIcon, ChevronRightIcon } from './icons';
+import DesignSystemButton from '../design/components/Button';
+import type { ButtonVariant, ButtonSize } from '../design/components/Button';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'tertiary';
   isLoading?: boolean;
+  size?: ButtonSize;
+  icon?: React.ReactNode;
+  iconPosition?: 'left' | 'right';
+  fullWidth?: boolean;
 }
 
-export const Button: React.FC<ButtonProps> = ({ children, className, variant = 'primary', isLoading, ...props }) => {
-  const baseClasses = 'px-4 py-2 rounded-full font-semibold text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed';
-  
-  const variantClasses = {
-    primary: 'bg-brand-green text-white hover:bg-brand-green-dark',
-    secondary: 'bg-white text-brand-green border border-brand-green hover:bg-green-50',
-    tertiary: 'bg-transparent text-gray-600 hover:bg-gray-100'
+export const Button: React.FC<ButtonProps> = ({ 
+  children, 
+  className, 
+  variant = 'primary', 
+  isLoading, 
+  size = 'md',
+  icon,
+  iconPosition = 'left',
+  fullWidth = false,
+  onClick,
+  ...props 
+}) => {
+  // Map legacy variants to new design system variants
+  const variantMap: Record<string, ButtonVariant> = {
+    primary: 'primary',
+    secondary: 'secondary',
+    tertiary: 'tertiary'
+  };
+
+  // Handle click with proper typing
+  const handleClick = () => {
+    if (onClick) {
+      onClick({} as React.MouseEvent<HTMLButtonElement>);
+    }
   };
 
   return (
-    <button
-      className={`${baseClasses} ${variantClasses[variant]} ${className}`}
+    <DesignSystemButton
+      variant={variantMap[variant]}
+      size={size}
       disabled={isLoading || props.disabled}
+      className={className}
+      icon={icon}
+      iconPosition={iconPosition}
+      fullWidth={fullWidth}
+      loading={isLoading}
+      onClick={handleClick}
       {...props}
     >
-      {isLoading ? (
-        <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
-      ) : (
-        children
-      )}
-    </button>
+      {children}
+    </DesignSystemButton>
   );
 };
 
@@ -52,12 +78,15 @@ export const TextArea: React.FC<React.TextareaHTMLAttributes<HTMLTextAreaElement
   />
 );
 
+import { Card } from '../design/components';
+
 export const Section: React.FC<{ title: string; children: React.ReactNode, id?: string }> = ({ title, children, id }) => (
   <div id={id} className="py-8">
-    <h3 className="text-3xl font-bold font-sans text-gray-900 mb-2 pb-4 border-b border-gray-200">{title}</h3>
-    <div className="mt-4 font-serif text-gray-700 space-y-4">
-        {children}
-    </div>
+    <Card header={<h3 className="text-xl font-bold font-sans text-gray-900">{title}</h3>}>
+      <div className="mt-4 font-serif text-gray-700 space-y-4">
+          {children}
+      </div>
+    </Card>
   </div>
 );
 

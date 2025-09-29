@@ -1,7 +1,7 @@
-import { buildMediaPlanPrompt, buildGenerateBrandProfilePrompt, buildBrandKitPrompt, buildViralIdeasPrompt, buildAutoGeneratePersonasPrompt, buildTrendSuggestionPrompt, buildGlobalTrendSuggestionPrompt } from './promptBuilder.js';
+import { buildMediaPlanPrompt, buildGenerateBrandProfilePrompt, buildBrandKitPrompt, buildViralIdeasPrompt, buildAutoGeneratePersonasPrompt, buildTrendSuggestionPrompt, buildGlobalTrendSuggestionPrompt, buildGenerateInCharacterPostPrompt, buildRefinePostPrompt } from './promptBuilder.js';
 import { processMediaPlanResponse, processBrandProfileResponse, processBrandKitResponse, processViralIdeasResponse, processAutoGeneratePersonasResponse, processTrendSuggestionResponse } from './responseProcessor.js';
 import { executeGeneration } from './aiService.js';
-import { getClientAndDb, createOrUpdateBrand, savePersonas } from './mongodb.js';
+import { getClientAndDb, createOrUpdateBrand, savePersonas, updateMediaPlanPost } from './mongodb.js';
 import { ObjectId } from 'mongodb';
 
 async function generateMediaPlanGroup(payload) {
@@ -372,6 +372,22 @@ async function generateTrends(payload) {
     };
 }
 
+async function generateInCharacterPost(payload) {
+    const { objective, platform, keywords, pillar, postInfo, settings, brandId } = payload;
+    const { db } = await getClientAndDb();
+    const persona = await db.collection('personas').findOne({ _id: new ObjectId(postInfo.post.personaId) });
+    if (!persona) throw new Error(`Persona with id ${postInfo.post.personaId} not found.`);
+
+    const prompt = buildGenerateInCharacterPostPrompt({ persona, objective, platform, keywords, pillar, settings });
+    const modelsToTry = [settings.textGenerationModel, ...(settings.textModelFallbackOrder || [])].filter(Boolean);
+    const { responseText, modelUsed } = await executeGeneration(prompt, modelsToTry, false, true);
+
+    const updates = { content: responseText, modelUsed: modelUsed };
+    await updateMediaPlanPost(db, postInfo.post.id, updates);
+
+    return { postId: postInfo.post.id, newContent: responseText, modelUsed: modelUsed };
+}
+
 export {
     generateMediaPlanGroup,
     generateBrandProfile,
@@ -379,5 +395,6 @@ export {
     createBrandFromIdea,
     generateViralIdeas,
     generatePersonasForBrand,
-    generateTrends
+    generateTrends,
+    generateInCharacterPost
 };

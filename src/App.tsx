@@ -92,7 +92,7 @@ const AppContent: React.FC = () => {
     const [activePlanId, setActivePlanId] = useState<string | null>(null);
 
     // *** TASK MANAGEMENT (from context) ***
-    const { notifications, removeNotification, taskList, isLoadingTasks, loadTasks } = useTaskManager();
+    const { notifications, removeNotification, taskList, isLoadingTasks, loadTasks, onCancelTask, onRetryTask, onDeleteTask } = useTaskManager();
 
     // This callback is passed to manager hooks. They call it after creating a task.
     const onTaskCreated = useCallback(() => {
@@ -199,6 +199,8 @@ const AppContent: React.FC = () => {
         onTaskCreated,
     });
 
+    const { handleTogglePostApproval } = mediaPlanManager;
+
     const strategyManager = useStrategyManagement({
         mongoBrandId,
         dispatchAssets,
@@ -229,6 +231,7 @@ const AppContent: React.FC = () => {
         updateAutoSaveStatus,
         setError,
         setViewingPost,
+        onTaskCreated,
     });
 
     const projectIO = useProjectIO({
@@ -390,6 +393,43 @@ const AppContent: React.FC = () => {
         removeNotification(taskId);
     }, [notifications, removeNotification, mediaPlanManager, personaManager, strategyManager]);
 
+    useEffect(() => {
+        const allPosts = generatedAssets.mediaPlans.flatMap(group => group.plan.flatMap(week => week.posts));
+        if (allPosts.length === 0) return;
+
+        const imageUpdates: Record<string, string> = {};
+        const videoUpdates: Record<string, string> = {};
+
+        for (const post of allPosts) {
+            // Handle single image posts
+            if (post.imageUrl && post.imageKeys?.[0]) {
+                imageUpdates[post.imageKeys[0]] = post.imageUrl;
+            }
+
+            // Handle carousel posts
+            if (post.imageUrlsArray && post.imageKeys) {
+                post.imageKeys.forEach((key, index) => {
+                    if (post.imageUrlsArray[index]) {
+                        imageUpdates[key] = post.imageUrlsArray[index];
+                    }
+                });
+            }
+            
+            // Handle video posts
+            if (post.videoUrl && post.videoKey) {
+                videoUpdates[post.videoKey] = post.videoUrl;
+            }
+        }
+
+        if (Object.keys(imageUpdates).length > 0) {
+            setGeneratedImages(prev => ({ ...prev, ...imageUpdates }));
+        }
+        if (Object.keys(videoUpdates).length > 0) {
+            setGeneratedVideos(prev => ({ ...prev, ...videoUpdates }));
+        }
+
+    }, [generatedAssets.mediaPlans]);
+
     const handleCloseNotification = useCallback((taskId: string) => {
         console.log('[App] Closing notification for task:', taskId);
         removeNotification(taskId);
@@ -472,10 +512,12 @@ const AppContent: React.FC = () => {
                                 onGenerateAllCarouselImages={assetManager.handleGenerateAllCarouselImages}
                                 onSavePersona={personaManager.handleSavePersona}
                                 onDeletePersona={personaManager.handleDeletePersona}
-                                onUpdatePersona={personaManager.handleUpdatePersona}
-                                onSetPersonaImage={personaManager.handleSetPersonaImage}
+                                onTogglePersonaState={personaManager.handleTogglePersonaState}
                                 onAutoGeneratePersona={personaManager.handleAutoGeneratePersona}
+                                onSetPersonaImage={personaManager.handleSetPersonaImage}
+                                onUpdatePersona={personaManager.handleUpdatePersona}
                                 onLoadPersonasData={personaManager.handleRefreshPersonasData}
+                                isLoadingPersonasData={personaManager.isPersonasLoading}
                                 onGeneratePlan={mediaPlanManager.handleGenerateMediaPlanGroup}
                                 onCreateFunnelCampaignPlan={mediaPlanManager.handleCreateFunnelCampaignPlan}
                                 onGenerateContentPackage={mediaPlanManager.handleGenerateContentPackage}
@@ -501,6 +543,9 @@ const AppContent: React.FC = () => {
                                 ideasForSelectedTrend={strategyManager.ideasForSelectedTrend}
                                 onReloadLinks={() => {}}
                                 onSuggestTrends={strategyManager.handleSuggestTrends}
+                                onToggleTrendArchive={strategyManager.handleToggleTrendArchive}
+                                onToggleIdeaArchive={strategyManager.handleToggleIdeaArchive}
+                                onEditIdea={strategyManager.handleEditIdea} // Placeholder for now
                                 isSuggestingTrends={strategyManager.isSuggestingTrends}
                                 isGeneratingIdeas={strategyManager.isGeneratingIdeas}
                                 isSelectingTrend={strategyManager.isSelectingTrend}
@@ -560,13 +605,18 @@ const AppContent: React.FC = () => {
                                 onRefinePost={async () => ''}
                                 onGenerateInCharacterPost={async () => {}}
                                 onUpdatePost={() => {}}
-                                onAssignPersonaToPlan={() => {}}
+                                onTogglePostApproval={handleTogglePostApproval}
+                                onAssignPersonaToPlan={mediaPlanManager.handleAssignPersonaToPlan}
                                 brandFoundation={generatedAssets?.brandFoundation || initialGeneratedAssets.brandFoundation}
                                 onOpenFunnelWizard={() => {}}
                                 tasks={taskList}
                                 isLoadingTasks={isLoadingTasks}
                                 onLoadTasks={(brandId) => loadTasks(brandId)}
+                                onCancelTask={onCancelTask}
+                                onRetryTask={onRetryTask}
+                                onDeleteTask={onDeleteTask}
                                 onLoadBrandKitData={handleReloadAllData}
+                                onTaskCreated={onTaskCreated}
                             />
                         </Suspense>
                         <Suspense fallback={null}>

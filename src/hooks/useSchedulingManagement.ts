@@ -58,7 +58,7 @@ export const useSchedulingManagement = ({
         setSchedulingPost(null);
     }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError]);
 
-    const handlePublishPost = useCallback(async (postInfo: PostInfo) => {
+    const handlePublishPost = useCallback(async (postInfo: PostInfo): Promise<void> => {
         // Placeholder for direct publishing logic
         setSuccessMessage(`Post "${postInfo.post.title}" published successfully! (Simulated)`);
         setTimeout(() => setSuccessMessage(null), 3000);

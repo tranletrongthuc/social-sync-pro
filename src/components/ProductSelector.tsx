@@ -44,9 +44,9 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({ affiliateLinks, onSel
 
     const processedLinks = useMemo(() => {
         const filtered = (affiliateLinks || []).filter(link =>
-            link.productName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            link.productId.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            (link.providerName && link.providerName.toLowerCase().includes(searchQuery.toLowerCase()))
+            ((link.productName || '').toLowerCase().includes((searchQuery || '').toLowerCase())) ||
+            ((link.productId || '').toLowerCase().includes((searchQuery || '').toLowerCase())) ||
+            ((link.providerName || '').toLowerCase().includes((searchQuery || '').toLowerCase()))
         );
 
         const [sortKey, sortDir] = sortBy.split('-');
@@ -61,8 +61,8 @@ const ProductSelector: React.FC<ProductSelectorProps> = ({ affiliateLinks, onSel
                     break;
                 case 'productName':
                 default:
-                    valA = a.productName.toLowerCase();
-                    valB = b.productName.toLowerCase();
+                    valA = (a.productName || '').toLowerCase();
+                    valB = (b.productName || '').toLowerCase();
                     break;
             }
             if (valA < valB) return sortDir === 'asc' ? -1 : 1;

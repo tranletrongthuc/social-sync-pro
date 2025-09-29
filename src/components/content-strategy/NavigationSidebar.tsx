@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { Trend } from '../../../types';
-import { Button, Input } from '../ui';
-import { PlusIcon, TagIcon, SearchIcon } from '../icons';
+import { Input } from '../ui';
+import { SearchIcon } from '../icons';
 import TrendListItem from './TrendListItem';
+import Sidebar from '../common/Sidebar';
 
 interface NavigationSidebarProps {
   language: string;
@@ -11,12 +12,14 @@ interface NavigationSidebarProps {
   onSelectTrend: (trend: Trend) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  isSidebarOpen: boolean;
-  setIsSidebarOpen: (isOpen: boolean) => void;
   onSuggestTrends: (trendType: 'industry' | 'global', timePeriod: string) => void;
   isSuggestingTrends: boolean;
   onSaveTrend: (trend: Trend) => void;
   onDeleteTrend: (trendId: string) => void;
+  onEditTrend: (trend: Trend) => void;
+  onToggleTrendArchive: (trendId: string) => void;
+  isSidebarOpen: boolean;
+  setIsSidebarOpen: (isOpen: boolean) => void;
 }
 
 const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
@@ -26,15 +29,16 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
   onSelectTrend,
   searchQuery,
   onSearchChange,
-  isSidebarOpen,
-  setIsSidebarOpen,
   onSuggestTrends,
   isSuggestingTrends,
   onSaveTrend,
-  onDeleteTrend
+  onDeleteTrend,
+  onEditTrend,
+  onToggleTrendArchive,
+  isSidebarOpen,
+  setIsSidebarOpen
 }) => {
   // State for trend suggestion
-  const [industryForSearch, setIndustryForSearch] = useState('');
   const [localSearchQuery, setLocalSearchQuery] = useState(searchQuery);
   
   // Debounce search input
@@ -61,6 +65,15 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
     };
   }, []);
 
+  // Filter trends based on search query
+  const filteredTrends = trends.filter(trend => 
+    trend.topic?.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
+    trend.industry?.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
+    trend.category?.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
+    trend.analysis?.toLowerCase().includes(localSearchQuery.toLowerCase()) ||
+    trend.notes?.toLowerCase().includes(localSearchQuery.toLowerCase())
+  );
+
   // Translation texts
   const T = {
     'Việt Nam': {
@@ -71,6 +84,7 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
       industryPlaceholder: "Nhập ngành của bạn (ví dụ: Thời trang, Công nghệ, Ẩm thực)",
       analyzeTrends: "Tìm",
       analyzing: "Đang tìm kiếm...",
+      searchPlaceholder: "Tìm kiếm xu hướng...",
     },
     'English': {
       trends: "Trends",
@@ -80,93 +94,37 @@ const NavigationSidebar: React.FC<NavigationSidebarProps> = ({
       industryPlaceholder: "Enter your industry (e.g., Fashion, Tech, Food)",
       analyzeTrends: "Search",
       analyzing: "Searching...",
+      searchPlaceholder: "Search trends...",
     }
   };
   const texts = (T as any)[language] || T['English'];
 
-  // Group trends by type (industry vs global)
-  const groupedTrends = useMemo(() => {
-    const industryTrends = trends.filter(trend => trend.industry !== 'Global');
-    const globalTrends = trends.filter(trend => trend.industry === 'Global');
-    return { industryTrends, globalTrends };
-  }, [trends]);
-
-
-
   return (
-    <aside className={`
-      md:static md:translate-x-0 md:opacity-100 md:visible
-      fixed inset-y-0 left-0 z-30 w-80 bg-white transform transition-transform duration-300 ease-in-out
-      ${isSidebarOpen ? 'translate-x-0 opacity-100 visible' : '-translate-x-full opacity-0 invisible'}
-      md:flex md:flex-col md:border md:border-gray-200 md:rounded-lg md:shadow-sm
-    `}>
-      <div className="flex justify-between items-center p-4 md:p-6 md:pt-0 border-b border-gray-200 md:border-0">
-        <h3 className="text-lg sm:text-xl font-bold text-gray-800">{texts.trends}</h3>
-        <Button 
-          variant="secondary" 
-          onClick={() => { 
-            const newTrend = {
-              id: '',
-              brandId: '',
-              industry: '',
-              topic: 'New Trend',
-              keywords: [],
-              links: [],
-              notes: '',
-              analysis: '',
-              createdAt: new Date().toISOString(),
-            };
-            onSaveTrend(newTrend as Trend);
-            setIsSidebarOpen(false);
-          }} 
-          className="flex items-center gap-1.5 !px-2 !py-1"
-        >
-          <PlusIcon className="h-4 w-4" /> {texts.addTrend}
-        </Button>
-      </div>
-      
-      <div className="flex-grow overflow-y-auto p-4 md:p-6 space-y-6">
-        {/* Search Input */}
-        <div className="relative">
-          <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            type="text"
-            placeholder="Search trends..."
-            value={localSearchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10 w-full"
+    <Sidebar
+      title={texts.trends}
+      itemCount={filteredTrends.length}
+      isSidebarOpen={isSidebarOpen}
+      setIsSidebarOpen={setIsSidebarOpen}
+      onSearchChange={onSearchChange}
+      searchPlaceholder={texts.searchPlaceholder}
+      language={language}
+    >
+      {filteredTrends.map(trend => {
+        const isProductTrend = trend.id.startsWith('product-');
+        return (
+          <TrendListItem
+            key={trend.id}
+            trend={trend}
+            isSelected={selectedTrend?.id === trend.id}
+            isProductTrend={isProductTrend}
+            language={language}
+            onClick={onSelectTrend}
+            onEdit={onEditTrend}
+            onToggleArchive={onToggleTrendArchive}
           />
-        </div>
-
-        {/* Trends List */}
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <h4 className="text-base font-semibold text-gray-700">Trends</h4>
-            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-              {trends.length}
-            </span>
-          </div>
-          <div className="space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto pr-2">
-            {trends.map(trend => {
-              const isProductTrend = trend.id.startsWith('product-');
-              return (
-                <TrendListItem
-                  key={trend.id}
-                  trend={trend}
-                  isSelected={selectedTrend?.id === trend.id}
-                  isProductTrend={isProductTrend}
-                  language={language}
-                  onClick={() => {
-                    onSelectTrend(trend);
-                    setIsSidebarOpen(false);
-                  }}
-                />
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </aside>
+        );
+      })}
+    </Sidebar>
   );
 };
 

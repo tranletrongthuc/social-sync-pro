@@ -3,7 +3,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { GeneratedAssets, BrandFoundation, CoreMediaAssets, ColorInfo, LogoConcept, ColorPalette, FontRecommendations, UnifiedProfileAssets } from '../../types';
 import { Section, CopyableText, Button, HoverCopyWrapper } from './ui';
 import { DownloadIcon, SparklesIcon, ArchiveIcon, UploadIcon, TagIcon, RefreshIcon } from './icons';
-import StandardPageView from './StandardPageView';
+import RefreshButton from './RefreshButton';
+import GenericTabTemplate from './GenericTabTemplate';
 
 interface AssetDisplayProps {
   assets: GeneratedAssets;
@@ -96,35 +97,34 @@ const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
     
     const sharedImageProps = { onGenerateImage, onSetImage, generatedImages, isGeneratingImage, texts: currentImgGenTexts };
 
-        return (
-        <StandardPageView
+    const actionButtons = (
+        <div className="flex flex-row gap-2">
+            <Button onClick={onExport} disabled={isExporting} size="sm" className="whitespace-nowrap">
+                {isExporting ? (
+                    <>
+                        <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
+                        <span className="hidden sm:inline">{currentExportTexts.exporting}</span>
+                    </>
+                ) : (
+                    <>
+                        <ArchiveIcon className="h-4 w-4" />
+                        <span className="hidden sm:inline">{currentExportTexts.export}</span>
+                    </>
+                )}
+            </Button>
+            <RefreshButton 
+                onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+                isLoading={isExporting}
+                language={language}
+            />
+        </div>
+    );
+
+    return (
+        <GenericTabTemplate
             title="Brand Kit"
             subtitle="All your brand assets in one place"
-            actions={
-                <div className="flex flex-row gap-2">
-                    <Button onClick={onExport} disabled={isExporting} className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
-                        {isExporting ? (
-                            <>
-                                <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                <span className="hidden sm:inline">{currentExportTexts.exporting}</span>
-                            </>
-                        ) : (
-                            <>
-                                <ArchiveIcon className="h-4 w-4" />
-                                <span className="hidden sm:inline">{currentExportTexts.export}</span>
-                            </>
-                        )}
-                    </Button>
-                    <button 
-                        onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
-                        className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-                        aria-label="Refresh data"
-                        disabled={isExporting}
-                    >
-                        <RefreshIcon className={`h-4 w-4 text-gray-600 ${isExporting ? 'animate-spin' : ''}`} />
-                    </button>
-                </div>
-            }
+            actionButtons={actionButtons}
         >
             <div className="flex flex-col md:flex-row h-full">
                 <aside className="hidden md:flex w-64 bg-white md:sticky top-0 p-6 border-r border-gray-200 flex-col shrink-0">
@@ -165,7 +165,7 @@ const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
                     <UnifiedProfileAssetsSection assets={assets.unifiedProfileAssets} language={language} {...sharedImageProps} />
                 </main>
             </div>
-        </StandardPageView>
+        </GenericTabTemplate>
     );
 };
 
@@ -278,6 +278,8 @@ interface ImageGenSectionProps {
   texts: { generating: string; generate: string; prompt: string; };
 }
 
+import { Label } from '../design/components';
+
 const BrandFoundationSection: React.FC<{ assets: BrandFoundation, language: string }> = ({ assets, language }) => {
     const texts = {
         'Việt Nam': { title: 'Nền tảng Thương hiệu', brandName: 'Tên thương hiệu', mission: 'Sứ mệnh', usp: 'USP', values: 'Giá trị', keyMessaging: 'Thông điệp Chính', targetAudience: 'Đối tượng mục tiêu', personality: 'Tính cách' },
@@ -294,7 +296,7 @@ const BrandFoundationSection: React.FC<{ assets: BrandFoundation, language: stri
         <HoverCopyWrapper textToCopy={assets.personality}><p><strong className="font-sans text-gray-800">{currentTexts.personality}:</strong> {assets.personality}</p></HoverCopyWrapper>
         
         <HoverCopyWrapper textToCopy={(assets.values || []).join(', ')}>
-            <div className="mt-4"><strong className="font-sans text-gray-800">{currentTexts.values}:</strong><div className="flex flex-wrap gap-2 mt-1">{(assets.values || []).map(v => <span key={v} className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-sm font-sans">{v}</span>)}</div></div>
+            <div className="mt-4"><strong className="font-sans text-gray-800">{currentTexts.values}:</strong><div className="flex flex-wrap gap-2 mt-1">{(assets.values || []).map(v => <Label key={v} size="md" variant="brand">{v}</Label>)}</div></div>
         </HoverCopyWrapper>
 
         <HoverCopyWrapper textToCopy={(assets.keyMessaging || []).join('\n')}>

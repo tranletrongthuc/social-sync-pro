@@ -34,17 +34,19 @@ export const sanitizeAndParseJson = (jsonText: string): any => {
     }
 };
 
-export const renderPostContent = (content: string | string[] | any): string => {
+export const renderPostContent = (content: any): string => {
+    if (!content) return '';
     if (typeof content === 'string') {
         return content;
     }
     if (Array.isArray(content)) {
         return content.join('\n\n');
     }
-    if (typeof content === 'object' && content !== null) {
-        return Object.entries(content)
-            .map(([key, value]) => `**${key.charAt(0).toUpperCase() + key.slice(1)}:**\n${value}`)
-            .join('\n\n');
+    if (typeof content === 'object') {
+        // For video scripts or other objects, return the most relevant field or stringify
+        if (content.fullScript) return content.fullScript;
+        if (content.general) return content.general;
+        return JSON.stringify(content, null, 2);
     }
-    return '';
+    return String(content); // Fallback for any other type
 };

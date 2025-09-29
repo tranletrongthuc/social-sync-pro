@@ -100,6 +100,9 @@ interface TaskContextType {
   removeNotification: (taskId: string) => void;
   clearAll: () => void;
   startPolling: (taskId: string) => void;
+  onCancelTask: (taskId: string) => Promise<void>;
+  onRetryTask: (taskId: string) => Promise<void>;
+  onDeleteTask: (taskId: string) => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
@@ -153,6 +156,37 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const startPolling = useCallback((taskId: string) => {
     addPollingTask(taskId);
   }, [addPollingTask]);
+
+  const onCancelTask = useCallback(async (taskId: string) => {
+    try {
+      await taskService.cancelTask(taskId);
+      dispatch({ type: 'UPDATE_TASK', payload: { taskId, updates: { status: 'cancelled', progress: 100 } } });
+      // Optionally, refresh the task list or show a notification
+      // loadTasks(brandId); // If brandId is available in context
+    } catch (error) {
+      console.error("Failed to cancel task:", error);
+    }
+  }, []);
+
+  const onRetryTask = useCallback(async (taskId: string) => {
+    try {
+      await taskService.retryTask(taskId);
+      dispatch({ type: 'UPDATE_TASK', payload: { taskId, updates: { status: 'queued', progress: 0 } } });
+      // Optionally, refresh the task list or show a notification
+    } catch (error) {
+      console.error("Failed to retry task:", error);
+    }
+  }, []);
+
+  const onDeleteTask = useCallback(async (taskId: string) => {
+    try {
+      await taskService.deleteTask(taskId);
+      dispatch({ type: 'REMOVE_TASK', payload: { taskId } });
+      // Optionally, refresh the task list or show a notification
+    } catch (error) {
+      console.error("Failed to delete task:", error);
+    }
+  }, []);
   
   return (
     <TaskContext.Provider
@@ -168,7 +202,10 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addNotification,
         removeNotification,
         clearAll,
-        startPolling
+        startPolling,
+        onCancelTask,
+        onRetryTask,
+        onDeleteTask,
       }}
     >
       {children}

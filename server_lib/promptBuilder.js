@@ -144,10 +144,10 @@ function buildMediaPlanPrompt(params) {
 
     const promptBuilder = new PromptBuilder()
         .addInstruction(template)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addBrandInfo(brandFoundation)
         .addInstruction(`Content Pillar: ${pillar}`)
         .addInstruction(`User's specific request: ${userPrompt}`)
-        .addInstruction(`Language: ${language}`)
         .addInstruction(`Total number of posts to generate: ${totalPosts}`)
         .addInstruction(`Selected platforms: ${selectedPlatforms.join(', ')}`)
         .addInstruction(`Content generation options: Tone: ${options.tone}, Style: ${options.style}, Length: ${options.length}, Include Emojis: ${options.includeEmojis}`)
@@ -291,12 +291,12 @@ const AUTO_GENERATE_PERSONAS_JSON_STRUCTURE = {
 function buildBrandKitPrompt(params) {
     const { brandInfo, language, brandSettings, adminSettings } = params;
     
-    const template = adminSettings.prompts?.simple?.generateBrandKit || `You are an expert brand strategist. Your task is to create a comprehensive brand kit based on the provided information.`
+    const template = adminSettings.prompts?.simple?.generateBrandKit || `You are an expert brand strategist. Your task is to create a comprehensive brand kit based on the provided information.`;
 
     const prompt = new PromptBuilder()
         .addInstruction(template)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Brand Information:\n- Name: ${brandInfo.name}\n- Mission: ${brandInfo.mission}\n- Values: ${brandInfo.values}\n- Target Audience: ${brandInfo.audience}\n- Personality: ${brandInfo.personality}`)
-        .addInstruction(`Language: ${language}`)
         .addJsonOutput("BrandKit", BRAND_KIT_JSON_STRUCTURE)
         .build();
         
@@ -306,15 +306,14 @@ function buildBrandKitPrompt(params) {
 function buildAutoGeneratePersonasPrompt(params) {
     const { mission, usp, settings } = params;
     
-    // Extract language from settings, defaulting to English if not specified
     const language = settings?.language || 'English';
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert persona specialist. Your task is to create exactly 3 diverse brand personas based on the provided brand information.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`You MUST generate exactly 3 diverse personas.`)
         .addInstruction(`Brand Mission: ${mission}`)
         .addInstruction(`Brand USP: ${usp}`)
-        .addInstruction(`Language: ${language}`)
         .addJsonOutput("Personas", AUTO_GENERATE_PERSONAS_JSON_STRUCTURE)
         .build();
         
@@ -326,8 +325,8 @@ function buildGenerateBrandProfilePrompt(params) {
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert brand strategist. Your task is to create a brand profile based on the provided business idea.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Business Idea: ${idea}`)
-        .addInstruction(`Language: ${language}`)
         .addJsonOutput("BrandProfile", BRAND_PROFILE_JSON_STRUCTURE)
         .build();
         
@@ -485,9 +484,9 @@ function buildTrendSuggestionPrompt(params) {
 
     const promptBuilder = new PromptBuilder()
         .addInstruction(template)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Industry: ${industry}`)
-        .addInstruction(`Time Period: ${timePeriod}`)
-        .addInstruction(`Language: ${language}`);
+        .addInstruction(`Time Period: ${timePeriod}`);
 
     if (brandFoundation) {
         promptBuilder
@@ -513,8 +512,8 @@ function buildGlobalTrendSuggestionPrompt(params) {
 
     const promptBuilder = new PromptBuilder()
         .addInstruction(template)
-        .addInstruction(`Time Period: ${timePeriod}`)
-        .addInstruction(`Language: ${language}`);
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
+        .addInstruction(`Time Period: ${timePeriod}`);
 
     if (brandFoundation) {
         promptBuilder
@@ -537,10 +536,10 @@ function buildViralIdeasPrompt(trend, language, settings) {
 
     const template = settings.prompts?.simple?.generateViralIdeas || `You are a viral content strategist. Your task is to generate a list of viral content ideas based on the provided trend.`;
 
-    builder.addInstruction(template);
-    builder.addInstruction(`Analyze the following trend:\n- Topic: ${trend.topic}\n- Keywords: ${(trend.keywords || []).join(', ')}`);
-    builder.addInstruction(`Language for the content: ${language}`);
-    builder.addInstruction('Generate 5 unique and engaging content ideas.');
+    builder.addInstruction(template)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
+        .addInstruction(`Analyze the following trend:\n- Topic: ${trend.topic}\n- Keywords: ${(trend.keywords || []).join(', ')}`)
+        .addInstruction('Generate 5 unique and engaging content ideas.');
 
     const rules = settings.prompts?.rules;
     if (rules) {
@@ -597,21 +596,45 @@ function buildRefinePostPrompt(params) {
 }
 
 function buildGenerateInCharacterPostPrompt(params) {
-    const { objective, platform, persona, keywords, pillar, brandSettings, adminSettings, options } = params;
-    
-    const template = adminSettings.prompts?.generateInCharacterPost?.taskInstruction || `You are ${persona.nickName}, a persona for a brand. Your task is to create a social media post in your character.`;
+    const { persona, objective, platform, keywords, pillar, settings } = params;
+    const p = settings.prompts.generateInCharacterPost;
+    const language = settings?.language || 'English';
+    const promptLayers = [];
 
-    const prompt = new PromptBuilder()
-        .addInstruction(template)
-        .addPersona(persona)
-        .addInstruction(`Content Pillar: ${pillar}`)
-        .addInstruction(`Platform: ${platform}`)
-        .addInstruction(`Objective: ${objective}`)
-        .addInstruction(`Keywords to include: ${keywords.join(', ')}`)
-        .addInstruction(`Content generation options: Tone: ${options.tone}, Style: ${options.style}, Length: ${options.length}, Include Emojis: ${options.includeEmojis}`)
-        .build();
-        
-    return prompt;
+    promptLayers.push(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`);
+
+    promptLayers.push(p.rolePlayInstruction
+        .replace('{nickName}', persona.nickName)
+        .replace('{demographics.age}', persona.demographics?.age)
+        .replace('{demographics.occupation}', persona.demographics?.occupation)
+        .replace('{demographics.location}', persona.demographics?.location)
+    );
+
+    if (persona.voice) {
+        promptLayers.push(p.personalityInstruction.replace('{voice.personalityTraits}', persona.voice.personalityTraits?.join(', ')));
+        promptLayers.push(p.writingStyleInstruction.replace('{voice.linguisticRules}', persona.voice.linguisticRules?.join('. ')));
+    }
+    if (persona.backstory) {
+        promptLayers.push(p.backstoryInstruction.replace('{backstory}', persona.backstory));
+    }
+    if (persona.knowledgeBase && persona.knowledgeBase.length > 0) {
+        promptLayers.push(p.interestsInstruction.replace('{knowledgeBase}', persona.knowledgeBase.join(', ')));
+    }
+
+    promptLayers.push(p.contextPreamble.replace('{date}', new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })));
+    promptLayers.push(p.taskInstruction.replace('{platform}', platform));
+    promptLayers.push(p.objectiveInstruction.replace('{objective}', objective));
+
+    if (pillar) {
+        promptLayers.push(p.pillarInstruction.replace('{pillar}', pillar));
+    }
+    if (keywords && keywords.length > 0) {
+        promptLayers.push(p.keywordsInstruction.replace('{keywords}', keywords.join(', ')));
+    }
+    promptLayers.push(p.perspectiveInstruction);
+    promptLayers.push(p.negativeConstraints);
+
+    return promptLayers.join('\n');
 }
 
 function buildGenerateMediaPromptForPostPrompt(params) {
@@ -619,11 +642,11 @@ function buildGenerateMediaPromptForPostPrompt(params) {
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert AI art prompt engineer. Your task is to create a detailed image generation prompt based on the provided post content.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addBrandInfo(brandFoundation)
         .addInstruction(`Post Title: ${postContent.title}`)
         .addInstruction(`Post Content: ${Array.isArray(postContent.content) ? postContent.content.join('\n') : postContent.content}`)
         .addInstruction(`Content Type: ${postContent.contentType}`)
-        .addInstruction(`Language: ${language}`)
         .addInstruction(persona ? buildPersonaComponent(persona) : '')
         .addInstruction("Create a highly detailed image generation prompt that visually represents the content.")
         .build();
@@ -636,27 +659,10 @@ function buildAffiliateCommentPrompt(params) {
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert social media content creator. Your task is to create an engaging comment for a social media post that promotes affiliate products.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Post Title: ${post.title}`)
         .addInstruction(`Post Content: ${Array.isArray(post.content) ? post.content.join('\n') : post.content}`)
         .addInstruction(`Affiliate Products: ${products.map(p => `${p.productName}: ${p.product_description}`).join('; ')}`)
-        .addInstruction(`Language: ${language}`)
-        .build();
-        
-    return prompt;
-}
-
-function buildGenerateViralIdeasPrompt(params) {
-    const { trend, language, useSearch, settings } = params;
-
-    const jsonStructureString = JSON.stringify({ "ViralIdeas": VIRAL_IDEAS_JSON_STRUCTURE }, null, 2);
-
-    const prompt = new PromptBuilder()
-        .addInstruction(`You are an expert content strategist. Your task is to generate 3 distinct viral content ideas based on the provided trend.`)
-        .addInstruction(`Trend Topic: ${trend.topic}`)
-        .addInstruction(`Language: ${language}`)
-        // New, more direct instruction block
-        .addInstruction(`\n--- RESPONSE FORMAT --- You MUST return your response as a single, valid JSON object. The root of this object MUST be a key named "ViralIdeas" which contains an array of exactly 3 idea objects. Do not include ANY commentary, markdown, or any other text outside of the single JSON object. Your entire response must be the JSON object itself and nothing else.`) 
-        .addInstruction(`The required JSON structure is:\n\`\`\`json\n${jsonStructureString}\n\`\`\`\n`)
         .build();
         
     return prompt;
@@ -667,10 +673,10 @@ function buildGenerateContentPackagePrompt(params) {
     
     const promptBuilder = new PromptBuilder()
         .addInstruction(`You are an expert content creator. Your task is to create a comprehensive content package based on the provided idea.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addBrandInfo(brandFoundation)
         .addInstruction(`Idea Title: ${idea.title}`)
         .addInstruction(`Idea Description: ${idea.description}`)
-        .addInstruction(`Language: ${language}`)
         .addInstruction(`Pillar Platform: ${pillarPlatform}`)
         .addInstruction(`Repurposed Platforms: ${repurposedPlatforms.join(', ')}`)
         .addInstruction(`Content generation options: Tone: ${options.tone}, Style: ${options.style}, Length: ${options.length}, Include Emojis: ${options.includeEmojis}`)
@@ -714,7 +720,7 @@ function buildGenerateContentPackagePrompt(params) {
     promptBuilder.addInstruction(`- IF 'contentType' is 'Carousel', the 'mediaPrompt' MUST be an ARRAY of strings (string[]), where EACH string is a detailed visual description for an AI image generator for ONE carousel image. Each image should be described individually in its own string element of the array. For example: ["Image 1 description", "Image 2 description", "Image 3 description"].`);
     promptBuilder.addInstruction(`- IF 'contentType' is 'Image', the 'mediaPrompt' MUST be a single string with a detailed visual description for an AI image generator.`);
     
-    promptBuilder.addJsonOutput(`ContentPackage`, CONTENT_PACKAGE_JSON_STRUCTURE);
+    promptBuilder.addJsonOutput("ContentPackage", CONTENT_PACKAGE_JSON_STRUCTURE);
         
     return promptBuilder.build();
 }
@@ -724,8 +730,8 @@ function buildGenerateFacebookTrendsPrompt(params) {
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert social media trend analyst. Your task is to identify trending topics on Facebook for a specific industry.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Industry: ${industry}`)
-        .addInstruction(`Language: ${language}`)
         .addJsonOutput("FacebookTrends", FACEBOOK_TRENDS_JSON_STRUCTURE)
         .build();
         
@@ -737,10 +743,10 @@ function buildGeneratePostsForFacebookTrendPrompt(params) {
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert Facebook content creator. Your task is to generate post ideas based on a trending topic.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Trend Topic: ${trend.topic}`)
         .addInstruction(`Trend Keywords: ${trend.keywords.join(', ')}`)
         .addInstruction(`Trend Analysis: ${trend.analysis}`)
-        .addInstruction(`Language: ${language}`)
         .addJsonOutput("FacebookPostIdeas", FACEBOOK_POST_IDEAS_JSON_STRUCTURE)
         .build();
         
@@ -752,84 +758,31 @@ function buildGenerateIdeasFromProductPrompt(params) {
     
     const prompt = new PromptBuilder()
         .addInstruction(`You are an expert affiliate marketer. Your task is to generate content ideas based on an affiliate product.`)
+        .addInstruction(`CRITICAL REQUIREMENT: The entire response MUST be in the following language: ${language}. Do not use any other language.`)
         .addInstruction(`Product Name: ${product.productName}`)
         .addInstruction(`Product Description: ${product.product_description}`)
         .addInstruction(`Product Features: ${product.features?.join(', ') || ''}`)
         .addInstruction(`Use Cases: ${product.use_cases?.join(', ') || ''}`)
-        .addInstruction(`Language: ${language}`)
         .addJsonOutput("ProductIdeas", PRODUCT_IDEAS_JSON_STRUCTURE)
         .build();
         
     return prompt;
 }
 
-function buildSuggestTrendsPrompt(params) {
-    const { brandFoundation, timePeriod, settings } = params;
-    
-    const prompt = new PromptBuilder()
-        .addInstruction(`You are an expert trend analyst. Your task is to identify the most relevant and trending topics in the specified industry based on the provided brand information.`)
-        .addBrandInfo(brandFoundation)
-        .addInstruction(`Time Period: ${timePeriod}`)
-        .addInstruction(`Find the most relevant and trending topics that would be valuable for content creation for this brand.`)
-        .addJsonOutput("Trends", SUGGEST_TRENDS_JSON_STRUCTURE)
-        .build();
-        
-    return prompt;
-}
-
-function buildSuggestGlobalTrendsPrompt(params) {
-    const { timePeriod, settings } = params;
-    
-    const prompt = new PromptBuilder()
-        .addInstruction(`You are an expert trend analyst. Your task is to identify the most relevant global hot trends across all industries and topics.`)
-        .addInstruction(`Time Period: ${timePeriod}`)
-        .addInstruction(`Find the most viral and trending topics that would be valuable for content creation and trendjacking opportunities.`)
-        .addJsonOutput("Trends", SUGGEST_TRENDS_JSON_STRUCTURE)
-        .build();
-        
-    return prompt;
-}
-
-
 export {
     buildMediaPlanPrompt,
-    MEDIA_PLAN_JSON_STRUCTURE,
-    PromptBuilder,
-    buildImagePromptRules,
-    buildCarouselPromptRules,
-    buildShortVideoScriptRules,
-    buildLongVideoScriptRules,
-    buildDefaultVideoRules,
-    buildPostCaptionRules,
-    buildBrandInfoComponent,
-    buildPersonaComponent,
-    buildJsonOutputComponent,
-    buildBrandKitPrompt, 
-    buildGenerateBrandProfilePrompt,
-    BRAND_KIT_JSON_STRUCTURE,
-    BRAND_PROFILE_JSON_STRUCTURE,
-    buildViralIdeasPrompt,
-    VIRAL_IDEAS_JSON_STRUCTURE,
+    buildBrandKitPrompt,
     buildAutoGeneratePersonasPrompt,
-    AUTO_GENERATE_PERSONAS_JSON_STRUCTURE,
+    buildGenerateBrandProfilePrompt,
+    buildViralIdeasPrompt,
+    buildRefinePostPrompt,
     buildTrendSuggestionPrompt,
     buildGlobalTrendSuggestionPrompt,
-    SUGGEST_TRENDS_JSON_STRUCTURE,
-    CONTENT_PACKAGE_JSON_STRUCTURE,
-    FACEBOOK_TRENDS_JSON_STRUCTURE,
-    FACEBOOK_POST_IDEAS_JSON_STRUCTURE,
-    PRODUCT_IDEAS_JSON_STRUCTURE,
-    buildRefinePostPrompt,
     buildGenerateInCharacterPostPrompt,
     buildGenerateMediaPromptForPostPrompt,
     buildAffiliateCommentPrompt,
-    buildGenerateViralIdeasPrompt,
     buildGenerateContentPackagePrompt,
     buildGenerateFacebookTrendsPrompt,
     buildGeneratePostsForFacebookTrendPrompt,
-    buildGenerateIdeasFromProductPrompt,
-    buildSuggestTrendsPrompt,
-    buildSuggestGlobalTrendsPrompt,
-    SUGGEST_TRENDS_JSON_STRUCTURE_NEW,
-    VIRAL_IDEAS_JSON_STRUCTURE_VIETNAMESE
+    buildGenerateIdeasFromProductPrompt
 };

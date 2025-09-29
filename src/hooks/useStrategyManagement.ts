@@ -13,7 +13,7 @@ import {
     loadIdeasForTrendFromDatabase,
     saveTrendsToDatabase
 } from '../services/databaseService';
-import { textGenerationService } from '../services/textGenerationService';
+
 import { AiModelConfig } from '../services/configService';
 import { ActiveTab } from '../components/Header';
 import { taskService } from '../services/taskService';
@@ -425,6 +425,51 @@ export const useStrategyManagement = ({
         }
     }, [mongoBrandId, updateAutoSaveStatus, dispatchAssets, setError, setSuccessMessage]);
 
+    const handleToggleTrendArchive = useCallback(async (trendId: string) => {
+        if (!mongoBrandId || !generatedAssets) return;
+
+        const trend = generatedAssets.trends.find(t => t.id === trendId);
+        if (!trend) return;
+
+        const updatedTrend = { ...trend, isArchived: !trend.isArchived };
+
+        dispatchAssets({ type: 'SAVE_TREND', payload: updatedTrend });
+        updateAutoSaveStatus('saving');
+        try {
+            await saveTrendToDatabase(updatedTrend, mongoBrandId);
+            updateAutoSaveStatus('saved');
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Failed to update trend archive status.");
+            dispatchAssets({ type: 'SAVE_TREND', payload: trend }); // Revert on error
+            updateAutoSaveStatus('error');
+        }
+    }, [mongoBrandId, generatedAssets, dispatchAssets, updateAutoSaveStatus, setError]);
+
+    const handleToggleIdeaArchive = useCallback(async (ideaId: string) => {
+        if (!mongoBrandId || !generatedAssets) return;
+
+        const idea = generatedAssets.ideas.find(i => i.id === ideaId);
+        if (!idea) return;
+
+        const updatedIdea = { ...idea, isArchived: !idea.isArchived };
+
+        dispatchAssets({ type: 'ADD_IDEAS', payload: [updatedIdea] }); // ADD_IDEAS handles updates
+        updateAutoSaveStatus('saving');
+        try {
+            await saveIdeasToDatabase([updatedIdea], mongoBrandId);
+            updateAutoSaveStatus('saved');
+        } catch (e) {
+            setError(e instanceof Error ? e.message : "Failed to update idea archive status.");
+            dispatchAssets({ type: 'ADD_IDEAS', payload: [idea] }); // Revert on error
+            updateAutoSaveStatus('error');
+        }
+    }, [mongoBrandId, generatedAssets, dispatchAssets, updateAutoSaveStatus, setError]);
+
+    const handleEditIdea = useCallback((idea: Idea) => {
+        console.log("Editing idea:", idea);
+        // Placeholder for actual edit logic (e.g., open a modal)
+    }, []);
+
     return {
         isSelectingTrend,
         isGeneratingIdeas,
@@ -446,5 +491,8 @@ export const useStrategyManagement = ({
         handleSaveAffiliateLink,
         handleDeleteAffiliateLink,
         handleImportAffiliateLinks,
+        handleToggleTrendArchive,
+        handleToggleIdeaArchive,
+        handleEditIdea,
     };
 };

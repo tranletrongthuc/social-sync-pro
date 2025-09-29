@@ -270,10 +270,14 @@ const deletePersonaFromDatabase = async (personaId: string, brandId: string, set
   await callDatabaseService('delete-persona', { personaId, brandId, settings }, { invalidatesCacheForBrand: brandId });
 };
 
+const updatePersonaState = async (personaId: string, isActive: boolean, brandId: string): Promise<void> => {
+  await callDatabaseService('update-persona-state', { personaId, isActive, brandId }, { invalidatesCacheForBrand: brandId });
+};
+
 const assignPersonaToPlanInDatabase = async (
   planId: string,
   personaId: string | null,
-  updatedPosts: MediaPlanPost[],
+  updatedPosts: { id: string; mediaPrompt: string | string[]; }[],
   brandId: string
 ): Promise<void> => {
   await callDatabaseService('assign-persona-to-plan', { planId, personaId, updatedPosts, brandId }, { invalidatesCacheForBrand: brandId });
@@ -548,6 +552,7 @@ export {
   deleteAffiliateLinkFromDatabase,
   savePersonaToDatabase,
   deletePersonaFromDatabase,
+  updatePersonaState,
   assignPersonaToPlanInDatabase,
   updateMediaPlanPostInDatabase,
   saveMediaPlanGroupToDatabase,

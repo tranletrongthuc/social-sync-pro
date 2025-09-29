@@ -215,7 +215,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
 
   return (
     <div className="fixed inset-0 bg-gray-900 bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl p-8 border border-gray-200 m-4 transform transition-all max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-lg shadow-xl w-full md:max-w-2xl p-4 md:p-8 border border-gray-200 m-4 md:my-8 transform transition-all max-h-[95vh] md:max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-start">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
@@ -228,7 +228,17 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, settings
         </div>
         
         <div className="border-b border-gray-200 mt-6">
-            <div className="flex space-x-4">
+            {/* Mobile Tab Selector */}
+            <div className="md:hidden mb-4">
+                <Select value={activeTab} onChange={(e) => setActiveTab(e.target.value as ActiveTab)} className="w-full">
+                    <option value="general">{texts.tab_general}</option>
+                    <option value="generation">{texts.tab_generation}</option>
+                    <option value="affiliate">{texts.tab_affiliate}</option>
+                    <option value="rules">{texts.tab_rules}</option>
+                </Select>
+            </div>
+            {/* Desktop Horizontal Tabs */}
+            <div className="hidden md:flex space-x-4 overflow-x-auto pb-2">
                 <TabButton tabId="general" text={texts.tab_general} activeTab={activeTab} onClick={setActiveTab} />
                 <TabButton tabId="generation" text={texts.tab_generation} activeTab={activeTab} onClick={setActiveTab} />
                 <TabButton tabId="affiliate" text={texts.tab_affiliate} activeTab={activeTab} onClick={setActiveTab} />

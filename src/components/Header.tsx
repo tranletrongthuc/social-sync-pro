@@ -1,9 +1,6 @@
-
-
-
 import React, { useState } from 'react';
 import { Button } from './ui';
-import { SettingsIcon, PlugIcon, ArchiveIcon, MenuIcon, CheckCircleIcon, LinkIcon, CollectionIcon, TagIcon, UsersIcon, LightBulbIcon, ListBulletIcon } from './icons';
+import { SettingsIcon, MenuIcon, CheckCircleIcon, LinkIcon, CollectionIcon, TagIcon, UsersIcon, LightBulbIcon, ListBulletIcon } from './icons';
 
 export type ActiveTab = 'brandKit' | 'mediaPlan' | 'affiliateVault' | 'personas' | 'strategy' | 'taskManager';
 
@@ -22,28 +19,22 @@ interface HeaderProps {
 const TabButton: React.FC<{
     tabId: ActiveTab;
     text: string;
-    icon: React.ReactNode;
     activeTab: ActiveTab;
     onClick: (tabId: ActiveTab) => void;
-}> = ({ tabId, text, icon, activeTab, onClick }) => (
+}> = ({ tabId, text, activeTab, onClick }) => (
     <button       
-        onClick={() => {
-        console.log("Tab button clicked:", tabId);
-        onClick(tabId);
-    }}
-    className={`flex shrink-0 items-center gap-2 px-3 py-3 text-sm font-medium transition-colors focus:outline-none whitespace-nowrap ${
+        onClick={() => onClick(tabId)}
+        className={`flex shrink-0 items-center gap-2 px-3 py-2 text-sm font-medium transition-colors focus:outline-none whitespace-nowrap ${
         activeTab === tabId
         ? 'border-b-2 border-gray-800 text-gray-800' 
         : 'text-gray-500 hover:text-gray-900 border-b-2 border-transparent'
     }`}
     >
-        {icon}
         {text}
-        </button>
-    );
+    </button>
+);
 
 const AutoSaveIndicator: React.FC<{ status: HeaderProps['autoSaveStatus'], language: string }> = ({ status, language }) => {
-    console.log('AutoSaveIndicator rendering with status:', status);
     const T = { 
         'Việt Nam': { saving: 'Đang lưu...', saved: 'Đã lưu', error: 'Lỗi lưu' }, 
         'English': { saving: 'Saving...', saved: 'All changes saved', error: 'Save error' }
@@ -53,64 +44,44 @@ const AutoSaveIndicator: React.FC<{ status: HeaderProps['autoSaveStatus'], langu
     let content = null;
     switch(status) {
         case 'saving':
-            content = (
-                <>
-                    <div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                    <span>{texts.saving}</span>
-                </>
-            );
+            content = <><div className="w-4 h-4 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div><span>{texts.saving}</span></>;
             break;
         case 'saved':
-            content = (
-                <>
-                    <CheckCircleIcon className="h-5 w-5 text-green-600" />
-                    <span>{texts.saved}</span>
-                </>
-            );
+            content = <><CheckCircleIcon className="h-5 w-5 text-green-600" /><span>{texts.saved}</span></>;
             break;
         case 'error':
-            content = (
-                <>
-                    <span className="text-red-500 font-bold">!</span>
-                    <span>{texts.error}</span>
-                </>
-            );
+            content = <><span className="text-red-500 font-bold">!</span><span>{texts.error}</span></>;
             break;
         default:
-            return <div className="w-44 h-6 text-right">&nbsp;</div>; // Keep space for layout consistency
+            return <div className="w-44 h-6 text-right">&nbsp;</div>;
     }
     
-    return (
-        <div className="flex items-center gap-2 text-sm text-gray-500 w-44 justify-end">
-            {content}
-        </div>
-    )
+    return <div className="flex items-center gap-2 text-sm text-gray-500 w-44 justify-end">{content}</div>;
 };
-
 
 export const Header: React.FC<HeaderProps> = (props) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     const TABS_CONFIG = {
         'Việt Nam': {
-            brandKit: { text: 'Bộ Thương hiệu', icon: <TagIcon className="h-5 w-5"/> },
-            mediaPlan: { text: 'Kế hoạch Truyền thông', icon: <CollectionIcon className="h-5 w-5"/> },
-            strategy: { text: 'Chiến lược Nội dung', icon: <LightBulbIcon className="h-5 w-5"/> },
-            affiliateVault: { text: 'Kho Affiliate', icon: <LinkIcon className="h-5 w-5"/> },
-            personas: { text: 'KOL/KOC', icon: <UsersIcon className="h-5 w-5"/> },
-            taskManager: { text: 'Quản lý Tác vụ', icon: <ListBulletIcon className="h-5 w-5"/> },
+            brandKit: 'Bộ Thương hiệu',
+            mediaPlan: 'Kế hoạch TT',
+            strategy: 'Chiến lược ND',
+            affiliateVault: 'Kho Affiliate',
+            personas: 'KOL/KOC',
+            taskManager: 'Tác vụ',
             saveProject: 'Lưu dự án',
             savingProject: 'Đang lưu...',
             startOver: 'Bắt đầu lại',
             settings: 'Cài đặt',
         },
         'English': {
-            brandKit: { text: 'Brand Kit', icon: <TagIcon className="h-5 w-5"/> },
-            mediaPlan: { text: 'Media Plan', icon: <CollectionIcon className="h-5 w-5"/> },
-            strategy: { text: 'Content Strategy', icon: <LightBulbIcon className="h-5 w-5"/> },
-            affiliateVault: { text: 'Affiliate Vault', icon: <LinkIcon className="h-5 w-5"/> },
-            personas: { text: 'KOL/KOC', icon: <UsersIcon className="h-5 w-5"/> },
-            taskManager: { text: 'Task Manager', icon: <ListBulletIcon className="h-5 w-5"/> },
+            brandKit: 'Brand Kit',
+            mediaPlan: 'Media Plan',
+            strategy: 'Strategy',
+            affiliateVault: 'Affiliate Vault',
+            personas: 'Personas',
+            taskManager: 'Tasks',
             saveProject: 'Save Project',
             savingProject: 'Saving...',
             startOver: 'Start Over',
@@ -120,20 +91,21 @@ export const Header: React.FC<HeaderProps> = (props) => {
     const currentTexts = (TABS_CONFIG as any)[props.language] || TABS_CONFIG['English'];
 
     const actionButtons = (isMobile: boolean = false) => {
-        const mobileClasses = isMobile ? 'w-full !justify-start text-base' : '';
+        const buttonSize = isMobile ? 'lg' : 'sm';
+        const commonMobileClasses = isMobile ? 'w-full !justify-start' : '';
+
         return (
             <>
-                <Button onClick={props.onSaveProject} disabled={props.isSavingProject} variant="secondary" className={`${mobileClasses}`}>
+                <Button onClick={props.onSaveProject} disabled={props.isSavingProject} variant="secondary" size={buttonSize} className={commonMobileClasses}>
                     {props.isSavingProject ? currentTexts.savingProject : currentTexts.saveProject}
                 </Button>
-                <Button onClick={props.onOpenSettings} variant="tertiary" className={`flex items-center gap-2 ${mobileClasses}`}>
-                    <SettingsIcon className="h-5 w-5"/>
-                    <span>{currentTexts.settings}</span>
+                <Button onClick={props.onOpenSettings} variant="tertiary" size={buttonSize} icon={<SettingsIcon className="h-4 w-4"/>} className={commonMobileClasses}>
+                    <span className={isMobile ? '' : 'hidden sm:inline'}>{currentTexts.settings}</span>
                 </Button>
-                <Button onClick={() => window.location.href = '/admin'} variant="tertiary" className={`flex items-center gap-2 ${mobileClasses}`}>
-                    <span>Admin</span>
+                <Button onClick={() => window.location.href = '/admin'} variant="tertiary" size={buttonSize} className={commonMobileClasses}>
+                    <span className={isMobile ? '' : 'hidden sm:inline'}>Admin</span>
                 </Button>
-                 <Button onClick={props.onStartOver} variant="tertiary" className={`text-red-600 hover:bg-red-50 ${mobileClasses}`}>
+                 <Button onClick={props.onStartOver} variant="tertiary" size={buttonSize} className={`${commonMobileClasses} text-red-600 hover:bg-red-50`}>
                     {currentTexts.startOver}
                 </Button>
             </>
@@ -141,46 +113,56 @@ export const Header: React.FC<HeaderProps> = (props) => {
     }
     
     return (
-        <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-lg">
-             <div className="border-b border-gray-200">
-                <div className="flex items-center justify-between gap-4 px-4 sm:px-6 lg:px-8 h-16">
-                    <h1 className="text-xl font-semibold text-gray-900">SocialSync Pro</h1>
-                    
-                    {/* Desktop Buttons */}
-                    <div className="hidden md:flex items-center gap-2">
-                        <AutoSaveIndicator status={props.autoSaveStatus} language={props.language} />
-                        {actionButtons(false)}
-                    </div>
+        <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-lg border-b border-gray-200">
+            <div className="flex items-center justify-between gap-4 px-4 sm:px-6 h-14">
+                {/* Left Section */}
+                <div className="flex items-center gap-4">
+                    <h1 className="text-lg font-semibold text-gray-900 whitespace-nowrap">SocialSync Pro</h1>
+                </div>
 
-                    {/* Mobile Menu Button */}
-                    <div className="md:hidden">
-                        <Button variant="tertiary" onClick={() => setIsMenuOpen(!isMenuOpen)}>
-                            <MenuIcon className="h-6 w-6"/>
-                        </Button>
-                    </div>
+                {/* Center Navigation (Desktop) */}
+                <div className="hidden md:flex flex-grow items-center justify-center">
+                    <nav className="flex items-center gap-2 lg:gap-4 -mb-px">
+                        <TabButton tabId="brandKit" text={currentTexts.brandKit} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                        <TabButton tabId="strategy" text={currentTexts.strategy} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                        <TabButton tabId="mediaPlan" text={currentTexts.mediaPlan} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                        <TabButton tabId="affiliateVault" text={currentTexts.affiliateVault} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                        <TabButton tabId="personas" text={currentTexts.personas} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                        <TabButton tabId="taskManager" text={currentTexts.taskManager} activeTab={props.activeTab} onClick={props.setActiveTab} />
+                    </nav>
+                </div>
+
+                {/* Right Section (Desktop) */}
+                <div className="hidden md:flex items-center gap-2 justify-end">
+                    <AutoSaveIndicator status={props.autoSaveStatus} language={props.language} />
+                    {actionButtons(false)}
+                </div>
+
+                {/* Mobile Menu Button */}
+                <div className="md:hidden">
+                    <Button variant="tertiary" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+                        <MenuIcon className="h-6 w-6"/>
+                    </Button>
                 </div>
             </div>
+
             {/* Mobile Menu */}
             {isMenuOpen && (
-                <div className="md:hidden border-b border-gray-200 p-4 bg-white/95">
-                    <div className="flex flex-col gap-3">
+                <div className="md:hidden absolute top-full left-0 w-full border-b border-gray-200 bg-white/95 shadow-lg">
+                    <nav className="flex flex-col p-2">
+                        <TabButton tabId="brandKit" text={currentTexts.brandKit} activeTab={props.activeTab} onClick={(tab) => { props.setActiveTab(tab); setIsMenuOpen(false); }} />
+                        <TabButton tabId="strategy" text={currentTexts.strategy} activeTab={props.activeTab} onClick={(tab) => { props.setActiveTab(tab); setIsMenuOpen(false); }} />
+                        <TabButton tabId="mediaPlan" text={currentTexts.mediaPlan} activeTab={props.activeTab} onClick={(tab) => { props.setActiveTab(tab); setIsMenuOpen(false); }} />
+                        <TabButton tabId="affiliateVault" text={currentTexts.affiliateVault} activeTab={props.activeTab} onClick={(tab) => { props.setActiveTab(tab); setIsMenuOpen(false); }} />
+                        <TabButton tabId="personas" text={currentTexts.personas} activeTab={props.activeTab} onClick={(tab) => { props.setActiveTab(tab); setIsMenuOpen(false); }} />
+                        <TabButton tabId="taskManager" text={currentTexts.taskManager} activeTab={props.activeTab} onClick={(tab) => { props.setActiveTab(tab); setIsMenuOpen(false); }} />
+                    </nav>
+                    <div className="border-t border-gray-200 p-4 flex flex-col gap-3">
                         <div className="self-end"><AutoSaveIndicator status={props.autoSaveStatus} language={props.language} /></div>
                         {actionButtons(true)}
                     </div>
                 </div>
             )}
-            <div className="border-b border-gray-200 hidden md:block">
-                <div className="px-4 sm:px-6 lg:px-8">
-                    <nav className="flex items-center gap-8 overflow-x-auto whitespace-nowrap -mb-px">
-                         <TabButton tabId="brandKit" text={currentTexts.brandKit.text} icon={currentTexts.brandKit.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                         <TabButton tabId="strategy" text={currentTexts.strategy.text} icon={currentTexts.strategy.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                         <TabButton tabId="mediaPlan" text={currentTexts.mediaPlan.text} icon={currentTexts.mediaPlan.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                         <TabButton tabId="affiliateVault" text={currentTexts.affiliateVault.text} icon={currentTexts.affiliateVault.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                         <TabButton tabId="personas" text={currentTexts.personas.text} icon={currentTexts.personas.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                         <TabButton tabId="taskManager" text={currentTexts.taskManager.text} icon={currentTexts.taskManager.icon} activeTab={props.activeTab} onClick={props.setActiveTab} />
-                    </nav>
-                </div>
-            </div>
         </header>
     );
 };

@@ -1,8 +1,47 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BackgroundTask } from '../types/task.types';
-import StandardPageView from './StandardPageView';
-import { RefreshIcon } from './icons';
+import GenericTabTemplate from './GenericTabTemplate';
+import { RefreshIcon, DotsVerticalIcon, TrashIcon, ArrowPathIcon as RetryIcon, XIcon as CancelIcon } from './icons';
+import RefreshButton from './RefreshButton';
 import ModelLabel from './ModelLabel';
+import { Card, Label, Button } from '../design/components';
+import type { LabelVariant } from '../design/components/Label';
+
+const TaskActions: React.FC<{ task: BackgroundTask; onCancel: (id: string) => void; onRetry: (id: string) => void; onDelete: (id: string) => void; }> = ({ task, onCancel, onRetry, onDelete }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const canCancel = task.status === 'queued' || task.status === 'processing';
+  const canRetry = task.status === 'failed';
+  const canDelete = task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled';
+
+  return (
+    <div className="relative inline-block text-left" ref={menuRef}>
+      <button onClick={() => setIsOpen(!isOpen)} className="p-1 rounded-full hover:bg-gray-200">
+        <DotsVerticalIcon className="h-5 w-5" />
+      </button>
+      {isOpen && (
+        <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
+          <div className="py-1">
+            {canCancel && <button onClick={() => { onCancel(task.taskId); setIsOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><CancelIcon className="h-4 w-4"/> Cancel</button>}
+            {canRetry && <button onClick={() => { onRetry(task.taskId); setIsOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><RetryIcon className="h-4 w-4"/> Retry</button>}
+            {canDelete && <button onClick={() => { onDelete(task.taskId); setIsOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/> Delete</button>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface TaskManagerDisplayProps {
   tasks: BackgroundTask[];
@@ -10,9 +49,32 @@ interface TaskManagerDisplayProps {
   language: string;
   mongoBrandId: string | null;
   onLoadData?: (brandId: string) => Promise<void>;
+  onCancelTask: (taskId: string) => void;
+  onRetryTask: (taskId: string) => void;
+  onDeleteTask: (taskId: string) => void;
 }
 
-const TaskManagerDisplay: React.FC<TaskManagerDisplayProps> = ({ tasks, isLoading, language, mongoBrandId, onLoadData }) => {
+const TaskManagerDisplay: React.FC<TaskManagerDisplayProps> = ({ tasks, isLoading, language, mongoBrandId, onLoadData, onCancelTask, onRetryTask, onDeleteTask }) => {
+  const [selectedTaskIds, setSelectedTaskIds] = useState(new Set<string>());
+
+  const handleToggleAll = () => {
+    if (selectedTaskIds.size === tasks.length) {
+      setSelectedTaskIds(new Set());
+    } else {
+      setSelectedTaskIds(new Set(tasks.map(t => t.taskId)));
+    }
+  };
+
+  const handleToggleOne = (taskId: string) => {
+    const newSelection = new Set(selectedTaskIds);
+    if (newSelection.has(taskId)) {
+      newSelection.delete(taskId);
+    } else {
+      newSelection.add(taskId);
+    }
+    setSelectedTaskIds(newSelection);
+  };
+
   const T = {
     'Việt Nam': {
       title: 'Quản lý Tác vụ',
@@ -39,83 +101,96 @@ const TaskManagerDisplay: React.FC<TaskManagerDisplayProps> = ({ tasks, isLoadin
   };
   const texts = T[language as keyof typeof T] || T['English'];
 
-  const getStatusColor = (status: BackgroundTask['status']) => {
+  const getStatusVariant = (status: BackgroundTask['status']): LabelVariant => {
     switch (status) {
-      case 'completed': return 'bg-green-100 text-green-800';
-      case 'failed': return 'bg-red-100 text-red-800';
-      case 'cancelled': return 'bg-yellow-100 text-yellow-800';
-      case 'processing': return 'bg-blue-100 text-blue-800';
+      case 'completed': return 'success';
+      case 'failed': return 'error';
+      case 'cancelled': return 'warning';
+      case 'processing': return 'info';
       case 'queued':
       default:
-        return 'bg-gray-100 text-gray-800';
+        return 'default';
     }
   };
 
+  const actionButtons = (
+    <RefreshButton 
+      onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+      isLoading={isLoading}
+      language={language}
+    />
+  );
+
   return (
-    <StandardPageView 
+    <GenericTabTemplate 
       title={texts.title} 
       subtitle={texts.subtitle}
-      actions={
-        <button 
-          onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
-          className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-          aria-label="Refresh data"
-          disabled={isLoading}
-        >
-          <RefreshIcon className={`h-4 w-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
-        </button>
-      }
+      actionButtons={actionButtons}
+      isLoading={isLoading}
     >
       <div className="p-4 sm:p-6 lg:p-8 h-full overflow-y-auto">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-full">
-            <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin"></div>
-            <p className="ml-4 text-gray-600">{texts.loading}</p>
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="text-center text-gray-500 py-16">
-            <p>{texts.noTasks}</p>
-          </div>
+        {tasks.length === 0 && !isLoading ? (
+          <Card variant="outlined" className="text-center py-16">
+            <p className="text-gray-500">{texts.noTasks}</p>
+          </Card>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full bg-white border border-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.taskType}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.status}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.progress}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.modelUsed}</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.createdAt}</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {tasks.map((task) => (
-                  <tr key={task.taskId}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800">{task.type}</td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(task.status)}`}>
-                        {task.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${task.progress}%` }}></div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {task.payload?.modelUsed ? <ModelLabel model={task.payload.modelUsed} size="small" /> : 'N/A'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(task.createdAt).toLocaleString()}
-                    </td>
+          <Card>
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left">
+                      <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-green focus:ring-brand-green" 
+                        checked={tasks.length > 0 && selectedTaskIds.size === tasks.length}
+                        onChange={handleToggleAll}
+                      />
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.taskType}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.status}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.progress}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.modelUsed}</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{texts.createdAt}</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {tasks.map((task) => (
+                    <tr key={task.taskId} className={`${selectedTaskIds.has(task.taskId) ? 'bg-green-50' : ''}`}>
+                      <td className="px-6 py-4">
+                        <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-brand-green focus:ring-brand-green" 
+                          checked={selectedTaskIds.has(task.taskId)}
+                          onChange={() => handleToggleOne(task.taskId)}
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-800 font-medium">{task.type}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <Label variant={getStatusVariant(task.status)} size="sm">
+                          {task.status}
+                        </Label>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="w-full bg-gray-200 rounded-full h-2.5">
+                          <div className="bg-blue-600 h-2.5 rounded-full" style={{ width: `${task.progress}%` }}></div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {task.payload?.modelUsed ? <ModelLabel model={task.payload.modelUsed} size="small" /> : 'N/A'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(task.createdAt).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                        <TaskActions task={task} onCancel={onCancelTask} onRetry={onRetryTask} onDelete={onDeleteTask} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
         )}
       </div>
-    </StandardPageView>
+    </GenericTabTemplate>
   );
 };
 

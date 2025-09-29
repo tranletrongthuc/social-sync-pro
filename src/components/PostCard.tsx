@@ -1,9 +1,6 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Button, Carousel } from './ui';
-import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, CheckCircleIcon, PencilIcon, CopyIcon, CheckSolidIcon, DotsVerticalIcon, KhongMinhIcon, ChatBubbleLeftIcon, VideoCameraIcon, TagIcon, PhotographIcon, CalendarIcon } from './icons';
-import type { MediaPlanPost, PostInfo } from '../../types';
-import { renderPostContent } from '../services/utils';
-import ModelLabel from './ModelLabel';
+import React from 'react';
+import { YouTubeIcon, FacebookIcon, InstagramIcon, TikTokIcon, PinterestIcon, SparklesIcon, PhotographIcon, VideoCameraIcon, CollectionIcon, ChatBubbleLeftIcon, CheckCircleIcon, ClockIcon, PencilIcon } from './icons';
+import type { PostInfo } from '../../types';
 
 const platformIcons: Record<string, React.FC<any>> = {
     YouTube: YouTubeIcon,
@@ -11,6 +8,15 @@ const platformIcons: Record<string, React.FC<any>> = {
     Instagram: InstagramIcon,
     TikTok: TikTokIcon,
     Pinterest: PinterestIcon
+};
+
+const contentTypeIcons: Record<string, React.FC<any>> = {
+    Image: PhotographIcon,
+    Video: VideoCameraIcon,
+    Carousel: CollectionIcon,
+    Story: SparklesIcon,
+    Shorts: VideoCameraIcon,
+    Reel: VideoCameraIcon
 };
 
 export interface PostCardProps {
@@ -22,143 +28,230 @@ export interface PostCardProps {
     videoUrl?: string;
     isSelected: boolean;
     onToggleSelection: (postId: string) => void;
+    onTogglePostApproval: (postInfo: PostInfo) => void;
     scheduledAt?: string;
     publishedAt?: string;
     publishedUrl?: string;
 }
 
+const getStatusColor = (status: string) => {
+    switch (status) {
+        case 'published': return 'bg-green-100 text-green-800';
+        case 'scheduled': return 'bg-blue-100 text-blue-800';
+        case 'approved': return 'bg-purple-100 text-purple-800';
+        case 'needs_review': return 'bg-yellow-100 text-yellow-800';
+        case 'draft': return 'bg-gray-100 text-gray-800';
+        default: return 'bg-gray-100 text-gray-800';
+    }
+};
+
 const PostCard: React.FC<PostCardProps> = (props) => {
-    const { postInfo, language, onViewDetails, imageUrl, imageUrls, videoUrl, isSelected, onToggleSelection, scheduledAt, publishedAt, publishedUrl } = props;
+    const { postInfo, onViewDetails, imageUrl, imageUrls, videoUrl, isSelected, onToggleSelection, scheduledAt, publishedAt } = props;
     const { post } = postInfo;
     const Icon = platformIcons[post.platform] || SparklesIcon;
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
-    const [copied, setCopied] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-    const T = {
-        'Việt Nam': { edit: "Xem / Chỉnh sửa", copy: "Sao chép Nội dung", copied: "Đã chép", draft: "Bản nháp", promoted: "SP KM", commented: "Bình luận", video: "Video", scheduled: "Đã lên lịch vào", published: "Đã đăng vào", viewPost: "Xem bài đăng", },
-        'English': { edit: "View / Edit", copy: "Copy Content", copied: "Copied", draft: "Draft", promoted: "Promo", commented: "Comment", video: "Video", scheduled: "Scheduled at", published: "Published at", viewPost: "View Post", }
-    };
-    const texts = (T as any)[language] || T['English'];
-    const textToCopy = [
-        post.title,
-        Array.isArray(post.content) ? post.content.join('\n\n') : post.content,
-        (post.hashtags || []).join(' '),
-        `CTA: ${post.cta}`
-    ].filter(Boolean).join('\n\n');
-
-    const handleCopy = () => {
-        navigator.clipboard.writeText(textToCopy);
-        setCopied(true);
-        setTimeout(() => {
-            setCopied(false);
-            setIsMenuOpen(false);
-        }, 2000);
-    };
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setIsMenuOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+    const ContentTypeIcon = contentTypeIcons[post.contentType] || SparklesIcon;
 
     const handleCardClick = (e: React.MouseEvent) => {
-        if ((e.target as HTMLElement).closest('.no-expand') || (e.target as HTMLElement).closest('a')) {
+        if ((e.target as HTMLElement).closest('.no-expand')) {
             return;
         }
         onViewDetails(postInfo);
     };
 
-    const hasPromo = (post.promotedProductIds?.length || 0) > 0;
-    const hasComment = !!post.autoComment;
-    const hasVideo = !!videoUrl;
+    // Format timestamp
+    const formatDate = (dateString?: string) => {
+        if (!dateString) return 'Unknown time';
+        
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) {
+            return 'Just now';
+        } else if (diffMins < 60) {
+            return `${diffMins} minutes ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours} hours ago`;
+        } else {
+            return `${diffDays} days ago`;
+        }
+    };
+
+    // Get first 200 characters of title
+    const getTitlePreview = () => {
+        if (!post.title) return 'Untitled Post';
+        return post.title.length > 200 ? `${post.title.substring(0, 200)}...` : post.title;
+    };
+
+    // Get first sentence of content
+    const getContentPreview = () => {
+        if (!post.content) return 'No content';
+        
+        // If content is an array, join it
+        const contentStr = Array.isArray(post.content) ? post.content.join(' ') : post.content;
+        
+        // Extract first sentence (ending with . ! or ?)
+        const sentenceMatch = contentStr.match(/^[^.!?]*[.!?]/);
+        if (sentenceMatch) {
+            return sentenceMatch[0].trim();
+        }
+        
+        // If no sentence found, return first 100 characters
+        return contentStr.length > 100 ? `${contentStr.substring(0, 100)}...` : contentStr;
+    };
+
+    // Format hashtags as badges
+    const renderHashtags = () => {
+        if (!post.hashtags || post.hashtags.length === 0) return null;
+        
+        return (
+            <div className="flex flex-wrap gap-1 mt-2">
+                {post.hashtags.slice(0, 3).map((tag, index) => (
+                    <span key={index} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                        {tag}
+                    </span>
+                ))}
+                {post.hashtags.length > 3 && (
+                    <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded-full">
+                        +{post.hashtags.length - 3} more
+                    </span>
+                )}
+            </div>
+        );
+    };
+
+    // Format labels for status, pillar, modelUsed
+    const renderLabels = () => {
+        return (
+            <div className="flex flex-wrap gap-1 mt-2">
+                {post.status && (
+                    <span className={`text-xs px-2 py-1 rounded-full ${getStatusColor(post.status)}`}>
+                        {post.status}
+                    </span>
+                )}
+                {post.pillar && (
+                    <span className="text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full">
+                        {post.pillar}
+                    </span>
+                )}
+                {post.modelUsed && (
+                    <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full truncate max-w-[120px]" title={post.modelUsed}>
+                        {post.modelUsed}
+                    </span>
+                )}
+            </div>
+        );
+    };
 
     return (
-        <div className={`bg-white rounded-xl border-2 transition-all duration-300 ${isSelected ? 'border-brand-green shadow-lg' : 'border-gray-200 hover:border-gray-300 hover:shadow-md'}`}>
-            <div className="relative cursor-pointer" onClick={handleCardClick}>
-                <div className="absolute top-3 left-3 z-10 no-expand">
-                    <input
-                        type="checkbox"
-                        className="h-5 w-5 rounded border-gray-300 text-brand-green focus:ring-brand-green"
-                        checked={isSelected}
-                        onChange={(e) => {
-                            e.stopPropagation();
-                            onToggleSelection(post.id);
-                        }}
-                    />
-                </div>
-                
-                {/* CORRECTED MEDIA RENDERING LOGIC */}
-                <div className="aspect-w-16 aspect-h-9 bg-gray-100 rounded-t-lg overflow-hidden">
-                    {(post.contentType === 'Carousel' && imageUrls && imageUrls.length > 0) ? (
-                        <Carousel images={imageUrls} className="w-full h-full object-cover" />
-                    ) : imageUrl ? (
-                        <img src={imageUrl} alt={post.title} className="w-full h-full object-cover" />
-                    ) : hasVideo && videoUrl ? (
-                         <video src={videoUrl} className="w-full h-full object-cover" controls={false} />
-                    ) : (
-                        <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                            <PhotographIcon className="h-10 w-10 text-gray-400" />
-                        </div>
-                    )}
-                </div>
+        <div 
+            className={`flex items-start p-4 border-b border-gray-200 transition-colors duration-200 cursor-pointer hover:bg-gray-50 ${isSelected ? 'bg-green-50' : 'bg-white'}`}
+            onClick={handleCardClick}
+        >
+            {/* Selection Checkbox - Left side */}
+            <div className="pr-3 pt-1 no-expand flex-shrink-0">
+                <input
+                    type="checkbox"
+                    className="h-5 w-5 rounded border-gray-300 text-brand-green focus:ring-brand-green"
+                    checked={isSelected}
+                    onChange={(e) => {
+                        e.stopPropagation();
+                        onToggleSelection(post.id);
+                    }}
+                />
             </div>
 
-            <div className="p-4">
-                <div className="flex justify-between items-start">
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Icon className="h-5 w-5" />
-                        <span>{post.platform}</span>
-                        <span className="text-gray-300">•</span>
-                        <span>{post.contentType}</span>
-                        {post.modelUsed && <ModelLabel model={post.modelUsed} size="small" />}
+            {/* Thumbnail Image - Left side */}
+            <div className="w-24 flex-shrink-0 bg-gray-100 rounded overflow-hidden mr-4 self-stretch">
+                {(post.contentType === 'Carousel' && imageUrls && imageUrls.length > 0) ? (
+                    <img 
+                        src={imageUrls[0]} 
+                        alt={post.title} 
+                        className="w-full h-full object-cover"
+                    />
+                ) : imageUrl ? (
+                    <img 
+                        src={imageUrl} 
+                        alt={post.title} 
+                        className="w-full h-full object-cover"
+                    />
+                ) : videoUrl ? (
+                    <div className="w-full h-full bg-gray-200 flex items-center justify-center relative">
+                        <video 
+                            src={videoUrl} 
+                            className="w-full h-full object-cover" 
+                            controls={false} 
+                        />
+                        <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                            <VideoCameraIcon className="h-6 w-6 text-white" />
+                        </div>
                     </div>
-                    <div className="relative no-expand" ref={menuRef}>
-                        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-400 hover:text-gray-600">
-                            <DotsVerticalIcon className="h-5 w-5" />
-                        </button>
-                        {isMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-20">
-                                <button onClick={() => onViewDetails(postInfo)} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2">
-                                    <PencilIcon className="h-4 w-4" /> {texts.edit}
-                                </button>
-                                <button onClick={handleCopy} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2">
-                                    {copied ? <CheckSolidIcon className="h-4 w-4 text-green-500" /> : <CopyIcon className="h-4 w-4" />}
-                                    {copied ? texts.copied : texts.copy}
-                                </button>
-                            </div>
-                        )}
+                ) : (
+                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                        <PhotographIcon className="h-6 w-6 text-gray-400" />
+                    </div>
+                )}
+            </div>
+
+            {/* Content - Right side */}
+            <div className="flex-1 min-w-0">
+                {/* Title */}
+                <h3 className="font-semibold text-gray-900 text-sm leading-tight line-clamp-2 mb-1">
+                    {getTitlePreview()}
+                </h3>
+                
+                {/* Content Preview */}
+                <p className="text-gray-600 text-xs mt-1 line-clamp-2">
+                    {getContentPreview()}
+                </p>
+                
+                {/* Platform and Content Type Icons */}
+                <div className="flex items-center gap-2 mt-2">
+                    <div className="flex items-center gap-1">
+                        <Icon className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                        <span className="text-xs text-gray-500">{post.platform}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <ContentTypeIcon className="h-4 w-4 flex-shrink-0 text-gray-500" />
+                        <span className="text-xs text-gray-500">{post.contentType}</span>
                     </div>
                 </div>
-                <h3 className="mt-2 font-bold text-lg text-gray-900 leading-tight cursor-pointer" onClick={handleCardClick}>
-                    {post.title}
-                </h3>
-                <p className="mt-1 text-sm text-gray-600 font-serif line-clamp-2 cursor-pointer" onClick={handleCardClick}>
-                    {renderPostContent(post.content)}
-                </p>
-                <div className="mt-4 flex flex-wrap justify-between items-end gap-2">
-                    <div className="flex flex-wrap gap-2">
-                        {post.status === 'draft' && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-gray-100 text-gray-700">{texts.draft}</span>}
-                        {hasPromo && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-800 flex items-center gap-1"><KhongMinhIcon className="h-3 w-3" /> {texts.promoted}</span>}
-                        {hasComment && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-blue-100 text-blue-800 flex items-center gap-1"><ChatBubbleLeftIcon className="h-3 w-3" /> {texts.commented}</span>}
-                        {hasVideo && <span className="text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-800 flex items-center gap-1"><VideoCameraIcon className="h-3 w-3" /> {texts.video}</span>}
-                    </div>
-                    <div className="text-xs text-gray-400 text-right min-w-max">
-                        {publishedAt ? (
-                            <a href={publishedUrl || '#'} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-green-600 hover:underline no-expand">
-                                <CheckCircleIcon className="h-4 w-4" />
-                                <span>{texts.published} {new Date(publishedAt).toLocaleDateString()}</span>
-                            </a>
-                        ) : scheduledAt ? (
-                            <span className="flex items-center gap-1 text-blue-600">
-                                <CalendarIcon className="h-4 w-4" />
-                                <span>{texts.scheduled} {new Date(scheduledAt).toLocaleDateString()}</span>
-                            </span>
-                        ) : null}
-                    </div>
+                
+                {/* Labels (status, pillar, modelUsed) */}
+                {renderLabels()}
+                
+                {/* Hashtags */}
+                {renderHashtags()}
+                
+                {/* Timestamps */}
+                <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                    {publishedAt && (
+                        <div className="flex items-center gap-1">
+                            <ClockIcon className="h-3 w-3" />
+                            <span title={`Published: ${publishedAt}`}>{formatDate(publishedAt)}</span>
+                        </div>
+                    )}
+                    {scheduledAt && (
+                        <div className="flex items-center gap-1">
+                            <ClockIcon className="h-3 w-3" />
+                            <span title={`Scheduled: ${scheduledAt}`}>{formatDate(scheduledAt)}</span>
+                        </div>
+                    )}
+                    {post.publishedAt && (
+                        <div className="flex items-center gap-1">
+                            <ClockIcon className="h-3 w-3" />
+                            <span title={`Published: ${post.publishedAt}`}>{formatDate(post.publishedAt)}</span>
+                        </div>
+                    )}
+                    {post.scheduledAt && (
+                        <div className="flex items-center gap-1">
+                            <ClockIcon className="h-3 w-3" />
+                            <span title={`Scheduled: ${post.scheduledAt}`}>{formatDate(post.scheduledAt)}</span>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

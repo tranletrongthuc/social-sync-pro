@@ -3,8 +3,9 @@ import ExcelJS, { Cell } from 'exceljs';
 import type { AffiliateLink } from '../../types';
 import { Button, Input, Select } from './ui';
 import { ArrowPathIcon, PlusIcon, UploadIcon, SearchIcon, ScaleIcon, CollectionIcon, LinkIcon, RefreshIcon } from './icons';
+import RefreshButton from './RefreshButton';
 import ProductCard from './ProductCard';
-import StandardPageView from './StandardPageView';
+import GenericTabTemplate from './GenericTabTemplate';
 
 interface AffiliateVaultDisplayProps {
   mongoBrandId: string | null;
@@ -36,6 +37,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
     const [currentPage, setCurrentPage] = useState(1);
     const [productsPerPage, setProductsPerPage] = useState(20);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const [selectedProductIds, setSelectedProductIds] = useState(new Set<string>());
 
     useEffect(() => {
         if (!isDataLoaded && onLoadData && mongoBrandId) {
@@ -46,6 +48,20 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
     useEffect(() => {
         setCurrentPage(1);
     }, [searchQuery, sortBy, productsPerPage]);
+
+    const handleToggleSelection = (linkId: string) => {
+        const newSelection = new Set(selectedProductIds);
+        if (newSelection.has(linkId)) {
+            newSelection.delete(linkId);
+        } else {
+            newSelection.add(linkId);
+        }
+        setSelectedProductIds(newSelection);
+    };
+
+    const handleToggleActive = (link: AffiliateLink) => {
+        onSaveLink({ ...link, isActive: link.isActive === false ? true : false });
+    };
 
     const T = {
         'Việt Nam': {
@@ -84,19 +100,6 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
         }
     };
     const texts = (T as any)[language] || T['English'];
-
-    const kpiData = useMemo(() => {
-        const totalLinks = affiliateLinks.length;
-        if (totalLinks === 0) {
-            return { totalLinks: '0', avgRate: '0%' };
-        }
-        const totalRate = affiliateLinks.reduce((sum, link) => sum + (link.commissionRate || 0), 0);
-        const avgRate = totalLinks > 0 ? totalRate / totalLinks : 0;
-        return {
-            totalLinks: totalLinks.toString(),
-            avgRate: `${avgRate.toFixed(1)}%`,
-        };
-    }, [affiliateLinks]);
 
     const processedLinks = useMemo(() => {
         const filtered = affiliateLinks.filter(link =>
@@ -224,51 +227,42 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
 
     const totalPages = Math.ceil(processedLinks.length / productsPerPage);
 
+    const actionButtons = (
+        <div className="flex flex-row gap-2">
+            <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileImport}
+                className="hidden"
+                accept=".xlsx"
+            />
+            <Button onClick={onReloadLinks} variant="secondary" size="sm" className="whitespace-nowrap">
+                <ArrowPathIcon className="h-4 w-4" /> 
+                <span className="hidden sm:inline">{texts.reload}</span>
+            </Button>
+            <Button onClick={() => fileInputRef.current?.click()} variant="secondary" size="sm" className="whitespace-nowrap">
+                <UploadIcon className="h-4 w-4" /> 
+                <span className="hidden sm:inline">{texts.importFromFile}</span>
+            </Button>
+            <Button onClick={() => setIsAddingNewLink(true)} size="sm" className="whitespace-nowrap">
+                <PlusIcon className="h-4 w-4" /> 
+                <span className="hidden sm:inline">{texts.addLink}</span>
+            </Button>
+            <RefreshButton 
+                onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
+                isLoading={isLoading}
+                language={language}
+            />
+        </div>
+    );
+
     return (
-        <StandardPageView
+        <GenericTabTemplate
             title={texts.title}
             subtitle={texts.subtitle}
-            actions={
-                <div className="flex flex-row gap-2">
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileImport}
-                        className="hidden"
-                        accept=".xlsx"
-                    />
-                    <Button onClick={onReloadLinks} variant="secondary" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
-                        <ArrowPathIcon className="h-4 w-4" /> 
-                        <span className="hidden sm:inline">{texts.reload}</span>
-                    </Button>
-                    <Button onClick={() => fileInputRef.current?.click()} variant="secondary" className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
-                        <UploadIcon className="h-4 w-4" /> 
-                        <span className="hidden sm:inline">{texts.importFromFile}</span>
-                    </Button>
-                    <Button onClick={() => setIsAddingNewLink(true)} className="flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium">
-                        <PlusIcon className="h-4 w-4" /> 
-                        <span className="hidden sm:inline">{texts.addLink}</span>
-                    </Button>
-                    <button 
-                        onClick={() => onLoadData && mongoBrandId && onLoadData(mongoBrandId)}
-                        className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-                        aria-label="Refresh data"
-                        disabled={isLoading}
-                    >
-                        <RefreshIcon className={`h-4 w-4 text-gray-600 ${isLoading ? 'animate-spin' : ''}`} />
-                    </button>
-                </div>
-            }
+            actionButtons={actionButtons}
+            isLoading={isLoading && !generatingIdeasForProductId}
         >
-            {isLoading && !generatingIdeasForProductId && (
-                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-                    <div className="bg-white p-8 rounded-lg shadow-xl flex flex-col items-center">
-                        <div className="w-12 h-12 border-4 border-brand-green border-t-transparent rounded-full animate-spin mb-4"></div>
-                        <p className="text-gray-700 font-medium">Loading affiliate links data...</p>
-                    </div>
-                </div>
-            )}
-            
             <div className="mb-4 flex flex-col md:flex-row gap-3">
                 <div className="relative flex-grow">
                     <Input
@@ -316,6 +310,9 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
                                             language={language}
                                             onGenerateIdeas={onGenerateIdeasFromProduct}
                                             generatingIdeasForProductId={generatingIdeasForProductId}
+                                            isSelected={false}
+                                            onToggleSelection={() => {}}
+                                            onToggleActive={() => {}}
                                         />
                                     )}
                                     {displayLinks.map(link => (
@@ -327,6 +324,9 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
                                             language={language}
                                             onGenerateIdeas={onGenerateIdeasFromProduct}
                                             generatingIdeasForProductId={generatingIdeasForProductId}
+                                            isSelected={selectedProductIds.has(link.id)}
+                                            onToggleSelection={handleToggleSelection}
+                                            onToggleActive={handleToggleActive}
                                         />
                                     ))}
                                 </div>
@@ -368,7 +368,7 @@ const AffiliateVaultDisplay: React.FC<AffiliateVaultDisplayProps> = ({ mongoBran
                     </div>
                 )}
             </main>
-        </StandardPageView>
+        </GenericTabTemplate>
     );
 };
 

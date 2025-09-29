@@ -31,6 +31,7 @@ export type AssetsAction =
   | { type: 'BULK_SCHEDULE_POSTS', payload: { updates: { postId: string; scheduledAt: string; status: 'scheduled' }[] } }
   | { type: 'SAVE_PERSONA'; payload: Persona }
   | { type: 'DELETE_PERSONA'; payload: string }
+  | { type: 'UPDATE_PERSONA'; payload: { id: string } & Partial<Persona> }
   | { type: 'UPDATE_PERSONA_ID'; payload: { oldId: string; newId: string } }
   | { type: 'SET_PERSONAS'; payload: Persona[] }
   | { type: 'SAVE_TREND'; payload: Trend }
@@ -277,6 +278,14 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
         case 'DELETE_PERSONA': {
             const personaId = action.payload;
             const updatedPersonas = (state.personas || []).filter(p => p.id !== personaId);
+            return { ...state, personas: updatedPersonas };
+        }
+
+        case 'UPDATE_PERSONA': {
+            const { id, ...updates } = action.payload;
+            const updatedPersonas = (state.personas || []).map(p => 
+                p.id === id ? { ...p, ...updates } : p
+            );
             return { ...state, personas: updatedPersonas };
         }
 

@@ -1,4 +1,4 @@
-  import { MongoClient, ObjectId } from 'mongodb';
+import { MongoClient, ObjectId } from 'mongodb';
   import dotenv from 'dotenv';
 
   // Load environment variables from .env.local
@@ -92,10 +92,15 @@ class CRUDTemplate {
     const record = await collection.findOne(filter);
     return record ? this.transformFn(record) : null;
   }
+
+  getCollection(db) {
+    return db.collection(this.collectionName);
+  }
 }
 
 const brandsTemplate = new CRUDTemplate('brands');
 const adminSettingsTemplate = new CRUDTemplate('adminSettings');
+const mediaPlanPostsTemplate = new CRUDTemplate('mediaPlanPosts');
 
 export async function createOrUpdateBrand(db, assets, brandId) {
     const brandDocument = {
@@ -147,4 +152,44 @@ export async function savePersonas(db, personas) {
     });
     const result = await collection.insertMany(personasWithIds);
     return result.insertedIds;
+}
+
+export async function updateMediaPlanPost(db, postId, updates) {
+    const mediaPlanPostsCollection = mediaPlanPostsTemplate.getCollection(db);
+    const filter = createIdFilter(postId);
+
+    const updatePayload = { ...updates };
+    delete updatePayload.id;
+
+    updatePayload.updatedAt = new Date();
+
+    const updateOperation = { $set: updatePayload };
+
+    const result = await mediaPlanPostsCollection.updateOne(filter, updateOperation);
+
+    if (result.matchedCount === 0) {
+      console.warn(`--- updateMediaPlanPost did not find a document to update for id: ${postId} ---`);
+    }
+    
+    return { success: true, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount };
+}
+
+export async function syncAssetMedia(db, brandId, assets) {
+    const brand = await brandsTemplate.findOne(db, { _id: new ObjectId(brandId) });
+    if (!brand) {
+      throw new Error('Brand not found');
+    }
+
+    const brandUpdates = {
+      'coreMediaAssets': assets.coreMediaAssets,
+      'unifiedProfileAssets': assets.unifiedProfileAssets
+    };
+    
+    await brandsTemplate.getCollection(db).updateOne(
+      { _id: new ObjectId(brandId) },
+      { $set: brandUpdates },
+      { upsert: true }
+    );
+    
+    return { success: true };
 }

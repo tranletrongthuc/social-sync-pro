@@ -79,6 +79,7 @@ export type MediaPlanPost = {
     publishedAt?: string;
     publishedUrl?: string;
     modelUsed?: string; // AI model used to generate this content
+    isApproved?: boolean;
 };
 
 export type MediaPlanWeek = {
@@ -142,6 +143,7 @@ export type AffiliateLink = {
     product_rating?: number;
     product_avatar?: string;
     product_image_links?: string[];
+    isActive?: boolean;
 };
 
 export type Persona = {
@@ -193,6 +195,7 @@ export type Persona = {
     keyMessages?: string;
     gender?: 'Male' | 'Female' | 'Non-binary';
     modelUsed?: string; // AI model used to generate this persona
+    isActive?: boolean;
 };
 
 export type Trend = {
@@ -218,6 +221,7 @@ export type Trend = {
     predictedLifespan?: string; // Estimated how long this trend will last
     ideaCount?: number;
     modelUsed?: string; // AI model used to generate this trend
+    isArchived?: boolean;
 };
 
 export type Idea = {
@@ -230,6 +234,7 @@ export type Idea = {
     cta?: string;
     targetAudience?: string;
     modelUsed?: string; // AI model used to generate this idea
+    isArchived?: boolean;
 };
 
 export type PostInfo = {

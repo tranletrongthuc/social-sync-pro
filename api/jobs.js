@@ -1,8 +1,10 @@
-import { getClientAndDb } from '../server_lib/mongodb.js';
+import { getClientAndDb, updateMediaPlanPost, syncAssetMedia } from '../server_lib/mongodb.js';
 import { ObjectId } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import { Client, Receiver } from '@upstash/qstash';
-import { generateMediaPlanGroup, createBrandFromIdea, generateBrandKit, generateViralIdeas, generatePersonasForBrand, generateTrends } from '../server_lib/generationService.js';
+import { generateMediaPlanGroup, createBrandFromIdea, generateBrandKit, generateViralIdeas, generatePersonasForBrand, generateTrends, generateInCharacterPost } from '../server_lib/generationService.js';
+import { executeImageGeneration } from '../server_lib/imageService.js';
+import { uploadMediaToCloudinary } from '../server_lib/cloudinaryService.js';
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // Note: Body parser is disabled in the main api/index.js router
@@ -169,6 +171,37 @@ async function processTask(requestBody) {
       case 'GENERATE_GLOBAL_TRENDS':
         result = await generateTrends({ ...payloadWithBrandId, trendType: 'global' });
         break;
+      case 'GENERATE_IMAGE':
+        const { mediaPrompt, imageKey, aspectRatio, settings, postInfo, carouselImageIndex } = task.payload;
+        const dataUrl = await executeImageGeneration(mediaPrompt, settings.imageGenerationModel, aspectRatio);
+        const publicUrls = await uploadMediaToCloudinary({ [imageKey]: dataUrl });
+        const publicUrl = publicUrls[imageKey];
+        if (!publicUrl) throw new Error('Image upload to Cloudinary failed.');
+
+        if (postInfo) {
+            const updates = {};
+            if (typeof carouselImageIndex === 'number') {
+                const currentUrls = [...(postInfo.post.imageUrlsArray || [])];
+                const currentKeys = [...(postInfo.post.imageKeys || [])];
+                currentUrls[carouselImageIndex] = publicUrl;
+                currentKeys[carouselImageIndex] = imageKey;
+                updates.imageUrlsArray = currentUrls;
+                updates.imageKeys = currentKeys;
+            } else {
+                updates.imageUrl = publicUrl;
+                updates.imageKey = imageKey;
+            }
+            await updateMediaPlanPost(db, postInfo.post.id, updates);
+        } else {
+            // This part is complex and requires the full assets object.
+            // For now, we will skip updating non-post images.
+            console.warn('Image generation for non-post assets is not fully implemented in background tasks yet.');
+        }
+        result = { imageUrl: publicUrl, imageKey };
+        break;
+      case 'GENERATE_IN_CHARACTER_POST':
+        result = await generateInCharacterPost(payloadWithBrandId);
+        break;
       default:
         throw new Error(`Unsupported task type: ${task.type}`);
     }
@@ -202,6 +235,34 @@ async function cancelTask(requestBody) {
   if (task.userId !== userId) throw new Error('Unauthorized: You do not own this task');
   await db.collection('tasks').updateOne({ taskId }, { $set: { status: 'cancelled', updatedAt: new Date() } });
   return { success: true };
+}
+
+async function retryTask(requestBody) {
+  const { taskId, userId } = requestBody;
+  if (!taskId || !userId) throw new Error('Missing required fields: taskId, userId');
+  const { db } = await getClientAndDb();
+  const task = await db.collection('tasks').findOne({ taskId });
+  if (!task) throw new Error(`Task with ID ${taskId} not found`);
+  if (task.userId !== userId) throw new Error('Unauthorized: You do not own this task');
+  
+  // Reset status, progress, increment retry count, clear error
+  await db.collection('tasks').updateOne(
+    { taskId },
+    { $set: { status: 'queued', progress: 0, lastError: null, retryCount: (task.retryCount || 0) + 1, updatedAt: new Date() } }
+  );
+  return { success: true };
+}
+
+async function deleteTask(requestBody) {
+  const { taskId, userId } = requestBody;
+  if (!taskId || !userId) throw new Error('Missing required fields: taskId, userId');
+  const { db } = await getClientAndDb();
+  const task = await db.collection('tasks').findOne({ taskId });
+  if (!task) throw new Error(`Task with ID ${taskId} not found`);
+  if (task.userId !== userId) throw new Error('Unauthorized: You do not own this task');
+  
+  const result = await db.collection('tasks').deleteOne({ taskId });
+  return { success: result.deletedCount > 0 };
 }
 
 async function listTasks(requestQuery) {
@@ -313,6 +374,14 @@ async function handler(request, response) {
         break;
       case 'cancel':
         result = await cancelTask(requestBody);
+        response.status(200).json(result);
+        break;
+      case 'retry':
+        result = await retryTask(requestBody);
+        response.status(200).json(result);
+        break;
+      case 'delete':
+        result = await deleteTask(requestBody);
         response.status(200).json(result);
         break;
       default:

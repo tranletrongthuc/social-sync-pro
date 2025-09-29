@@ -1,52 +1,21 @@
-
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import type { MediaPlanGroup, MediaPlanPost, Settings, AffiliateLink, SchedulingPost, Persona, PostInfo, Idea, GeneratedAssets } from '../../types';
-import { Button, Input, Select } from './ui';
-import { 
-  ArchiveIcon, 
-  SparklesIcon, 
-  PlusIcon, 
-  CalendarIcon, 
-  CollectionIcon, 
-  TagIcon, 
-  YouTubeIcon, 
-  FacebookIcon, 
-  InstagramIcon, 
-  TikTokIcon, 
-  PinterestIcon, 
-  KhongMinhIcon, 
-  ChatBubbleLeftIcon, 
-  SearchIcon, 
-  PencilIcon, 
-  PhotographIcon, 
-  CheckSolidIcon, 
-  TrashIcon, 
-  ListBulletIcon, 
-  LightBulbIcon, 
-  LinkIcon, 
-  DotsVerticalIcon, 
-  ChevronDownIcon, 
-  ChevronLeftIcon, 
-  ChevronRightIcon, 
-  UsersIcon,
-  FunnelIcon, // New icon import
-  RefreshIcon
-} from './icons';
-import PostCard from './PostCard';
+import React, { useState, useMemo, useEffect } from 'react';
+import type { MediaPlanGroup, Persona, AffiliateLink, PostInfo, Settings, MediaPlanPost, SchedulingPost } from '../../types';
+import { Button } from './ui';
+import { SparklesIcon, DownloadIcon, FunnelIcon, RefreshIcon, MenuIcon } from './icons';
+import RefreshButton from './RefreshButton';
 import PostDetailModal from './PostDetailModal';
-import CalendarView from './CalendarView';
-import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import StandardPageView from './StandardPageView';
+import MediaPlanSidebar from './media-plan/MediaPlanSidebar';
+import MediaPlanMainContent from './media-plan/MainContentArea';
+import GenericTabTemplate from './GenericTabTemplate';
 
 interface MediaPlanDisplayProps {
   plans: MediaPlanGroup[];
   personas: Persona[];
   affiliateLinks: AffiliateLink[];
-  onOpenWizard: (prompt?: string) => void;
-  onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo) => void;
+  onOpenWizard: (prompt?: string, productId?: string) => void;
+  onGenerateImage: (prompt: string, key: string, aspectRatio?: "1:1" | "16:9", postInfo?: PostInfo, carouselImageIndex?: number) => void;
   onGenerateAllCarouselImages: (postInfo: PostInfo) => Promise<void>;
-  onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo) => void;
+  onSetImage: (dataUrl: string, key: string, postInfo?: PostInfo, carouselImageIndex?: number) => void;
   generatedImages: Record<string, string>;
   generatedVideos: Record<string, string>;
   onSetVideo: (dataUrl: string, key: string, postInfo: PostInfo) => void;
@@ -55,910 +24,232 @@ interface MediaPlanDisplayProps {
   onExport: () => void;
   isExporting: boolean;
   onRegenerateWeekImages: (planId: string, weekIndex: number) => void;
-  planGroupsList: {id: string; name: string; prompt: string; source?: MediaPlanGroup['source']; productImages?: { name: string, type: string, data: string }[], personaId?: string;}[];
+  planGroupsList: {id: string, name: string, prompt: string, productImages?: { name: string, type: string, data: string }[], personaId?: string;}[];
   onSelectPlan: (planId: string) => void;
   activePlanId: string | null;
   onUpdatePost: (postInfo: PostInfo) => void;
   onRefinePost: (text: string) => Promise<string>;
   onGenerateInCharacterPost: (objective: string, platform: string, keywords: string[], pillar: string, postInfo: PostInfo) => Promise<void>;
   onAssignPersonaToPlan: (planId: string, personaId: string | null) => void;
-  // KhongMinh Props
   analyzingPostIds: Set<string>;
   isAnyAnalysisRunning: boolean;
   khongMinhSuggestions: Record<string, AffiliateLink[]>;
   onAcceptSuggestion: (postInfo: PostInfo, productId: string) => void;
   onRunKhongMinhForPost: (postInfo: PostInfo) => void;
-  // On-demand prompt generation
   generatingPromptKeys: Set<string>;
   onGeneratePrompt: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
-  // Comment Generation
   onGenerateAffiliateComment: (postInfo: PostInfo) => Promise<MediaPlanPost | null>;
   generatingCommentPostIds: Set<string>;
-  // Selection & Scheduling
   selectedPostIds: Set<string>;
   onTogglePostSelection: (postId: string) => void;
   onSelectAllPosts: (posts: PostInfo[]) => void;
   onClearSelection: () => void;
+  onTogglePostApproval: (postInfo: PostInfo) => void;
   onOpenScheduleModal: (post: SchedulingPost | null) => void;
-  onOpenBulkScheduleModal: () => void;
   onPostDrop: (postInfo: PostInfo, newDate: Date) => void;
-  // Bulk Actions
+  onOpenBulkScheduleModal: () => void;
+  onPublishPost: (postInfo: PostInfo) => Promise<void>;
   isPerformingBulkAction: boolean;
   onBulkGenerateImages: (posts: PostInfo[]) => void;
   onBulkSuggestPromotions: (posts: PostInfo[]) => void;
   onBulkGenerateComments: (posts: PostInfo[]) => void;
-  onPublishPost: (postInfo: PostInfo) => void; // New prop for direct publishing
-  brandFoundation: GeneratedAssets['brandFoundation'];
-  // New prop for opening funnel wizard
+  brandFoundation: any;
   onOpenFunnelWizard: () => void;
   viewingPost: PostInfo | null;
   setViewingPost: (postInfo: PostInfo | null) => void;
-  // Refresh functionality
   mongoBrandId: string | null;
   onLoadData?: (brandId: string) => Promise<void>;
   isLoading?: boolean;
+  onTaskCreated: () => void;
 }
 
 const MediaPlanDisplay: React.FC<MediaPlanDisplayProps> = (props) => {
-  console.log("MediaPlanDisplay rendered with props:", props);
-  
-  const { 
-    plans, 
-    personas, 
-    affiliateLinks,
-    onOpenWizard, 
-    onGenerateImage, 
-    onGenerateAllCarouselImages,
-    onSetImage, 
-    generatedImages, 
-    generatedVideos, 
-    onSetVideo, 
-    isGeneratingImage, 
-    settings, 
-    onExport, 
-    isExporting, 
-    onRegenerateWeekImages, 
-    planGroupsList, 
-    onSelectPlan, 
-    activePlanId, 
-    onUpdatePost, 
-    onRefinePost,
-    onGenerateInCharacterPost,
-    onAssignPersonaToPlan,
-    analyzingPostIds,
-    isAnyAnalysisRunning,
-    khongMinhSuggestions,
-    onAcceptSuggestion,
-    onRunKhongMinhForPost,
-    generatingPromptKeys,
-    onGeneratePrompt,
-    onGenerateAffiliateComment,
-    generatingCommentPostIds,
-    selectedPostIds,
-    onTogglePostSelection,
-    onSelectAllPosts,
-    onClearSelection,
-    onOpenScheduleModal,
-    onOpenBulkScheduleModal,
-    onPostDrop,
-    isPerformingBulkAction,
-    onBulkGenerateImages,
-    onBulkSuggestPromotions,
-    onBulkGenerateComments,
-    onPublishPost,
-    brandFoundation,
-    onOpenFunnelWizard,
-    viewingPost,
-    setViewingPost
+  const {
+    plans, personas, affiliateLinks, onOpenWizard, onGenerateImage, onGenerateAllCarouselImages, onSetImage, generatedImages, generatedVideos, onSetVideo, isGeneratingImage, settings, onExport, isExporting, planGroupsList, onSelectPlan, activePlanId, onUpdatePost, onRefinePost, onGenerateInCharacterPost, onAssignPersonaToPlan, onGenerateAffiliateComment, onOpenScheduleModal, onOpenFunnelWizard, viewingPost, setViewingPost, mongoBrandId, onLoadData, isLoading, onTaskCreated, onTogglePostApproval
   } = props;
-  const { language } = settings;
-  
-    const [viewMode, setViewMode] = useState<'feed' | 'calendar'>('feed');
-    const [isPlanSidebarOpen, setIsPlanSidebarOpen] = useState(false);
-    const [isFilterOpen, setIsFilterOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-    const [selectedStatuses, setSelectedStatuses] = useState<string[]>([]);
-    const [sortBy, setSortBy] = useState('date-desc');
-    
-    const [currentPage, setCurrentPage] = useState(1);
 
-  const T = {
-    'Việt Nam': { 
-      export_plans: 'Xuất Kế hoạch', 
-      exporting: 'Đang xuất...', 
-      select_plan_title: "Chọn một Kế hoạch",
-      select_plan_subtitle: "Chọn một kế hoạch từ thanh bên để xem chi tiết, hoặc tạo một kế hoạch mới.",
-      generate_plan_title: "Tạo Kế hoạch Đầu tiên của bạn",
-      generate_plan_subtitle: "Bắt đầu chiến lược nội dung của bạn.",
-      plans_sidebar_title: "Kế hoạch",
-      plan_prompt: "Prompt",
-      pkgLabel: "Gói ND",
-      newPlanButton: "Kế hoạch Mới",
-      newFunnelPlanButton: "Chiến dịch Funnel", // New button text
-      kpiTotalPosts: "Tổng số bài đăng",
-      kpiPlatforms: "Nền tảng được sử dụng",
-      kpiPostsThisWeek: "Bài đăng tuần này",
-      assignPersona: "Gán KOL/KOC",
-      noPersonaAssigned: "Chưa gán KOL/KOC",
-      listViewTitle: "Dòng nội dung",
-      filter_search: "Tìm kiếm bài đăng...",
-      filter_sort_by: "Sắp xếp theo",
-      filter_sort_date_desc: "Ngày (Mới nhất)",
-      filter_sort_date_asc: "Ngày (Cũ nhất)",
-      filter_sort_title_asc: "Tiêu đề (A-Z)",
-      filter_sort_title_desc: "Tiêu đề (Z-A)",
-      filter_platforms: "Nền tảng:",
-      filter_status: "Trạng thái:",
-      filter_status_scheduled: "Đã lên lịch",
-      filter_status_draft: "Bản nháp",
-      filter_status_published: "Đã đăng",
-      filter_status_promo: "Có khuyến mãi",
-      filter_status_comment: "Có bình luận",
-      filter_status_image: "Có ảnh",
-      filter_no_results: "Không tìm thấy bài đăng nào",
-      filter_no_results_desc: "Thử xóa một số bộ lọc để xem nhiều kết quả hơn.",
-      selection_title: "Đã chọn:",
-      selection_clear: "Xóa",
-      selection_schedule: "Lên lịch",
-      selection_delete: "Xóa",
-      selection_gen_images: "Tạo ảnh",
-      selection_sug_promo: "Gợi ý KM",
-      selection_gen_comment: "Tạo BL (NgoSiLien)",
-      view_toggle_feed: "Dạng Lưới",
-      view_toggle_calendar: "Dạng Lịch",
-      filters_title: "Bộ lọc",
-      select_plan_mobile: "Chọn Kế hoạch",
-    },
-    'English': { 
-      export_plans: 'Export Plan', 
-      exporting: 'Exporting...', 
-      select_plan_title: "Select a Plan",
-      select_plan_subtitle: "Choose a plan from the sidebar to see its details, or generate a new one.",
-      generate_plan_title: "Generate Your First Plan",
-      generate_plan_subtitle: "Kickstart your content strategy.",
-      plans_sidebar_title: "Plans",
-      plan_prompt: "Prompt",
-      pkgLabel: "Content Pkg",
-      newPlanButton: "New Plan",
-      newFunnelPlanButton: "Funnel Campaign", // New button text
-      kpiTotalPosts: "Total Posts",
-      kpiPlatforms: "Platforms Used",
-      kpiPostsThisWeek: "Posts This Week",
-      assignPersona: "Assign KOL/KOC",
-      noPersonaAssigned: "No KOL/KOC Assigned",
-      listViewTitle: "Content Feed",
-      filter_search: "Search posts...",
-      filter_sort_by: "Sort by",
-      filter_sort_date_desc: "Date (Newest)",
-      filter_sort_date_asc: "Date (Oldest)",
-      filter_sort_title_asc: "Title (A-Z)",
-      filter_sort_title_desc: "Title (Z-A)",
-      filter_platforms: "Platforms:",
-      filter_status: "Status:",
-      filter_status_scheduled: "Scheduled",
-      filter_status_draft: "Draft",
-      filter_status_published: "Published",
-      filter_status_promo: "Has Promo",
-      filter_status_comment: "Has Comment",
-      filter_status_image: "Has Image",
-      filter_no_results: "No posts found",
-      filter_no_results_desc: "Try clearing some filters to see more results.",
-      selection_title: "Selected:",
-      selection_clear: "Clear",
-      selection_schedule: "Schedule",
-      selection_delete: "Delete",
-      selection_gen_images: "Gen. Images",
-      selection_sug_promo: "Sug. Promos",
-      selection_gen_comment: "Gen. Comments (NgoSiLien)",
-      view_toggle_feed: "Feed View",
-      view_toggle_calendar: "Calendar View",
-      filters_title: "Filters",
-      select_plan_mobile: "Select Plan",
+  const activePlan = useMemo(() => plans.find(p => p.id === activePlanId), [plans, activePlanId]);
+  const [isRefining, setIsRefining] = useState(false);
+  const [isGeneratingComment, setIsGeneratingComment] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const handleRefinePost = async (text: string): Promise<string> => {
+    setIsRefining(true);
+    try {
+      return await onRefinePost(text);
+    } finally {
+      setIsRefining(false);
     }
   };
-  const currentTexts = (T as any)[language] || T['English'];
 
-  const unifiedSidebarItems = useMemo(() => {
-    return (planGroupsList || []).map(group => ({
-      id: group.id,
-      name: group.name,
-      description: `${currentTexts.plan_prompt}: "${group.prompt}"`,
-      source: group.source,
-    }));
-  }, [planGroupsList, currentTexts.plan_prompt]);
-
-  const selectedPlan = useMemo(() => {
-    if (!activePlanId) return null;
-    return plans.find(p => p.id === activePlanId) || null;
-  }, [activePlanId, plans]);
-
-  // Get initial posts from the selected plan
-  const initialPosts = useMemo(() => {
-    if (!selectedPlan) return [];
-    return selectedPlan.plan.flatMap(week => week.posts || []);
-  }, [selectedPlan]);
-
-  // Use the infinite scroll hook
-  const { 
-    posts: paginatedPosts, 
-    loadMorePosts, 
-    hasMore, 
-    loading: isLoadingMorePosts,
-    error: paginationError,
-    totalPosts
-  } = useInfiniteScroll(activePlanId, initialPosts);
-
-  // Calculate total pages for pagination display
-  const totalPages = useMemo(() => {
-    return Math.ceil(totalPosts / 30);
-  }, [totalPosts]);
-
-
-  // This effect ensures that if the modal is open (`viewingPost` is not null),
-  // and the underlying data changes (e.g., after an image generation),
-  // the modal's data (`viewingPost`) is updated to reflect those changes.
-  useEffect(() => {
-    if (!viewingPost) return;
-
-    const plan = plans.find(p => p.id === viewingPost.planId);
-    const updatedPost = plan?.plan[viewingPost.weekIndex]?.posts[viewingPost.postIndex];
-    
-    if (updatedPost && updatedPost.id === viewingPost.post.id) {
-      if (JSON.stringify(updatedPost) !== JSON.stringify(viewingPost.post)) {
-        setViewingPost(viewingPost ? { ...viewingPost, post: updatedPost } : null);
+  const handleGenerateComment = async (postInfo: PostInfo) => {
+    setIsGeneratingComment(true);
+    try {
+      const updatedPost = await onGenerateAffiliateComment(postInfo);
+      if (updatedPost) {
+        onUpdatePost({ ...postInfo, post: updatedPost });
       }
-    } else {
-      // Post was not found (e.g., plan changed), but we don't close the modal
-      // to prevent it from disappearing unexpectedly.
-      // The user can close it manually.
-    }
-  }, [plans, viewingPost, setViewingPost]);
-
-  const handleViewDetails = (postInfo: PostInfo) => {
-    setViewingPost(postInfo);
-  };
-  
-  const platformOptions = [
-    { id: 'YouTube', Icon: YouTubeIcon }, { id: 'Facebook', Icon: FacebookIcon }, { id: 'Instagram', Icon: InstagramIcon }, { id: 'TikTok', Icon: TikTokIcon }, { id: 'Pinterest', Icon: PinterestIcon }
-  ];
-
-  const statusOptions = [
-    { id: 'published', text: currentTexts.filter_status_published, Icon: CheckSolidIcon },
-    { id: 'scheduled', text: currentTexts.filter_status_scheduled, Icon: CalendarIcon },
-    { id: 'draft', text: currentTexts.filter_status_draft, Icon: PencilIcon },
-    { id: 'promo', text: currentTexts.filter_status_promo, Icon: KhongMinhIcon },
-    { id: 'comment', text: currentTexts.filter_status_comment, Icon: ChatBubbleLeftIcon },
-    { id: 'image', text: currentTexts.filter_status_image, Icon: PhotographIcon },
-  ];
-
-  const { planKPIs, assignedPersona } = useMemo(() => {
-    if (!selectedPlan) return { planKPIs: { totalPosts: 0, platformCount: 0, postsThisWeek: 0 }, assignedPersona: null };
-    
-    const allPosts = selectedPlan.plan.flatMap(w => w.posts || []);
-    const platformCount = new Set(allPosts.map(p => p.platform)).size;
-    
-    const postsThisWeek = selectedPlan.plan[0]?.posts?.length || 0;
-    
-    const persona = personas.find(p => p.id === selectedPlan.personaId);
-
-    return {
-      planKPIs: {
-        totalPosts: allPosts.length,
-        platformCount,
-        postsThisWeek
-      },
-      assignedPersona: persona || null
-    };
-  }, [selectedPlan, personas]);
-
-      // Convert paginated posts to PostInfo format with correct weekIndex and postIndex
-    const paginatedPostInfos = useMemo(() => {
-        if (!selectedPlan) return [];
-        
-        // Create a map of post.id to its location for quick lookup
-        const postLocationMap = new Map<string, { weekIndex: number, postIndex: number }>();
-        selectedPlan.plan.forEach((week, weekIndex) => {
-            week.posts.forEach((post, postIndex) => {
-                postLocationMap.set(post.id, { weekIndex, postIndex });
-            });
-        });
-        
-        // Map paginatedPosts to PostInfo with correct indices
-        return paginatedPosts.map((post) => {
-            const location = postLocationMap.get(post.id);
-            if (!location) {
-                // Fallback, though this shouldn't happen if data is consistent
-                console.warn(`Post with id ${post.id} not found in plan structure`);
-                return {
-                    planId: selectedPlan.id,
-                    weekIndex: 0,
-                    postIndex: 0,
-                    post: post as MediaPlanPost, // Ensure post is typed correctly
-                };
-            }
-            
-            return {
-                planId: selectedPlan.id,
-                weekIndex: location.weekIndex,
-                postIndex: location.postIndex,
-                post: post as MediaPlanPost, // Ensure post is typed correctly
-            };
-        });
-    }, [paginatedPosts, selectedPlan]);
-
-    const displayedPosts = useMemo(() => {
-        let filteredPosts = [...paginatedPostInfos];
-
-        if (searchQuery) {
-            filteredPosts = filteredPosts.filter(p => {
-                // Handle content being string or string[]
-                let contentString = '';
-                if (typeof p.post.content === 'string') {
-                    contentString = p.post.content;
-                } else if (Array.isArray(p.post.content)) {
-                    contentString = p.post.content.join(' ');
-                }
-                
-                return p.post.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    contentString.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    (p.post.hashtags || []).join(' ').toLowerCase().includes(searchQuery.toLowerCase());
-            });
-        }
-
-        if (selectedPlatforms.length > 0) {
-            filteredPosts = filteredPosts.filter(p => selectedPlatforms.includes(p.post.platform));
-        }
-
-        if (selectedStatuses.length > 0) {
-            filteredPosts = filteredPosts.filter(p => {
-                const imageUrl = p.post.imageKey ? props.generatedImages[p.post.imageKey] : undefined;
-                return selectedStatuses.every(status => {
-                    switch (status) {
-                        case 'published': return p.post.status === 'published';
-                        case 'scheduled': return p.post.status === 'scheduled';
-                        case 'draft': return p.post.status === 'draft' || !p.post.status;
-                        case 'promo': return (p.post.promotedProductIds?.length || 0) > 0;
-                        case 'comment': return !!p.post.autoComment;
-                        case 'image': return !!imageUrl;
-                        default: return true;
-                    }
-                });
-            });
-        }
-
-        filteredPosts.sort((a, b) => {
-            const [key, dir] = sortBy.split('-');
-            const isAsc = dir === 'asc';
-
-            if (key === 'date') {
-                const dateA = a.post.publishedAt ? new Date(a.post.publishedAt).getTime() : (a.post.scheduledAt ? new Date(a.post.scheduledAt).getTime() : 0);
-                const dateB = b.post.publishedAt ? new Date(b.post.publishedAt).getTime() : (b.post.scheduledAt ? new Date(b.post.scheduledAt).getTime() : 0);
-                if (dateA === 0 && dateB !== 0) return 1;
-                if (dateB === 0 && dateA !== 0) return -1;
-                return isAsc ? dateA - dateB : dateB - dateA;
-            }
-
-            if (key === 'title') {
-                return isAsc ? a.post.title.localeCompare(b.post.title) : b.post.title.localeCompare(a.post.title);
-            }
-            return 0;
-        });
-
-        return filteredPosts;
-    }, [paginatedPostInfos, searchQuery, selectedPlatforms, selectedStatuses, sortBy, props.generatedImages]);
-  
-  const handlePlatformToggle = (platformId: string) => {
-    setSelectedPlatforms(prev => prev.includes(platformId) ? prev.filter(p => p !== platformId) : [...prev, platformId]);
-  };
-  
-  const handleStatusToggle = (statusId: string) => {
-    setSelectedStatuses(prev => prev.includes(statusId) ? prev.filter(s => s !== statusId) : [...prev, statusId]);
-  };
-  
-  const isAllDisplayedSelected = displayedPosts.length > 0 && props.selectedPostIds && props.selectedPostIds.size === displayedPosts.length && displayedPosts.every(p => props.selectedPostIds.has(p.post.id));
-
-  const handleSelectAllToggle = () => {
-    if (isAllDisplayedSelected) {
-      props.onClearSelection();
-    } else {
-      props.onSelectAllPosts(displayedPosts);
+    } finally {
+      setIsGeneratingComment(false);
     }
   };
-  
-  const handleBulkAction = (action: (posts: PostInfo[]) => void) => {
-    const selectedPostsInOrder = displayedPosts.filter(p => props.selectedPostIds && props.selectedPostIds.has(p.post.id));
-    action(selectedPostsInOrder);
+
+  const handleUpdateAndClose = (postInfo: PostInfo) => {
+    onUpdatePost(postInfo);
+    setViewingPost(null);
   };
 
-  const FilterToggleButton: React.FC<{ children: React.ReactNode, onClick: () => void, isActive: boolean }> = ({ children, onClick, isActive }) => (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded-md text-sm font-medium border-2 transition-colors flex items-center gap-2 ${isActive ? 'bg-green-50 border-brand-green shadow-sm' : 'bg-white border-gray-200 hover:border-gray-300'}`}
-    >
-      {children}
-    </button>
+  const handleRefresh = () => {
+    if (mongoBrandId && onLoadData) {
+      onLoadData(mongoBrandId);
+    }
+  };
+
+  const actionButtons = (
+    <div className="flex items-center gap-2">
+        <Button 
+            variant="secondary" 
+            size="sm"
+            className="md:hidden"
+            onClick={() => setIsSidebarOpen(true)}
+          >
+            <MenuIcon className="h-4 w-4" />
+          </Button>
+            <Button variant="secondary" size="sm" onClick={onOpenFunnelWizard} className="whitespace-nowrap">
+              <FunnelIcon className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Create Funnel Campaign</span>
+            </Button>
+            <Button size="sm" onClick={() => onOpenWizard()} className="whitespace-nowrap">
+              <SparklesIcon className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">New Media Plan</span>
+            </Button>
+            <Button variant="tertiary" size="sm" onClick={onExport} disabled={isExporting} className="whitespace-nowrap">
+              {isExporting ? 'Exporting...' : <><DownloadIcon className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Export</span></>}
+            </Button>
+            <RefreshButton onClick={handleRefresh} isLoading={isLoading} language={settings.language} />
+    </div>
   );
 
-  const showFeed = viewMode === 'feed';
-  const showCalendar = viewMode === 'calendar';
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const sidebarContent = (
-    <div className="p-6 flex flex-col h-full bg-white">
-      <div className="space-y-2 flex-grow overflow-y-auto">
-         {unifiedSidebarItems.map(item => (
-          <button
-            key={item.id}
-            onClick={() => {onSelectPlan(item.id); setIsPlanSidebarOpen(false);}}
-            className={`w-full text-left p-4 rounded-lg transition-colors border-2 ${activePlanId === item.id ? 'bg-green-50 border-brand-green' : 'bg-white hover:bg-gray-100 border-gray-200'}`}
-          >
-            <div className="flex justify-between items-start">
-               <h3 className="font-bold font-sans text-gray-900">{item.name}</h3>
-               {item.source === 'content-package' && (
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">{currentTexts.pkgLabel}</span>
-               )}
-            </div>
-            <p className="text-sm text-gray-500 mt-1 font-serif truncate">{item.description}</p>
-          </button>
-        ))}
-        {unifiedSidebarItems.length === 0 && (
-           <div className="text-center py-10 text-gray-400 border-2 border-dashed border-gray-300 rounded-lg">
-             <p>{currentTexts.generate_plan_subtitle}</p>
-           </div>
-        )}
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+  };
+
+  return (
+    <GenericTabTemplate
+      title="Media Plan"
+      subtitle="Your generated content schedule"
+      actionButtons={actionButtons}
+      isLoading={isLoading}
+    >
+      <div className="h-full grid grid-cols-1 md:grid-cols-2 md:gap-6">
+        <MediaPlanSidebar
+          planGroups={planGroupsList}
+          activePlanId={activePlanId}
+          onSelectPlan={onSelectPlan}
+          language={settings.language}
+          onCreatePlan={onOpenWizard}
+          isSidebarOpen={isSidebarOpen}
+          setIsSidebarOpen={setIsSidebarOpen}
+          searchQuery={searchQuery}
+          onSearchChange={handleSearchChange}
+        />
+
+          <MediaPlanMainContent
+            activePlan={activePlan}
+            language={settings.language}
+            onOpenWizard={onOpenWizard}
+            onOpenFunnelWizard={onOpenFunnelWizard}
+            onAssignPersonaToPlan={onAssignPersonaToPlan}
+            personas={personas}
+            selectedPlanId={activePlanId}
+            generatedImages={generatedImages}
+            generatedVideos={generatedVideos}
+            onSetImage={onSetImage}
+            onSetVideo={onSetVideo}
+            isGeneratingImage={isGeneratingImage}
+            onOpenScheduleModal={onOpenScheduleModal}
+            selectedPostIds={props.selectedPostIds}
+            onTogglePostSelection={props.onTogglePostSelection}
+            onTogglePostApproval={onTogglePostApproval}
+            onPublishPost={props.onPublishPost}
+            settings={settings}
+            affiliateLinks={affiliateLinks}
+            onUpdatePost={onUpdatePost}
+            setViewingPost={setViewingPost}
+            viewingPost={viewingPost}
+            onGenerateImage={onGenerateImage}
+            onGenerateAllCarouselImages={onGenerateAllCarouselImages}
+            onGenerateInCharacterPost={onGenerateInCharacterPost}
+            onRefinePost={handleRefinePost}
+            isRefining={isRefining}
+            onRunKhongMinhForPost={() => {}}
+            onAcceptSuggestion={() => {}}
+            khongMinhSuggestions={{}}
+            isGenerating={isGeneratingImage('')}
+            onGenerateComment={handleGenerateComment}
+            isGeneratingComment={isGeneratingComment}
+            publishedAt={viewingPost?.post.publishedAt || undefined}
+            publishedUrl={viewingPost?.post.publishedUrl}
+            mongoBrandId={mongoBrandId}
+            onTaskCreated={onTaskCreated}
+            onSelectAllPosts={props.onSelectAllPosts}
+            onClearSelection={props.onClearSelection}
+            onOpenBulkScheduleModal={props.onOpenBulkScheduleModal}
+            onBulkGenerateImages={props.onBulkGenerateImages}
+            onBulkSuggestPromotions={props.onBulkSuggestPromotions}
+            onBulkGenerateComments={props.onBulkGenerateComments}
+            isPerformingBulkAction={props.isPerformingBulkAction}
+          />
       </div>
-       <div className="mt-auto pt-4 flex flex-col gap-2">
-         <Button 
-            onClick={onExport} 
-            disabled={isExporting || plans.length === 0}
-            variant="tertiary" 
-            className="w-full flex items-center justify-center gap-2"
-          >
-            {isExporting ? <div className="w-5 h-5 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div> : <ArchiveIcon className="h-5 w-5" />}
-            {currentTexts.export_plans}
-          </Button>
-        </div>
-      </div>
-    );
 
-    return (
-      <StandardPageView
-        title={currentTexts.plans_sidebar_title}
-        subtitle={currentTexts.generate_plan_subtitle}
-        actions={
-          <div className="flex flex-row gap-2 items-center">
-            <Button 
-              onClick={onOpenFunnelWizard}
-              variant="secondary" 
-              className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium"
-            >
-              <FunnelIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">{currentTexts.newFunnelPlanButton}</span>
-            </Button>
-            <Button 
-              onClick={() => onOpenWizard()}
-              variant="primary" 
-              className="flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium"
-            >
-              <PlusIcon className="h-4 w-4" />
-              <span className="hidden sm:inline">{currentTexts.newPlanButton}</span>
-            </Button>
-            <button 
-              onClick={() => props.onLoadData && props.mongoBrandId && props.onLoadData(props.mongoBrandId)}
-              className="p-2 rounded-md hover:bg-gray-100 transition-colors"
-              aria-label="Refresh data"
-              disabled={props.isLoading}
-            >
-              <RefreshIcon className={`h-4 w-4 text-gray-600 ${props.isLoading ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
-        }
-        onMobileMenuToggle={() => setIsPlanSidebarOpen(true)}
-      >
-        <div className="flex flex-col xl:flex-row h-full bg-gray-50/50">
-          {/* Mobile sidebar overlay */}
-          {isPlanSidebarOpen && (
-            <div className="xl:hidden fixed inset-0 bg-black/30 z-30" onClick={() => setIsPlanSidebarOpen(false)}></div>
-          )}
-          {/* Sidebar */}
-          <aside className={`fixed xl:relative inset-y-0 left-0 w-80 md:w-96 border-r border-gray-200 transform transition-transform z-40 ${isPlanSidebarOpen ? 'translate-x-0' : '-translate-x-full'} xl:translate-x-0 shrink-0`}>
-            {sidebarContent}
-          </aside>
-        
-        {/* Main Content Area */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-10 overflow-y-auto">
-           {selectedPlan ? (
-            <div className="max-w-7xl mx-auto">
-              <header className="mb-8">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-xl font-bold font-sans text-gray-900">
-                      {selectedPlan.name}
-                    </h3>
-                    <p className="text-sm text-gray-500 font-serif">
-                      {selectedPlan.prompt}
-                    </p>
-                  </div>
-                </div>
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 z-30 bg-black bg-opacity-50 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
 
-                <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-4 text-sm text-gray-600 border-t border-gray-200 pt-4">
-                  <div className="flex items-center gap-2">
-                    <CollectionIcon className="h-5 w-5 text-gray-400" />
-                    <p><span className="font-semibold text-gray-800">{planKPIs.totalPosts}</span> {language === 'Việt Nam' ? 'bài đăng' : 'posts'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <TagIcon className="h-5 w-5 text-gray-400" />
-                    <p><span className="font-semibold text-gray-800">{planKPIs.platformCount}</span> {language === 'Việt Nam' ? 'nền tảng' : 'platforms'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <UsersIcon className="h-5 w-5 text-gray-400" />
-                    {assignedPersona ? (
-                      <div className="flex items-center gap-2 bg-white rounded-md p-2 shadow-sm border border-gray-200">
-                        {assignedPersona.avatarImageUrl || (assignedPersona.photos.length > 0 && props.generatedImages[assignedPersona.photos[0].imageKey]) ? (
-                          <img
-                            src={assignedPersona.avatarImageUrl || props.generatedImages[assignedPersona.photos[0].imageKey]}
-                            alt={assignedPersona.nickName}
-                            className="h-8 w-8 rounded-full object-cover border border-gray-100"
-                          />
-                        ) : (
-                          <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 text-sm font-semibold">
-                            <UsersIcon className="h-4 w-4" />
-                          </div>
-                        )}
-                        <div>
-                          <p className="text-sm font-semibold text-gray-800 leading-tight">{assignedPersona.nickName}</p>
-                          <p className="text-xs text-gray-500 leading-tight">{assignedPersona.mainStyle} | {assignedPersona.activityField}</p>
-                        </div>
-                        <select
-                          value={selectedPlan.personaId || ''}
-                          onChange={(e) => onAssignPersonaToPlan(activePlanId!, e.target.value || null)}
-                          className="text-sm bg-transparent border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-brand-green focus:border-brand-green ml-2"
-                        >
-                          <option value="">{currentTexts.noPersonaAssigned}</option>
-                          {personas.map(p => <option key={p.id} value={p.id}>{p.nickName}</option>)}
-                        </select>
-                      </div>
-                    ) : (
-                      <select
-                        value={selectedPlan.personaId || ''}
-                        onChange={(e) => onAssignPersonaToPlan(activePlanId!, e.target.value || null)}
-                        className="text-sm bg-transparent border-gray-300 rounded-md py-1 pl-2 pr-8 focus:ring-brand-green focus:border-brand-green"
-                      >
-                        <option value="">{currentTexts.noPersonaAssigned}</option>
-                        {personas.map(p => <option key={p.id} value={p.id}>{p.nickName}</option>)}
-                      </select>
-                    )}
-                  </div>
-                </div>
-              </header>
-              
-              <div className="flex justify-center mb-8">
-                <div className="inline-flex rounded-lg shadow-sm border border-gray-200 bg-white p-1">
-                  <Button
-                    variant={viewMode === 'feed' ? 'primary' : 'tertiary'}
-                    onClick={() => setViewMode('feed')}
-                    className={`!rounded-md px-4 py-1.5 flex items-center gap-2 !text-sm ${viewMode === 'feed' ? '' : 'text-gray-600'}`}
-                  >
-                    <ListBulletIcon className="h-5 w-5"/>
-                    {currentTexts.view_toggle_feed}
-                  </Button>
-                  <Button
-                     variant={viewMode === 'calendar' ? 'primary' : 'tertiary'}
-                    onClick={() => setViewMode('calendar')}
-                    className={`!rounded-md px-4 py-1.5 flex items-center gap-2 !text-sm ${viewMode === 'calendar' ? '' : 'text-gray-600'}`}
-                  >
-                    <CalendarIcon className="h-5 w-5"/>
-                    {currentTexts.view_toggle_calendar}
-                  </Button>
-                </div>
-              </div>
-              
-              {showFeed && (
-                <div>
-                  <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-8">
-                    <button onClick={() => setIsFilterOpen(!isFilterOpen)} className="w-full flex justify-between items-center font-semibold md:hidden">
-                      <span>{currentTexts.filters_title}</span>
-                      <ChevronDownIcon className={`h-5 w-5 transition-transform ${isFilterOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                    <div className={`space-y-4 ${isFilterOpen ? 'mt-4' : 'hidden'} md:block`}>
-                      {props.selectedPostIds.size > 0 && (
-                        <div className="fixed bottom-0 left-0 right-0 p-3 bg-white/95 backdrop-blur-sm border-t-2 border-brand-green shadow-lg z-20 animate-fade-in md:relative md:bottom-auto md:p-3 md:bg-green-50 md:border md:border-green-200 md:rounded-lg md:shadow-sm">
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-                            <div className="flex items-center gap-3 flex-shrink-0">
-                              <input
-                                type="checkbox"
-                                className="h-5 w-5 rounded border-gray-300 text-brand-green focus:ring-brand-green"
-                                checked={isAllDisplayedSelected}
-                                onChange={handleSelectAllToggle}
-                                aria-label="Select all displayed posts"
-                                disabled={isPerformingBulkAction}
-                              />
-                              <span className="font-semibold text-gray-800">{currentTexts.selection_title} {props.selectedPostIds.size}</span>
-                              <Button variant="tertiary" onClick={props.onClearSelection} className="text-sm py-1 px-2" disabled={isPerformingBulkAction}>{currentTexts.selection_clear}</Button>
-                            </div>
-                            <div className="flex items-center gap-2 sm:ml-auto flex-wrap justify-end">
-                              <Button onClick={() => handleBulkAction(onBulkGenerateImages)} disabled={isPerformingBulkAction} variant="secondary" className="bg-white text-sm py-1.5 px-3 flex items-center gap-1.5"><PhotographIcon className="h-4 w-4" /> {currentTexts.selection_gen_images}</Button>
-                              <Button onClick={() => handleBulkAction(onBulkSuggestPromotions)} disabled={isPerformingBulkAction} variant="secondary" className="bg-white text-sm py-1.5 px-3 flex items-center gap-1.5"><KhongMinhIcon className="h-4 w-4" /> {currentTexts.selection_sug_promo}</Button>
-                              <Button onClick={() => handleBulkAction(onBulkGenerateComments)} disabled={isPerformingBulkAction} variant="secondary" className="bg-white text-sm py-1.5 px-3 flex items-center gap-1.5"><ChatBubbleLeftIcon className="h-4 w-4" /> {currentTexts.selection_gen_comment}</Button>
-                              <Button onClick={() => handleBulkAction(() => onOpenBulkScheduleModal())} disabled={isPerformingBulkAction} className="text-sm py-1.5 px-3 flex items-center gap-1.5"><CalendarIcon className="h-4 w-4" /> {currentTexts.selection_schedule}</Button>
-                              <Button variant="secondary" className="bg-white text-red-600 border-red-200 hover:bg-red-50 text-sm py-1.5 px-3 flex items-center gap-1.5" disabled={isPerformingBulkAction}><TrashIcon className="h-4 w-4" /> {currentTexts.selection_delete}</Button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
+      {viewingPost && (
+        <PostDetailModal
+          isOpen={!!viewingPost}
+          onClose={() => setViewingPost(null)}
+          postInfo={viewingPost}
+          language={settings.language}
+          onUpdatePost={handleUpdateAndClose}
+          onGenerateImage={onGenerateImage}
+          onGenerateAllCarouselImages={onGenerateAllCarouselImages}
+          onSetImage={onSetImage}
+          onSetVideo={onSetVideo}
+          onGeneratePrompt={() => {}} // Placeholder for now, will be implemented if needed
+          onGenerateInCharacterPost={onGenerateInCharacterPost}
+          onRefinePost={handleRefinePost}
+          isRefining={isRefining}
+          onRunKhongMinhForPost={() => props.onRunKhongMinhForPost(viewingPost!)}
+          onAcceptSuggestion={(productId) => props.onAcceptSuggestion(viewingPost!, productId)}
+          generatedImages={generatedImages}
+          generatedVideos={generatedVideos}
+          isGeneratingImage={isGeneratingImage}
+          isGeneratingPrompt={props.generatingPromptKeys.size > 0} // Assuming this is the correct prop
+          isAnyAnalysisRunning={props.isAnyAnalysisRunning}
+          isAnalyzing={props.analyzingPostIds.size > 0} // Assuming this is the correct prop
+          khongMinhSuggestions={props.khongMinhSuggestions}
+          affiliateLinks={affiliateLinks}
+          isGenerating={isGeneratingImage('')} // Assuming this is the correct prop
+          onGenerateComment={handleGenerateComment}
+          isGeneratingComment={isGeneratingComment}
+          onOpenScheduleModal={onOpenScheduleModal}
+          onPublishPost={() => Promise.resolve() }
+          publishedAt={viewingPost.post.publishedAt}
+          publishedUrl={viewingPost.post.publishedUrl}
+          settings={settings}
+          mongoBrandId={mongoBrandId}
+          onTaskCreated={onTaskCreated}
+        />
+      )}
+    </GenericTabTemplate>
+  );
+};
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="relative">
-                          <Input placeholder={currentTexts.filter_search} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
-                          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label htmlFor="sort-by" className="text-sm font-medium text-gray-700 flex-shrink-0">{currentTexts.filter_sort_by}:</label>
-                          <Select id="sort-by" value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="w-full">
-                            <option value="date-desc">{currentTexts.filter_sort_date_desc}</option>
-                            <option value="date-asc">{currentTexts.filter_sort_date_asc}</option>
-                            <option value="title-asc">{currentTexts.filter_sort_title_asc}</option>
-                            <option value="title-desc">{currentTexts.filter_sort_title_desc}</option>
-                          </Select>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-sm font-medium text-gray-700">{currentTexts.filter_platforms}</span>
-                        {platformOptions.map(({ id, Icon }) => (
-                          <FilterToggleButton key={id} onClick={() => handlePlatformToggle(id)} isActive={selectedPlatforms.includes(id)}>
-                            <Icon className="h-5 w-5" />
-                          </FilterToggleButton>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-sm font-medium text-gray-700">{currentTexts.filter_status}</span>
-                        {statusOptions.map(({ id, text, Icon }) => (
-                          <FilterToggleButton key={id} onClick={() => handleStatusToggle(id)} isActive={selectedStatuses.includes(id)}>
-                            <Icon className={`h-4 w-4 ${selectedStatuses.includes(id) ? 'text-brand-green' : 'text-gray-500'}`} />
-                            <span>{text}</span>
-                          </FilterToggleButton>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className={`${props.selectedPostIds.size > 0 ? 'pb-24 md:pb-0' : ''}`}>
-                    <div className="flex justify-between items-center mb-6">
-                      <h2 className="text-2xl font-bold font-sans text-gray-900">{currentTexts.listViewTitle}</h2>
-                    </div>
-                    {displayedPosts.length > 0 ? (
-                      <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                          {displayedPosts.map(postInfo => {
-                            // CORRECTED LOGIC:
-                            // Use the imageUrl and imageUrlsArray directly from the post object,
-                            // which is the source of truth from the database.
-                            const singleImageUrl = postInfo.post.imageUrl;
-                            const carouselImageUrls = postInfo.post.contentType === 'Carousel' 
-                                ? postInfo.post.imageUrlsArray
-                                : undefined;
-
-                            return (
-                              <PostCard
-                                key={postInfo.post.id}
-                                postInfo={postInfo}
-                                language={language}
-                                imageUrl={singleImageUrl}
-                                imageUrls={carouselImageUrls}
-                                videoUrl={postInfo.post.videoKey ? props.generatedVideos[postInfo.post.videoKey] : undefined}
-                                isSelected={props.selectedPostIds && props.selectedPostIds.has(postInfo.post.id)}
-                                onToggleSelection={() => props.onTogglePostSelection(postInfo.post.id)}
-                                onViewDetails={handleViewDetails}
-                                scheduledAt={postInfo.post.scheduledAt}
-                                publishedAt={postInfo.post.publishedAt}
-                                publishedUrl={postInfo.post.publishedUrl}
-                              />
-                            )
-                          })}
-                        </div>
-                        
-                        {/* Infinite Scroll Trigger */}
-                        {hasMore && (
-                          <div className="mt-8 flex justify-center">
-                            <Button
-                              onClick={loadMorePosts}
-                              disabled={isLoadingMorePosts}
-                              variant="secondary"
-                              className="flex items-center gap-2"
-                            >
-                              {isLoadingMorePosts ? (
-                                <>
-                                  <div className="w-5 h-5 border-2 border-t-transparent border-gray-500 rounded-full animate-spin"></div>
-                                  {language === 'Việt Nam' ? 'Đang tải...' : 'Loading...'}
-                                </>
-                              ) : (
-                                <>
-                                  <ChevronDownIcon className="h-5 w-5" />
-                                  {language === 'Việt Nam' ? 'Tải thêm bài đăng' : 'Load more posts'}
-                                </>
-                              )}
-                            </Button>
-                          </div>
-                        )}
-                        
-                        {/* Manual Pagination Controls (fallback) */}
-                        {totalPages > 1 && (
-                          <div className="mt-8 flex items-center justify-between border-t border-gray-200 pt-6">
-                            <div className="flex items-center">
-                              <span className="text-sm text-gray-700">
-                                {language === 'Việt Nam' 
-                                  ? `Trang ${currentPage} trên ${totalPages}` 
-                                  : `Page ${currentPage} of ${totalPages}`}
-                              </span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Button
-                                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                                disabled={currentPage === 1}
-                                variant="tertiary"
-                                className="flex items-center gap-1"
-                              >
-                                <ChevronLeftIcon className="h-4 w-4" />
-                                {language === 'Việt Nam' ? 'Trước' : 'Previous'}
-                              </Button>
-                              
-                              {/* Page numbers */}
-                              {[...Array(Math.min(5, totalPages))].map((_, i) => {
-                                const pageNum = 
-                                  totalPages <= 5 
-                                    ? i + 1 
-                                    : currentPage <= 3 
-                                      ? i + 1 
-                                      : currentPage >= totalPages - 2 
-                                        ? totalPages - 4 + i 
-                                        : currentPage - 2 + i;
-                                        
-                                return (
-                                  <Button
-                                    key={pageNum}
-                                    onClick={() => setCurrentPage(pageNum)}
-                                    variant={currentPage === pageNum ? 'primary' : 'tertiary'}
-                                    className={`w-10 h-10 ${currentPage === pageNum ? '' : 'text-gray-700'}`}
-                                  >
-                                    {pageNum}
-                                  </Button>
-                                );
-                              })}
-                              
-                              <Button
-                                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                                disabled={currentPage === totalPages}
-                                variant="tertiary"
-                                className="flex items-center gap-1"
-                              >
-                                {language === 'Việt Nam' ? 'Tiếp' : 'Next'}
-                                <ChevronRightIcon className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="text-sm text-gray-700">
-                                {language === 'Việt Nam' 
-                                  ? `${displayedPosts.length} bài đăng` 
-                                  : `${displayedPosts.length} posts`}
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <div className="text-center py-16 bg-white rounded-lg border-2 border-dashed">
-                        <SearchIcon className="mx-auto h-12 w-12 text-gray-400"/>
-                        <h3 className="mt-2 text-xl font-semibold text-gray-900">{currentTexts.filter_no_results}</h3>
-                        <p className="mt-1 text-sm text-gray-500">{currentTexts.filter_no_results_desc}</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {showCalendar && (
-               <CalendarView
-                 plan={selectedPlan.plan}
-                 planId={selectedPlan.id}
-                 language={language}
-                 onPostDrop={onPostDrop}
-                 onViewDetails={handleViewDetails}
-               />
-              )}
-            </div>
-           ) : (
-             <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-gray-300">
-               <h3 className="text-3xl font-bold font-sans text-gray-900">
-                 {unifiedSidebarItems.length > 0 ? currentTexts.select_plan_title : currentTexts.generate_plan_title}
-               </h3>
-               <p className="text-lg text-gray-500 mt-2 font-serif max-w-md mx-auto">
-                 {unifiedSidebarItems.length > 0 ? currentTexts.select_plan_subtitle : currentTexts.generate_plan_subtitle}
-               </p>
-               <div className="mt-6 xl:hidden">
-                 <Button onClick={() => setIsPlanSidebarOpen(true)}>{currentTexts.select_plan_mobile}</Button>
-               </div>
-             </div>
-           )}
-         </main>
-
-         {viewingPost && (
-           <PostDetailModal
-             isOpen={!!viewingPost}
-             onClose={() => setViewingPost(null)}
-             postInfo={viewingPost}
-             settings={settings}
-             language={language}
-             weekTheme={selectedPlan?.plan[viewingPost.weekIndex]?.theme}
-             onUpdatePost={(updatedInfo) => {
-               onUpdatePost(updatedInfo);
-               setViewingPost(updatedInfo);
-             }}
-             onGenerateAllCarouselImages={onGenerateAllCarouselImages}
-             onAcceptSuggestion={(productId) => {
-               if(viewingPost) {
-                 const updatedPost = {
-                   ...viewingPost.post,
-                   promotedProductIds: [...(viewingPost.post.promotedProductIds || []), productId],
-                 };
-                 const updatedInfo = { ...viewingPost, post: updatedPost };
-                 setViewingPost(updatedInfo);
-                 props.onUpdatePost(updatedInfo);
-               }
-             }}
-             onRunKhongMinhForPost={() => {
-               if(viewingPost) props.onRunKhongMinhForPost(viewingPost);
-             }}
-             affiliateLinks={props.affiliateLinks}
-             generatedImages={props.generatedImages}
-             generatedVideos={props.generatedVideos}
-             onSetVideo={props.onSetVideo}
-             isAnyAnalysisRunning={isAnyAnalysisRunning}
-             isGeneratingImage={isGeneratingImage}
-             isGeneratingPrompt={generatingPromptKeys.has(`${viewingPost.planId}_${viewingPost.weekIndex}_${viewingPost.postIndex}`)}
-             isGenerating={false} // Add this line
-             isAnalyzing={analyzingPostIds.has(viewingPost.post.id)}
-             khongMinhSuggestions={khongMinhSuggestions}
-             onGenerateImage={onGenerateImage}
-             onGeneratePrompt={async (postInfo) => {
-               const updatedPost = await onGeneratePrompt(postInfo);
-               if (updatedPost) {
-                 setViewingPost({ ...postInfo, post: updatedPost });
-               }
-             }}
-             onRefinePost={onRefinePost}
-             onGenerateInCharacterPost={onGenerateInCharacterPost}
-             isRefining={false} // Add this line
-             onSetImage={onSetImage}
-             isGeneratingComment={generatingCommentPostIds.has(viewingPost.post.id)}
-             onGenerateComment={async (postInfo) => {
-               const updatedPost = await onGenerateAffiliateComment(postInfo);
-               if (updatedPost) {
-                 setViewingPost({ ...postInfo, post: updatedPost });
-               }
-             }}
-             onOpenScheduleModal={() => {
-               if (viewingPost) {
-                 const schedulingPost: SchedulingPost = {
-                   id: viewingPost.post.id,
-                   title: viewingPost.post.title,
-                   platform: viewingPost.post.platform,
-                   scheduledAt: viewingPost.post.scheduledAt || null,
-                   status: viewingPost.post.status,
-                   post: viewingPost.post
-                 };
-                 onOpenScheduleModal(schedulingPost);
-               }
-             }}
-             onPublishPost={async (postInfo) => {
-               await props.onPublishPost(postInfo);
-             }}
-             publishedUrl={viewingPost.post.publishedUrl}
-             publishedAt={viewingPost.post.publishedAt}
-           />
-         )}
-       </div>
-      </StandardPageView>
-     );
-   };
-
-   export default MediaPlanDisplay;
+export default MediaPlanDisplay;

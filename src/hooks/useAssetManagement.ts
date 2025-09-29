@@ -1,7 +1,7 @@
 import { useCallback, Dispatch, SetStateAction } from 'react';
 import type { Settings, PostInfo, GeneratedAssets, LogoConcept, MediaPlanPost } from '../../types';
 import { AiModelConfig } from '../services/configService';
-import { imageGenerationService } from '../services/imageGenerationService';
+import { taskService } from '../services/taskService';
 import { uploadMediaToCloudinary } from '../services/cloudinaryService';
 import { updateMediaPlanPostInDatabase, syncAssetMediaWithDatabase } from '../services/databaseService';
 import { assetsReducer, AssetsAction } from '../reducers/assetsReducer';
@@ -42,6 +42,7 @@ interface useAssetManagementProps {
     updateAutoSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
     setError: (error: string | null) => void;
     setViewingPost: Dispatch<SetStateAction<PostInfo | null>>;
+    onTaskCreated: () => void;
 }
 
 export const useAssetManagement = ({
@@ -56,30 +57,37 @@ export const useAssetManagement = ({
     updateAutoSaveStatus,
     setError,
     setViewingPost,
+    onTaskCreated,
 }: useAssetManagementProps) => {
 
-    const generateSingleImageCore = useCallback(async (mediaPrompt: string, settings: Settings, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo): Promise<string> => {
-        let imagesToUse: File[] = [];
-        if (postInfo && 'planId' in postInfo && generatedAssets) {
-            const planGroup = generatedAssets.mediaPlans.find(p => p.id === postInfo.planId);
-            const serializedImages = planGroup?.productImages || [];
-            if (isVisionModel(settings.imageGenerationModel, aiModelConfig) && serializedImages.length > 0) {
-                imagesToUse = serializedImages.map(img => base64ToFile(img.data, img.name, img.type));
-            }
+    const handleGenerateImage = useCallback(async (mediaPrompt: string, imageKey: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo, carouselImageIndex?: number) => {
+        if (!mongoBrandId) {
+            setError("Cannot generate image: brand ID not available.");
+            return;
         }
+        setGeneratingImageKeys(prev => new Set(prev).add(imageKey));
+        setError(null);
     
-        if (!aiModelConfig) {
-            throw new Error("AI Model configuration not loaded.");
+        try {
+            const payload = {
+                mediaPrompt,
+                imageKey,
+                aspectRatio,
+                settings,
+                postInfo,
+                carouselImageIndex,
+            };
+            await taskService.createBackgroundTask('GENERATE_IMAGE', payload, mongoBrandId);
+            onTaskCreated();
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to create image generation task.");
+            setGeneratingImageKeys(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(imageKey);
+                return newSet;
+            });
         }
-        
-        return imageGenerationService.generateImage(
-            mediaPrompt,
-            aspectRatio,
-            settings,
-            aiModelConfig,
-            imagesToUse
-        );
-    }, [generatedAssets, aiModelConfig]);
+    }, [mongoBrandId, settings, setError, setGeneratingImageKeys, onTaskCreated]);
 
     const handleGenerateAllCarouselImages = useCallback(async (postInfo: PostInfo) => {
         if (!settings || !mongoBrandId) {
@@ -96,51 +104,27 @@ export const useAssetManagement = ({
         setError(null);
 
         try {
-            const generationPromises = mediaPrompts.map(async (prompt, index) => {
-                const existingUrl = postInfo.post.imageUrlsArray?.[index];
-                if (existingUrl) {
-                    return { url: existingUrl, key: postInfo.post.imageKeys?.[index] || allKeys[index] };
-                }
-
+            const generationPromises = mediaPrompts.map((prompt, index) => {
                 const imageKey = allKeys[index];
-                const dataUrl = await generateSingleImageCore(prompt, settings, "1:1", postInfo);
-                const publicUrls = await uploadMediaToCloudinary({ [imageKey]: dataUrl }, settings);
-                
-                if (!publicUrls[imageKey]) {
-                    throw new Error(`Image upload failed for index ${index}`);
-                }
-                return { url: publicUrls[imageKey], key: imageKey };
+                const payload = {
+                    mediaPrompt: prompt,
+                    imageKey,
+                    aspectRatio: "1:1",
+                    postInfo,
+                    carouselImageIndex: index,
+                };
+                return taskService.createBackgroundTask('GENERATE_IMAGE', payload, mongoBrandId);
             });
 
-            const results = await Promise.all(generationPromises);
-
-            const newImageUrlsArray = results.map(r => r.url);
-            const newImageKeysArray = results.map(r => r.key);
-
-            // Single batch update to the database
-            await updateMediaPlanPostInDatabase(postInfo.post.id, mongoBrandId, {
-                imageUrlsArray: newImageUrlsArray,
-                imageKeys: newImageKeysArray,
-            });
-
-            // Single dispatch to update local state
-            dispatchAssets({
-                type: 'UPDATE_POST_CAROUSEL',
-                payload: {
-                    planId: postInfo.planId,
-                    weekIndex: postInfo.weekIndex,
-                    postIndex: postInfo.postIndex,
-                    imageUrlsArray: newImageUrlsArray,
-                    imageKeys: newImageKeysArray,
-                }
-            });
+            await Promise.all(generationPromises);
+            onTaskCreated();
 
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to generate carousel images.");
+            setError(err instanceof Error ? err.message : "Failed to create carousel image generation tasks.");
         } finally {
-            setGeneratingImageKeys(new Set()); // Clear all generating keys
+            // The generating keys will be cleared by the task system once tasks are complete
         }
-    }, [settings, mongoBrandId, generateSingleImageCore, dispatchAssets, setError, setGeneratingImageKeys]);
+    }, [settings, mongoBrandId, setError, setGeneratingImageKeys, onTaskCreated]);
 
     const handleSetImage = useCallback(async (dataUrl: string, imageKey: string, postInfo?: PostInfo, carouselImageIndex?: number) => {
         const randomSuffix = Math.random().toString(36).substring(2, 10);
@@ -168,7 +152,6 @@ export const useAssetManagement = ({
                             updates.imageUrlsArray = currentUrls;
                             updates.imageKeys = currentKeys;
                             
-                            // Update the main state with the new carousel image URL and key
                             dispatchAssets({
                                 type: 'UPDATE_POST_CAROUSEL',
                                 payload: {
@@ -183,7 +166,6 @@ export const useAssetManagement = ({
                             updates.imageUrl = publicUrl;
                             updates.imageKey = newImageKey;
                             
-                            // Update the main state with the new image URL
                             dispatchAssets({
                                 type: 'UPDATE_POST',
                                 payload: {
@@ -223,29 +205,6 @@ export const useAssetManagement = ({
             }
         }
     }, [generatedAssets, mongoBrandId, settings, updateAutoSaveStatus, dispatchAssets, setGeneratedImages, setError]);
-
-    const handleGenerateImage = useCallback(async (mediaPrompt: string, imageKey: string, aspectRatio: "1:1" | "16:9" = "1:1", postInfo?: PostInfo, carouselImageIndex?: number) => {
-        setGeneratingImageKeys(prev => new Set(prev).add(imageKey));
-        setError(null);
-    
-        try {
-            if (!settings) {
-                setError("Application settings not loaded.");
-                return;
-            }
-            const dataUrl = await generateSingleImageCore(mediaPrompt, settings, aspectRatio, postInfo);
-            await handleSetImage(dataUrl, imageKey, postInfo, carouselImageIndex);
-
-        } catch (err) {
-            setError(err instanceof Error ? err.message : "Failed to generate image.");
-        } finally {
-            setGeneratingImageKeys(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(imageKey);
-                return newSet;
-            });
-        }
-    }, [settings, generateSingleImageCore, handleSetImage, setError, setGeneratingImageKeys]);
 
     const handleSetVideo = useCallback(async (dataUrl: string, key: string, postInfo: PostInfo) => {
         // This function needs to be updated to use the new database service signature
