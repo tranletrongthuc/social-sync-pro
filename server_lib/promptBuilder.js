@@ -541,44 +541,7 @@ function buildViralIdeasPrompt(trend, language, settings) {
         .addInstruction(`Analyze the following trend:\n- Topic: ${trend.topic}\n- Keywords: ${(trend.keywords || []).join(', ')}`)
         .addInstruction('Generate 5 unique and engaging content ideas.');
 
-    const rules = settings.prompts?.rules;
-    if (rules) {
-        let rulesInstruction = "\n--- CRITICAL RULES --- You must follow these rules when generating the fields in the JSON response:";
-        let hasRules = false;
-
-        if (rules.postCaption && rules.postCaption.length > 0) {
-            rulesInstruction += `\n- ${buildPostCaptionRules(rules.postCaption)}`;
-            hasRules = true;
-        }
-
-        const mediaRules = [];
-        if (rules.imagePrompt && rules.imagePrompt.length > 0) {
-            mediaRules.push(buildImagePromptRules(rules.imagePrompt));
-            mediaRules.push(buildCarouselPromptRules(rules.imagePrompt));
-        }
-        if (rules.shortVideoScript && rules.shortVideoScript.length > 0) {
-            mediaRules.push(buildShortVideoScriptRules(rules.shortVideoScript));
-        }
-        if (rules.longVideoScript && rules.longVideoScript.length > 0) {
-            mediaRules.push(buildLongVideoScriptRules(rules.longVideoScript));
-        }
-
-        if ((!rules.shortVideoScript || rules.shortVideoScript.length === 0) && (!rules.longVideoScript || rules.longVideoScript.length === 0)) {
-            mediaRules.push(buildDefaultVideoRules());
-        }
-
-        if (mediaRules.length > 0) {
-            rulesInstruction += `\n- For the 'contentType' field, you MUST ONLY use one of these exact values: 'Carousel', 'Image', 'Video', 'Reel', 'Shorts', 'Story'.`;
-            rulesInstruction += `\n- ${mediaRules.join('\n- ')}`;
-            hasRules = true;
-        }
-
-        if (hasRules) {
-            builder.addInstruction(rulesInstruction);
-        }
-    }
-
-    builder.addJsonOutput('ViralIdeas', VIRAL_IDEAS_JSON_STRUCTURE);
+    builder.addJsonOutput('ViralIdeas', VIRAL_IDEAS_JSON_STRUCTURE_VIETNAMESE);
 
     return builder.build();
 }

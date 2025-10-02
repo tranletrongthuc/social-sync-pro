@@ -126,8 +126,6 @@ const handlers = {
       if (method === 'POST') {
         body = JSON.stringify(payload);
       } else if (method === 'GET' && Object.keys(payload).length > 0) {
-        // For GET requests, add payload as query parameters
-        // Build the query string manually to avoid potential URLSearchParams issues
         const queryParams = [];
         for (const [key, value] of Object.entries(payload)) {
           if (value !== undefined && value !== null) {
@@ -135,7 +133,6 @@ const handlers = {
           }
         }
         if (queryParams.length > 0) {
-          // Check if URL already has query parameters
           const separator = url.includes('?') ? '&' : '?';
           url += `${separator}${queryParams.join('&')}`;
         }
@@ -159,10 +156,6 @@ const handlers = {
     }
   },
 
-  /**
-   * PostgreSQL: Same API pattern, but routed to Postgres backend
-   * You can later change this to use Prisma, Drizzle, or direct SQL calls (SSR)
-   */
   postgresql: async (action: string, payload: Record<string, any>, expectsJson: boolean) => {
     const response = await fetch(`/api/postgresql?action=${action}`, {
       method: 'POST',
@@ -178,12 +171,7 @@ const handlers = {
     return expectsJson ? await response.json() : await response.text();
   },
 
-  /**
-   * Firebase: Simulate REST call or use Firebase Functions
-   * In future: replace with Firebase SDK (e.g., Firestore, RTDB)
-   */
   firebase: async (action: string, payload: Record<string, any>, expectsJson: boolean) => {
-    // Example: map actions to Firebase Cloud Functions
     const functionUrl = `https://us-central1-your-project.cloudfunctions.net/api?action=${action}`;
 
     const response = await fetch(functionUrl, {
@@ -219,28 +207,6 @@ const createOrUpdateBrandRecordInDatabase = async (
 ): Promise<string> => {
   const result = await callDatabaseService<{ brandId: string }>('create-or-update-brand', { assets, brandId });
   return result.brandId;
-};
-
-const loadCompleteAssetsFromDatabase = async (brandId: string): Promise<{
-  assets: GeneratedAssets;
-  generatedImages: Record<string, string>;
-  generatedVideos: Record<string, string>;
-  brandId: string;
-}> => {
-  console.log('DEBUG: Loading complete assets for brand ID:', brandId);
-  const result = await callDatabaseService<{
-    assets: GeneratedAssets;
-    generatedImages: Record<string, string>;
-    generatedVideos: Record<string, string>;
-    brandId: string;
-  }>('load-complete-project', { brandId });
-
-  return result || { 
-    assets: initialGeneratedAssets, 
-    generatedImages: {}, 
-    generatedVideos: {}, 
-    brandId: '' 
-  };
 };
 
 const syncAssetMediaWithDatabase = async (brandId: string, assets: GeneratedAssets, settings: Settings): Promise<void> => {
@@ -301,29 +267,21 @@ const saveMediaPlanGroupToDatabase = async (
 };
 
 const saveTrendToDatabase = async (trend: Omit<Trend, 'id'> & { id?: string }, brandId: string): Promise<string> => {
-  console.log('saveTrend called with trend:', trend, 'brandId:', brandId);
   const result = await callDatabaseService<{ id: string }>('save-trend', { trend, brandId }, { invalidatesCacheForBrand: brandId });
-  console.log('Trend saved successfully with ID:', result.id);
   return result.id;
 };
 
 const deleteTrendFromDatabase = async (trendId: string, brandId: string): Promise<void> => {
-  console.log('deleteTrend called with trendId:', trendId, 'brandId:', brandId);
   await callDatabaseService('delete-trend', { trendId, brandId }, { invalidatesCacheForBrand: brandId });
 };
 
 const saveIdeasToDatabase = async (ideas: Partial<Idea>[], brandId: string): Promise<Idea[]> => {
-  console.log('saveIdeas called with ideas:', ideas);
   const result = await callDatabaseService<{ ideas: Idea[] }>('save-ideas', { ideas, brandId }, { invalidatesCacheForBrand: brandId });
-  console.log('Ideas saved successfully');
   return result.ideas;
 };
 
-// Add bulk save function for trends
 const saveTrendsToDatabase = async (trends: (Omit<Trend, 'id'> & { id?: string })[], brandId: string): Promise<Trend[]> => {
-  console.log('saveTrendsToDatabase called with trends:', trends, 'brandId:', brandId);
   const result = await callDatabaseService<{ trends: Trend[] }>('save-trends', { trends, brandId }, { invalidatesCacheForBrand: brandId });
-  console.log('Trends saved successfully');
   return result.trends;
 };
 
@@ -359,14 +317,6 @@ const listMediaPlanGroupsForBrandFromDatabase = async (brandId: string): Promise
   return result.groups;
 };
 
-const loadMediaPlanFromDatabase = async (planId: string): Promise<{
-  plan: MediaPlan;
-  imageUrls: Record<string, string>;
-  videoUrls: Record<string, string>;
-}> => {
-  return await callDatabaseService('load-media-plan', { planId });
-};
-
 const bulkPatchPostsInDatabase = async (updates: { postId: string; fields: Record<string, any> }[]): Promise<void> => {
   await callDatabaseService('bulk-patch-posts', { updates });
 };
@@ -381,25 +331,10 @@ const loadProjectFromDatabase = async (brandId: string): Promise<{
   generatedVideos: Record<string, string>;
   brandId: string;
 }> => {
-  console.log(`Loading complete project for brand ID: ${brandId}`);
-  const result = await callDatabaseService<{
-    assets: GeneratedAssets;
-    generatedImages: Record<string, string>;
-    generatedVideos: Record<string, string>;
-    brandId: string;
-  }>('load-complete-project', { brandId });
-  console.log(`Loaded complete project for brand ID: ${brandId}`);
-  
-  return result || { 
-    assets: initialGeneratedAssets, 
-    generatedImages: {}, 
-    generatedVideos: {}, 
-    brandId: '' 
-  };
+  return await callDatabaseService('load-complete-project', { brandId });
 };
 
 const checkIfProductExistsInDatabase = async (productId: string): Promise<boolean> => {
-  console.log(`Checking if product exists in database: ${productId}`);
   try {
     const result = await callDatabaseService<{ exists: boolean }>('check-product-exists', { productId });
     return result.exists || false;
@@ -459,16 +394,11 @@ const loadStrategyHubData = async (brandId: string): Promise<{
   trends: Trend[];
   ideas: Idea[];
 }> => {
-  console.log('loadStrategyHubData called with brandId:', brandId);
-  
   if (!brandId) {
-    console.warn('loadStrategyHubData: Missing brandId');
     return { trends: [], ideas: [] };
   }
-  
   try {
     const data = await callDatabaseService<{ trends: Trend[]; ideas: Idea[] }>('load-strategy-hub', { brandId });
-    console.log('Strategy hub data received from API:', data);
     return data || { trends: [], ideas: [] };
   } catch (error) {
     console.error('Error loading strategy hub data:', error);
@@ -477,13 +407,9 @@ const loadStrategyHubData = async (brandId: string): Promise<{
 };
 
 const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]> => {
-  console.log('loadAffiliateVaultData called with brandId:', brandId);
-  
   if (!brandId) {
-    console.warn('loadAffiliateVaultData: Missing brandId');
     return [];
   }
-  
   try {
     const result = await callDatabaseService<{ affiliateLinks: AffiliateLink[] }>('load-affiliate-vault', { brandId });
     return result.affiliateLinks || [];
@@ -494,16 +420,11 @@ const loadAffiliateVaultData = async (brandId: string): Promise<AffiliateLink[]>
 };
 
 const loadPersonasData = async (brandId: string): Promise<Persona[]> => {
-  console.log('loadPersonasData called with brandId:', brandId);
-  
   if (!brandId) {
-    console.warn('loadPersonasData: Missing brandId');
     return [];
   }
-  
   try {
     const result = await callDatabaseService<{ personas: Persona[] }>('load-personas', { brandId });
-    console.log('Personas data received from API:', result.personas);
     return result.personas || [];
   } catch (error) {
     console.error('Error loading personas data:', error);
@@ -515,26 +436,27 @@ const loadMediaPlanPostsWithPagination = async (
   planId: string,
   page: number = 1,
   limit: number = 30
-): Promise<{ posts: MediaPlanPost[]; pagination: { currentPage: number; hasNextPage: boolean; totalPosts: number; totalPages: number; hasPrevPage: boolean; } }> => {
+): Promise<{ posts: MediaPlanPost[]; pagination: any }> => {
   return await callDatabaseService('load-media-plan-posts', { planId, page, limit });
 };
 
-export const loadTrend = async (trendId: string, brandId: string): Promise<Trend | null> => {
-  console.log('loadTrend called with trendId:', trendId, 'brandId:', brandId);
+const loadTrend = async (trendId: string, brandId: string): Promise<Trend | null> => {
   const cacheKey = `trend-${trendId}-${brandId}`;
   if (dataCache[cacheKey]) {
-    console.log('Returning cached trend data');
     return dataCache[cacheKey];
   }
   try {
     const data = await callDatabaseService<{ trend: Trend }>('load-trend', { trendId, brandId });
     dataCache[cacheKey] = data.trend;
-    console.log('Trend data received from API:', data.trend);
     return data.trend;
   } catch (error) {
     console.error('Error loading trend:', error);
     throw error;
   }
+};
+
+const loadMediaPlanFromDatabase = async (planId: string): Promise<{ plan: any, imageUrls: Record<string, string>, videoUrls: Record<string, string> }> => {
+    return callDatabaseService('load-media-plan', { planId });
 };
 
 // ==============================
@@ -545,7 +467,6 @@ export {
   saveAdminDefaultsToDatabase,
   saveSettingsToDatabase,
   createOrUpdateBrandRecordInDatabase,
-  loadCompleteAssetsFromDatabase,
   syncAssetMediaWithDatabase,
   saveAffiliateLinksToDatabase,
   fetchAffiliateLinksForBrandFromDatabase,
@@ -559,17 +480,16 @@ export {
   saveTrendToDatabase,
   deleteTrendFromDatabase,
   saveIdeasToDatabase,
-  saveTrendsToDatabase, // Add the new function
+  saveTrendsToDatabase,
   saveAIModelToDatabase,
   deleteAIModelFromDatabase,
   loadSettingsDataFromDatabase,
   listMediaPlanGroupsForBrandFromDatabase,
-  loadMediaPlanFromDatabase,
   bulkPatchPostsInDatabase,
   bulkUpdatePostSchedulesInDatabase,
   loadProjectFromDatabase,
   checkIfProductExistsInDatabase,
-  loadIdeasForTrendFromDatabase, // Correctly named and now exported
+  loadIdeasForTrendFromDatabase,
   loadInitialProjectData,
   loadMediaPlanGroupsList,
   loadStrategyHubData,
@@ -577,4 +497,6 @@ export {
   loadPersonasData,
   loadMediaPlanPostsWithPagination,
   initializeApp,
+  loadTrend,
+  loadMediaPlanFromDatabase,
 };

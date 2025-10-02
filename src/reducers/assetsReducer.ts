@@ -209,9 +209,9 @@ export const assetsReducer = (state: GeneratedAssets | null, action: AssetsActio
         }
 
         case 'SET_PERSONAS': {
-            console.log('[assetsReducer] SET_PERSONAS action received with payload:', action.payload);
+            // console.log('[assetsReducer] SET_PERSONAS action received with payload:', action.payload);
             const newState = { ...state, personas: action.payload };
-            console.log('[assetsReducer] New state after SET_PERSONAS:', newState);
+            // console.log('[assetsReducer] New state after SET_PERSONAS:', newState);
             return newState;
         }
 

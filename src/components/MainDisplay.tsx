@@ -160,6 +160,7 @@ interface MainDisplayProps {
   // Task Manager props
   tasks: BackgroundTask[];
   isLoadingTasks: boolean;
+  retryingTaskId: string | null;
   onLoadTasks: (brandId: string) => Promise<void>;
   onCancelTask: (taskId: string) => void;
   onRetryTask: (taskId: string) => void;
@@ -495,6 +496,7 @@ const MainDisplay: React.FC<MainDisplayProps> = (props) => {
                 onCancelTask={onCancelTask}
                 onRetryTask={onRetryTask}
                 onDeleteTask={onDeleteTask}
+                retryingTaskId={props.retryingTaskId}
               />
           )}
         </Suspense>

@@ -92,7 +92,7 @@ const AppContent: React.FC = () => {
     const [activePlanId, setActivePlanId] = useState<string | null>(null);
 
     // *** TASK MANAGEMENT (from context) ***
-    const { notifications, removeNotification, taskList, isLoadingTasks, loadTasks, onCancelTask, onRetryTask, onDeleteTask } = useTaskManager();
+    const { notifications, removeNotification, taskList, isLoadingTasks, retryingTaskId, loadTasks, onCancelTask, onRetryTask, onDeleteTask } = useTaskManager();
 
     // This callback is passed to manager hooks. They call it after creating a task.
     const onTaskCreated = useCallback(() => {
@@ -344,13 +344,10 @@ const AppContent: React.FC = () => {
     const handleReloadAllData = useCallback(async (brandId: string) => {
         if (brandId) {
             console.log('[App.tsx] Reloading all data for brand:', brandId);
-            personaManager.handleLoadPersonasData();
-            mediaPlanManager.onLoadMediaPlanData();
-            strategyManager.handleLoadStrategyHubData();
-            strategyManager.handleLoadAffiliateVaultData();
-            loadTasks(brandId);
+            await projectIO.handleLoadCompleteProject(brandId);
+            await loadTasks(brandId);
         }
-    }, [personaManager.handleLoadPersonasData, mediaPlanManager.onLoadMediaPlanData, strategyManager.handleLoadStrategyHubData, strategyManager.handleLoadAffiliateVaultData, loadTasks]);
+    }, [projectIO.handleLoadCompleteProject, loadTasks]);
 
     // Track the previous brand ID to ensure loading only happens on actual changes
     const prevBrandIdRef = useRef<string | null>(null);
@@ -360,13 +357,10 @@ const AppContent: React.FC = () => {
         if (mongoBrandId && mongoBrandId !== prevBrandIdRef.current) {
             prevBrandIdRef.current = mongoBrandId;
             console.log('[App.tsx] mongoBrandId changed, loading all data for brand:', mongoBrandId);
-            personaManager.handleLoadPersonasData();
-            mediaPlanManager.onLoadMediaPlanData();
-            strategyManager.handleLoadStrategyHubData();
-            strategyManager.handleLoadAffiliateVaultData();
+            projectIO.handleLoadCompleteProject(mongoBrandId);
             loadTasks(mongoBrandId);
         }
-    }, [mongoBrandId, personaManager.handleLoadPersonasData, mediaPlanManager.onLoadMediaPlanData, strategyManager.handleLoadStrategyHubData, strategyManager.handleLoadAffiliateVaultData, loadTasks]);
+    }, [mongoBrandId, projectIO.handleLoadCompleteProject, loadTasks]);
 
     // Task notification handlers
     const handleViewTaskResult = useCallback((taskId: string) => {
@@ -374,27 +368,15 @@ const AppContent: React.FC = () => {
         if (task) {
             console.log('[App] Viewing result for task:', taskId, 'Type:', task.type);
             // Refresh data based on the type of task that completed
-            switch (task.type) {
-                case 'GENERATE_MEDIA_PLAN':
-                    mediaPlanManager.onLoadMediaPlanData();
-                    break;
-                case 'CREATE_BRAND_FROM_IDEA':
-                case 'AUTO_GENERATE_PERSONAS':
-                    personaManager.handleLoadPersonasData();
-                    break;
-                case 'GENERATE_VIRAL_IDEAS':
-                case 'GENERATE_IDEAS_FROM_PRODUCT':
-                case 'GENERATE_TRENDS':
-                case 'GENERATE_GLOBAL_TRENDS':
-                    strategyManager.handleLoadStrategyHubData();
-                    break;
+            if (mongoBrandId) {
+                handleReloadAllData(mongoBrandId);
             }
         }
         removeNotification(taskId);
-    }, [notifications, removeNotification, mediaPlanManager, personaManager, strategyManager]);
+    }, [notifications, removeNotification, mongoBrandId, handleReloadAllData]);
 
     useEffect(() => {
-        const allPosts = generatedAssets.mediaPlans.flatMap(group => group.plan.flatMap(week => week.posts));
+        const allPosts = (generatedAssets.mediaPlans || []).flatMap(group => (group.plan || []).flatMap(week => (week.posts || [])));
         if (allPosts.length === 0) return;
 
         const imageUpdates: Record<string, string> = {};
@@ -611,6 +593,7 @@ const AppContent: React.FC = () => {
                                 onOpenFunnelWizard={() => {}}
                                 tasks={taskList}
                                 isLoadingTasks={isLoadingTasks}
+                                retryingTaskId={retryingTaskId}
                                 onLoadTasks={(brandId) => loadTasks(brandId)}
                                 onCancelTask={onCancelTask}
                                 onRetryTask={onRetryTask}

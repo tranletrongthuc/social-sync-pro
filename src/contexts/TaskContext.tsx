@@ -92,6 +92,7 @@ interface TaskContextType {
   notifications: Record<string, BackgroundTask>;
   taskList: BackgroundTask[];
   isLoadingTasks: boolean;
+  retryingTaskId: string | null;
   loadTasks: (brandId: string) => Promise<void>;
   addTask: (task: BackgroundTask) => void;
   updateTask: (taskId: string, updates: Partial<BackgroundTask>) => void;
@@ -111,6 +112,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(taskReducer, initialState);
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
+  const [retryingTaskId, setRetryingTaskId] = useState<string | null>(null);
   const { addTask: addPollingTask, removeTask: removePollingTask } = useTaskPolling();
 
   const loadTasks = useCallback(async (brandId: string) => {
@@ -169,12 +171,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const onRetryTask = useCallback(async (taskId: string) => {
+    setRetryingTaskId(taskId);
     try {
       await taskService.retryTask(taskId);
-      dispatch({ type: 'UPDATE_TASK', payload: { taskId, updates: { status: 'queued', progress: 0 } } });
-      // Optionally, refresh the task list or show a notification
-    } catch (error) {
+      // The backend will update the status to 'queued', so we just need to refresh the tasks
+      // Optionally, you can dispatch an update to immediately show the queued status
+      dispatch({ type: 'UPDATE_TASK', payload: { taskId, updates: { status: 'queued', progress: 0, lastError: null } } });
+    } catch (error: any) {
       console.error("Failed to retry task:", error);
+      // Optionally show an error toast - you'd need to import that functionality
+    } finally {
+      setRetryingTaskId(null);
     }
   }, []);
 
@@ -195,6 +202,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         notifications: state.notifications,
         taskList: state.taskList,
         isLoadingTasks,
+        retryingTaskId,
         loadTasks,
         addTask,
         updateTask,

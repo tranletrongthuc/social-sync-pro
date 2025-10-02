@@ -37,7 +37,7 @@ const getNavItems = (language: string) => {
 
 
 const AssetDisplay: React.FC<AssetDisplayProps> = (props) => {
-    console.log("AssetDisplay rendered with props:", props);
+    // console.log("AssetDisplay rendered with props:", props);
     
     const { assets, onGenerateImage, onSetImage, generatedImages, isGeneratingImage, language, onExport, isExporting, mongoBrandId, onLoadData } = props;
     const [activeSection, setActiveSection] = useState('foundation');

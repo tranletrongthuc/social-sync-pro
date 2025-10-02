@@ -42,6 +42,63 @@ function createTaskDocument(taskData) {
   };
 }
 
+async function publishTaskToQueue(taskId) {
+  console.log('[API/Jobs] DIAGNOSTIC: Reading env vars -> VERCEL_ENV:', process.env.VERCEL_ENV, '| NODE_ENV:', process.env.NODE_ENV, '| USE_QSTASH_IN_DEV:', process.env.USE_QSTASH_IN_DEV, '| QSTASH_BASE_URL:', process.env.QSTASH_BASE_URL, '| hasQStashConfig:', !!qstashClient);
+  const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
+  const hasQStashConfig = qstashClient;
+  const useQStashInDev = process.env.USE_QSTASH_IN_DEV === 'true';
+  const shouldUseQStash = isProduction || (useQStashInDev && hasQStashConfig);
+
+  console.log(`[API/Jobs] DIAGNOSTIC: isProduction=${isProduction}, hasQStashConfig=${!!hasQStashConfig}, useQStashInDev=${useQStashInDev}, shouldUseQStash=${shouldUseQStash}`);
+
+  if (shouldUseQStash && qstashClient) {
+    let baseUrl;
+    // Prioritize local QStash dev settings if they are explicitly enabled.
+    if (useQStashInDev && process.env.LOCAL_QSTASH_BASE_URL) {
+      console.log('[API/Jobs] Using LOCAL_QSTASH_BASE_URL for local development with QStash.');
+      baseUrl = process.env.LOCAL_QSTASH_BASE_URL;
+    } else if (isProduction && process.env.VERCEL_URL) {
+      console.log('[API/Jobs] Using VERCEL_URL for production deployment.');
+      baseUrl = `https://${process.env.VERCEL_URL}`;
+    } else if (isProduction) {
+      throw new Error('Production environment detected, but VERCEL_URL is not set.');
+    } else {
+      throw new Error('QStash is enabled, but a valid callback URL could not be determined.');
+    }
+
+    if (!isProduction && (baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1') || baseUrl.includes('[::1]'))) {
+      throw new Error('QStash cannot call a localhost or loopback URL. When USE_QSTASH_IN_DEV is true, you must set QSTASH_BASE_URL to your public ngrok URL.');
+    }
+
+    const destinationUrl = `${baseUrl}/api/index.js?service=jobs&action=process`;
+    console.log(`[API/Jobs] DIAGNOSTIC: Attempting to publish to QStash with URL: ${destinationUrl}`);
+
+    await qstashClient.publishJSON({
+      url: destinationUrl,
+      body: { taskId: taskId },
+      method: 'POST',
+    });
+
+    console.log(`[API/Jobs] Task published to QStash successfully for taskId: ${taskId}`);
+  } else {
+    console.log(`[API/Jobs] Using self-invocation for local development for taskId: ${taskId}`);
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000';
+    const processUrl = `${baseUrl}/api/index.js?service=jobs&action=process`;
+
+    console.log(`[API/Jobs] DIAGNOSTIC: Self-invocation URL: ${processUrl}`);
+
+    fetch(processUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ taskId: taskId, isSelfInvoke: true }),
+    }).catch(err => {
+        console.error(`[API/Jobs] Self-invocation fetch failed for taskId: ${taskId}`, err);
+    });
+  }
+}
+
 async function createTask(requestBody) {
   console.log('[API/Jobs] Creating task with request body.');
   
@@ -71,46 +128,7 @@ async function createTask(requestBody) {
   console.log('[API/Jobs] Task saved with ID:', taskDocument.taskId);
   
   try {
-    const isProduction = process.env.VERCEL_ENV === 'production' || process.env.NODE_ENV === 'production';
-    const hasQStashConfig = qstashClient;
-    const useQStashInDev = process.env.USE_QSTASH_IN_DEV === 'true';
-    const shouldUseQStash = isProduction || (useQStashInDev && hasQStashConfig);
-    
-    if (shouldUseQStash && qstashClient) {
-      let baseUrl;
-      if (isProduction) {
-        baseUrl = `https://${process.env.VERCEL_URL}`;
-      } else if (process.env.QSTASH_BASE_URL) {
-        baseUrl = process.env.QSTASH_BASE_URL;
-      } else {
-        throw new Error('QStash is enabled in development, but QSTASH_BASE_URL (your ngrok URL) is not set.');
-      }
-      
-      const destinationUrl = `${baseUrl}/api/index.js?service=jobs&action=process`;
-      console.log('[API/Jobs] Publishing task to QStash for taskId:', taskDocument.taskId, 'with URL:', destinationUrl);
-      
-      await qstashClient.publishJSON({
-        url: destinationUrl,
-        body: { taskId: taskDocument.taskId },
-        method: 'POST',
-      });
-
-      console.log('[API/Jobs] Task published to QStash successfully for taskId:', taskDocument.taskId);
-    } else {
-      console.log('[API/Jobs] Using self-invocation for local development for taskId:', taskDocument.taskId);
-      const baseUrl = process.env.VERCEL_URL 
-        ? `https://${process.env.VERCEL_URL}` 
-        : 'http://localhost:3000';
-      const processUrl = `${baseUrl}/api/index.js?service=jobs&action=process`;
-
-      fetch(processUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId: taskDocument.taskId, isSelfInvoke: true }),
-      }).catch(err => {
-          console.error(`[API/Jobs] Self-invocation fetch failed for taskId: ${taskDocument.taskId}`, err);
-      });
-    }
+    await publishTaskToQueue(taskDocument.taskId);
   } catch (error) {
     console.error('[API/Jobs] Error during task scheduling for taskId:', taskDocument.taskId, error);
     await db.collection('tasks').updateOne(
@@ -238,19 +256,46 @@ async function cancelTask(requestBody) {
 }
 
 async function retryTask(requestBody) {
+  // 1. VALIDATION
   const { taskId, userId } = requestBody;
   if (!taskId || !userId) throw new Error('Missing required fields: taskId, userId');
+
   const { db } = await getClientAndDb();
-  const task = await db.collection('tasks').findOne({ taskId });
+  const tasksCollection = db.collection('tasks');
+  const task = await tasksCollection.findOne({ taskId });
+
   if (!task) throw new Error(`Task with ID ${taskId} not found`);
   if (task.userId !== userId) throw new Error('Unauthorized: You do not own this task');
-  
-  // Reset status, progress, increment retry count, clear error
-  await db.collection('tasks').updateOne(
+  if (task.status !== 'failed') throw new Error('Only failed tasks can be retried.');
+  if (task.retryCount >= task.maxRetries) throw new Error(`Max retries (${task.maxRetries}) reached.`);
+
+  // 2. UPDATE DATABASE
+  // Reset status, progress, increment retry count, and clear the last error.
+  await tasksCollection.updateOne(
     { taskId },
-    { $set: { status: 'queued', progress: 0, lastError: null, retryCount: (task.retryCount || 0) + 1, updatedAt: new Date() } }
+    { 
+      $set: { 
+        status: 'queued', 
+        progress: 0, 
+        lastError: null, 
+        updatedAt: new Date() 
+      },
+      $inc: { retryCount: 1 }
+    }
   );
-  return { success: true };
+
+  // 3. RE-QUEUE TASK (CRITICAL STEP)
+  try {
+    await publishTaskToQueue(task.taskId);
+    console.log(`[API/Jobs] Task ${task.taskId} successfully re-queued.`);
+  } catch (error) {
+      console.error(`[API/Jobs] Failed to re-queue task ${task.taskId} for retry.`, error);
+      // Revert status to failed if re-queuing fails
+      await tasksCollection.updateOne({ taskId }, { $set: { status: 'failed', lastError: 'Failed to re-queue task.' } });
+      throw error;
+  }
+
+  return { success: true, taskId: task.taskId };
 }
 
 async function deleteTask(requestBody) {

@@ -6,6 +6,7 @@ import {
     loadInitialProjectData as loadInitialData,
     loadMediaPlanGroupsList as loadMediaPlanGroups,
     loadMediaPlanFromDatabase as loadMediaPlan,
+    loadProjectFromDatabase,
     createOrUpdateBrandRecordInDatabase
 } from '../services/databaseService';
 import { configService } from '../services/configService';
@@ -268,11 +269,55 @@ export const useProjectIO = ({
         }
     }, [setLoaderContent, setError, setMongoBrandId, setSuccessMessage]);
 
+    const handleLoadCompleteProject = useCallback(async (brandId: string) => {
+        setLoaderContent({ title: "Loading Complete Project...", steps: ["Fetching all brand data...", "Initializing application state..."] });
+        setError(null);
+        try {
+            const { assets } = await loadProjectFromDatabase(brandId);
+
+            if (!assets) {
+                throw new Error("Failed to load complete project assets.");
+            }
+
+            // Initialize all assets from the single response
+            dispatchAssets({ type: 'INITIALIZE_ASSETS', payload: assets });
+
+            // Set the brand ID
+            setMongoBrandId(brandId);
+
+            // Sync auto-save with the newly loaded assets
+            syncLastSaved(assets);
+
+            // Set UI state
+            setCurrentStep('assets');
+            setActiveTab('brandKit');
+
+            // Derive and set the list of media plan groups for the UI
+            if (assets.mediaPlans && assets.mediaPlans.length > 0) {
+                setMediaPlanGroupsList(assets.mediaPlans.map((p: MediaPlanGroup) => ({ id: p.id, name: p.name, prompt: p.prompt, productImages: p.productImages || [] })));
+                setActivePlanId(assets.mediaPlans[0].id);
+            } else {
+                setMediaPlanGroupsList([]);
+                setActivePlanId(null);
+            }
+
+            setSuccessMessage("Project loaded successfully!");
+
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : "Could not load complete project from MongoDB.";
+            setError(errorMessage);
+            console.error('[useProjectIO] handleLoadCompleteProject failed:', errorMessage);
+        } finally {
+            setLoaderContent(null);
+        }
+    }, [dispatchAssets, setMongoBrandId, syncLastSaved, setCurrentStep, setActiveTab, setMediaPlanGroupsList, setActivePlanId, setLoaderContent, setError, setSuccessMessage]);
+
     return {
         handleSaveProjectToFile,
         handleLoadProjectFile,
         handleLoadFromDatabase,
         handleSelectPlan,
         handleCreateNewBrand,
+        handleLoadCompleteProject, // Export the new function
     };
 };

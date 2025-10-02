@@ -7,7 +7,7 @@ import ModelLabel from './ModelLabel';
 import { Card, Label, Button } from '../design/components';
 import type { LabelVariant } from '../design/components/Label';
 
-const TaskActions: React.FC<{ task: BackgroundTask; onCancel: (id: string) => void; onRetry: (id: string) => void; onDelete: (id: string) => void; }> = ({ task, onCancel, onRetry, onDelete }) => {
+const TaskActions: React.FC<{ task: BackgroundTask; onCancel: (id: string) => void; onRetry: (id: string) => void; onDelete: (id: string) => void; retryingTaskId: string | null; }> = ({ task, onCancel, onRetry, onDelete, retryingTaskId }) => {
   const [isOpen, setIsOpen] = React.useState(false);
   const menuRef = React.useRef<HTMLDivElement>(null);
 
@@ -34,7 +34,14 @@ const TaskActions: React.FC<{ task: BackgroundTask; onCancel: (id: string) => vo
         <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-10">
           <div className="py-1">
             {canCancel && <button onClick={() => { onCancel(task.taskId); setIsOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><CancelIcon className="h-4 w-4"/> Cancel</button>}
-            {canRetry && <button onClick={() => { onRetry(task.taskId); setIsOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"><RetryIcon className="h-4 w-4"/> Retry</button>}
+            {canRetry && <button 
+              onClick={() => { onRetry(task.taskId); setIsOpen(false); }} 
+              disabled={retryingTaskId === task.taskId}
+              className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <RetryIcon className="h-4 w-4"/>
+              {retryingTaskId === task.taskId ? 'Retrying...' : 'Retry'}
+            </button>}
             {canDelete && <button onClick={() => { onDelete(task.taskId); setIsOpen(false); }} className="w-full text-left flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50"><TrashIcon className="h-4 w-4"/> Delete</button>}
           </div>
         </div>
@@ -52,9 +59,10 @@ interface TaskManagerDisplayProps {
   onCancelTask: (taskId: string) => void;
   onRetryTask: (taskId: string) => void;
   onDeleteTask: (taskId: string) => void;
+  retryingTaskId?: string | null;
 }
 
-const TaskManagerDisplay: React.FC<TaskManagerDisplayProps> = ({ tasks, isLoading, language, mongoBrandId, onLoadData, onCancelTask, onRetryTask, onDeleteTask }) => {
+const TaskManagerDisplay: React.FC<TaskManagerDisplayProps> = ({ tasks, isLoading, language, mongoBrandId, onLoadData, onCancelTask, onRetryTask, onDeleteTask, retryingTaskId = null }) => {
   const [selectedTaskIds, setSelectedTaskIds] = useState(new Set<string>());
 
   const handleToggleAll = () => {
@@ -180,7 +188,7 @@ const TaskManagerDisplay: React.FC<TaskManagerDisplayProps> = ({ tasks, isLoadin
                         {new Date(task.createdAt).toLocaleString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                        <TaskActions task={task} onCancel={onCancelTask} onRetry={onRetryTask} onDelete={onDeleteTask} />
+                        <TaskActions task={task} onCancel={onCancelTask} onRetry={onRetryTask} onDelete={onDeleteTask} retryingTaskId={retryingTaskId} />
                       </td>
                     </tr>
                   ))}
